@@ -1,0 +1,112 @@
+"""
+One-off seed: creates one example fan and imports curve/map points from data/*.csv.
+Run from project root: python -m backend.seed_once
+"""
+import csv
+import io
+import os
+import sys
+
+# Add project root so "backend" is importable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from backend.database import SessionLocal, init_db, DATA_DIR
+from backend.models import Fan, MapPoint
+
+
+def parse_map_csv(text: str):
+    rows = []
+    for row in csv.reader(io.StringIO(text.strip())):
+        row = [c.strip() for c in row if c]
+        if not row or (len(row) == 1 and row[0].startswith("#")):
+            continue
+        if row[0].lower() in ("rpm", "flow", "pressure", "efficiency") and len(rows) == 0:
+            continue
+        try:
+            rpm = float(row[0])
+            flow = float(row[1])
+            pressure = float(row[2])
+            efficiency = float(row[3]) if len(row) > 3 and row[3] else None
+            rows.append({"rpm": rpm, "flow": flow, "pressure": pressure, "efficiency": efficiency})
+        except (ValueError, IndexError):
+            continue
+    return rows
+
+
+def main():
+    init_db()
+    db = SessionLocal()
+    try:
+        if db.query(Fan).first():
+            print("Fans already exist. Skip seed.")
+            return
+        
+        # Create first fan
+        fan1 = Fan(manufacturer="Example", model="Fan-1", notes="Seed data for MVP")
+        db.add(fan1)
+        db.commit()
+        db.refresh(fan1)
+        
+        # Create second fan
+        fan2 = Fan(manufacturer="Test", model="100 series", notes="Additional test fan")
+        db.add(fan2)
+        db.commit()
+        db.refresh(fan2)
+
+        map_path = os.path.join(DATA_DIR, "map_points_example.csv")
+        if os.path.isfile(map_path):
+            with open(map_path, encoding="utf-8") as f:
+                content = f.read()
+                # Import for first fan
+                for r in parse_map_csv(content):
+                    db.add(MapPoint(fan_id=fan1.id, **r))
+                # Import for second fan (with slightly modified data)
+                for r in parse_map_csv(content):
+                    # Modify some values for the second fan to make it different
+                    r['rpm'] = r['rpm'] * 1.2  # 20% higher RPM
+                    r['pressure'] = r['pressure'] * 0.8  # 20% lower pressure
+                    db.add(MapPoint(fan_id=fan2.id, **r))
+            print(f"Imported map points from {map_path} for both fans")
+        else:
+            # Fallback: create some basic test data if CSV doesn't exist
+            print("CSV file not found, creating basic test data")
+            # For fan 1: multiple points per RPM (bands)
+            test_data_1 = [
+                {"rpm": 1000, "flow": 0.2, "pressure": 120, "efficiency": 42},
+                {"rpm": 1000, "flow": 0.5, "pressure": 110, "efficiency": 50},
+                {"rpm": 1000, "flow": 1.0, "pressure": 80, "efficiency": 52},
+                {"rpm": 1500, "flow": 0.3, "pressure": 200, "efficiency": 48},
+                {"rpm": 1500, "flow": 0.6, "pressure": 185, "efficiency": 56},
+                {"rpm": 1500, "flow": 1.2, "pressure": 140, "efficiency": 62},
+                {"rpm": 2000, "flow": 0.4, "pressure": 280, "efficiency": 50},
+                {"rpm": 2000, "flow": 0.7, "pressure": 260, "efficiency": 58},
+                {"rpm": 2000, "flow": 1.3, "pressure": 200, "efficiency": 64},
+            ]
+            for r in test_data_1:
+                db.add(MapPoint(fan_id=fan1.id, **r))
+            
+            # For fan 2: also multiple points per RPM (bands)
+            test_data_2 = [
+                {"rpm": 1200, "flow": 0.2, "pressure": 96, "efficiency": 45},  # 1200 = 1000 * 1.2, pressure = 120 * 0.8
+                {"rpm": 1200, "flow": 0.5, "pressure": 88, "efficiency": 52},
+                {"rpm": 1200, "flow": 1.0, "pressure": 64, "efficiency": 55},
+                {"rpm": 1800, "flow": 0.3, "pressure": 160, "efficiency": 50},  # 1800 = 1500 * 1.2, pressure = 200 * 0.8
+                {"rpm": 1800, "flow": 0.6, "pressure": 148, "efficiency": 58},
+                {"rpm": 1800, "flow": 1.2, "pressure": 112, "efficiency": 65},
+                {"rpm": 2400, "flow": 0.4, "pressure": 224, "efficiency": 52},  # 2400 = 2000 * 1.2, pressure = 280 * 0.8
+                {"rpm": 2400, "flow": 0.7, "pressure": 208, "efficiency": 60},
+                {"rpm": 2400, "flow": 1.3, "pressure": 160, "efficiency": 67},
+            ]
+            for r in test_data_2:
+                db.add(MapPoint(fan_id=fan2.id, **r))
+
+        db.commit()
+        print("Seed done.")
+        print(f"Fan 1: {fan1.manufacturer} {fan1.model} (id={fan1.id})")
+        print(f"Fan 2: {fan2.manufacturer} {fan2.model} (id={fan2.id})")
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    main()

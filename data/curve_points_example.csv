@@ -1,0 +1,11 @@
+# Curve points CSV: flow, pressure [, efficiency] [, rpm] [, curve_type]
+# Header row (optional) is ignored. Comment lines start with #.
+flow, pressure, efficiency, rpm, curve_type
+0.2, 180, 45, 1200, default
+0.4, 175, 52, 1200, default
+0.6, 165, 58, 1200, default
+0.8, 150, 62, 1200, default
+1.0, 130, 65, 1200, default
+1.2, 105, 64, 1200, default
+1.4, 78, 60, 1200, default
+1.6, 50, 54, 1200, default
