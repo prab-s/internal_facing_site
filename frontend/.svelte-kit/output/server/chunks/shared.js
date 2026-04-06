@@ -3,7 +3,6 @@ import { SvelteKitError, HttpError } from "@sveltejs/kit/internal";
 import { with_request_store } from "@sveltejs/kit/internal/server";
 import * as devalue from "devalue";
 import { t as text_decoder, b as base64_encode, c as base64_decode } from "./utils.js";
-const BROWSER = false;
 const SVELTE_KIT_ASSETS = "/_svelte_kit_assets";
 const ENDPOINT_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
 const MUTATIVE_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
@@ -755,7 +754,6 @@ function create_remote_key(id, payload) {
   return id + "/" + payload;
 }
 export {
-  BROWSER as B,
   ENDPOINT_METHODS as E,
   INVALIDATED_PARAM as I,
   MUTATIVE_METHODS as M,

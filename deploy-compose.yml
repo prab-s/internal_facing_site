@@ -1,0 +1,138 @@
+#
+# Port map / network intent
+# - Host port 8000 -> `app:8000` for the internal staff site + FastAPI API
+# - Host port ${WORDPRESS_PORT} -> `wordpress:80` for the customer-facing site
+# - `postgres` is also bound to 127.0.0.1:5432 for local SIT/admin access only
+# - `wordpress_db` stays internal-only on the compose network
+# - Other containers in this stack reach the FastAPI app at `http://app:8000`
+#
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    container_name: fan-graphs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - fan_graphs_postgres_data:/var/lib/postgresql/data:Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+    image: fan-graphs
+    container_name: fan-graphs-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      POSTGRES_DATABASE_URL: ${POSTGRES_DATABASE_URL}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
+      SESSION_SECRET: ${SESSION_SECRET}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE}
+      CMS_API_TOKEN: ${CMS_API_TOKEN}
+    volumes:
+      - ./data:/app/data:Z
+
+  wordpress_db:
+    profiles: ["wordpress"]
+    image: docker.io/library/mariadb:11
+    container_name: fan-graphs-wordpress-db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${WORDPRESS_DB_NAME}
+      MARIADB_USER: ${WORDPRESS_DB_USER}
+      MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${WORDPRESS_DB_ROOT_PASSWORD}
+    volumes:
+      - fan_graphs_wordpress_db_data:/var/lib/mysql:Z
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p${WORDPRESS_DB_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  wordpress:
+    profiles: ["wordpress"]
+    image: docker.io/library/wordpress:php8.2-apache
+    container_name: fan-graphs-wordpress
+    restart: unless-stopped
+    depends_on:
+      wordpress_db:
+        condition: service_healthy
+    ports:
+      - "${WORDPRESS_PORT}:80"
+    environment:
+      WORDPRESS_DB_HOST: wordpress_db:3306
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_CONFIG_EXTRA: |
+        $$fan_graphs_scheme = 'http';
+        $$fan_graphs_forwarded_proto = '';
+        if (isset($$_SERVER['HTTP_X_FORWARDED_PROTO']) && $$_SERVER['HTTP_X_FORWARDED_PROTO'] !== '') {
+          $$fan_graphs_forwarded_proto_parts = explode(',', $$_SERVER['HTTP_X_FORWARDED_PROTO']);
+          $$fan_graphs_forwarded_proto = trim($$fan_graphs_forwarded_proto_parts[0]);
+        }
+        $$fan_graphs_is_https = false;
+        if ($$fan_graphs_forwarded_proto === 'https') {
+          $$fan_graphs_is_https = true;
+        }
+        if (isset($$_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($$_SERVER['HTTP_X_FORWARDED_SSL']) === 'on') {
+          $$fan_graphs_is_https = true;
+        }
+        if (isset($$_SERVER['HTTP_X_FORWARDED_PORT']) && (string) $$_SERVER['HTTP_X_FORWARDED_PORT'] === '443') {
+          $$fan_graphs_is_https = true;
+        }
+        if (
+          isset($$_SERVER['HTTP_CF_VISITOR']) &&
+          strpos($$_SERVER['HTTP_CF_VISITOR'], '"scheme":"https"') !== false
+        ) {
+          $$fan_graphs_is_https = true;
+        }
+        if (isset($$_SERVER['HTTP_X_FORWARDED_HOST']) && $$_SERVER['HTTP_X_FORWARDED_HOST'] !== '') {
+          $$fan_graphs_forwarded_host_parts = explode(',', $$_SERVER['HTTP_X_FORWARDED_HOST']);
+          $$_SERVER['HTTP_HOST'] = trim($$fan_graphs_forwarded_host_parts[0]);
+        }
+        if (
+          isset($$_SERVER['HTTPS']) &&
+          $$_SERVER['HTTPS'] !== '' &&
+          $$_SERVER['HTTPS'] !== 'off'
+        ) {
+          $$fan_graphs_is_https = true;
+        }
+        if ($$fan_graphs_is_https) {
+          $$_SERVER['HTTPS'] = 'on';
+          $$_SERVER['SERVER_PORT'] = 443;
+          $$_SERVER['REQUEST_SCHEME'] = 'https';
+          $$fan_graphs_scheme = 'https';
+          define('FORCE_SSL_ADMIN', true);
+        }
+        $$fan_graphs_host = $$_SERVER['HTTP_HOST'] ?? '';
+        if ($$fan_graphs_host !== '') {
+          define('WP_HOME', $$fan_graphs_scheme . '://' . $$fan_graphs_host);
+          define('WP_SITEURL', $$fan_graphs_scheme . '://' . $$fan_graphs_host);
+        }
+        define('FAN_GRAPHS_INTERNAL_API_BASE_URL', '${WORDPRESS_INTERNAL_API_BASE_URL}');
+        define('FAN_GRAPHS_API_TOKEN', '${CMS_API_TOKEN}');
+    volumes:
+      - fan_graphs_wordpress_data:/var/www/html:Z
+      - ./wordpress/plugins:/var/www/html/wp-content/plugins:Z
+
+volumes:
+  fan_graphs_postgres_data:
+  fan_graphs_wordpress_db_data:
+  fan_graphs_wordpress_data:

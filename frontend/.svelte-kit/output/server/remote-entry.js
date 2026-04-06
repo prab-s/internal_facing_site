@@ -1,8 +1,9 @@
 import { get_request_store, with_request_store } from "@sveltejs/kit/internal/server";
 import { parse } from "devalue";
 import { error, json } from "@sveltejs/kit";
-import { u as stringify_remote_arg, M as MUTATIVE_METHODS, v as create_field_proxy, w as normalize_issue, x as set_nested_value, y as flatten_issues, z as deep_set, k as stringify, B as BROWSER, f as create_remote_key, h as handle_error_and_jsonify } from "./chunks/shared.js";
+import { u as stringify_remote_arg, M as MUTATIVE_METHODS, v as create_field_proxy, w as normalize_issue, x as set_nested_value, y as flatten_issues, z as deep_set, k as stringify, f as create_remote_key, h as handle_error_and_jsonify } from "./chunks/shared.js";
 import { ValidationError, HttpError, SvelteKitError } from "@sveltejs/kit/internal";
+import { B as BROWSER } from "./chunks/false.js";
 import { b as base, c as app_dir, p as prerendering } from "./chunks/environment.js";
 function create_validator(validate_or_fn, maybe_fn) {
   if (!maybe_fn) {

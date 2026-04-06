@@ -10,14 +10,15 @@ return {
 	assets: new Set(["bg.jpg"]),
 	mimeTypes: {".jpg":"image/jpeg"},
 	_: {
-		client: {start:"_app/immutable/entry/start.B8fFZ-GK.js",app:"_app/immutable/entry/app.Cp2cyfYD.js",imports:["_app/immutable/entry/start.B8fFZ-GK.js","_app/immutable/chunks/KoeRPU5a.js","_app/immutable/chunks/COLML_Uy.js","_app/immutable/entry/app.Cp2cyfYD.js","_app/immutable/chunks/COLML_Uy.js","_app/immutable/chunks/Dzuv9Zi9.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.Yc4MCdMd.js",app:"_app/immutable/entry/app.BUmDlwEt.js",imports:["_app/immutable/entry/start.Yc4MCdMd.js","_app/immutable/chunks/a4Pgsa59.js","_app/immutable/chunks/tvvodZvZ.js","_app/immutable/entry/app.BUmDlwEt.js","_app/immutable/chunks/tvvodZvZ.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/BLghSlww.js","_app/immutable/chunks/D9SDZjD7.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
 			__memo(() => import('./nodes/2.js')),
 			__memo(() => import('./nodes/3.js')),
 			__memo(() => import('./nodes/4.js')),
-			__memo(() => import('./nodes/5.js'))
+			__memo(() => import('./nodes/5.js')),
+			__memo(() => import('./nodes/6.js'))
 		],
 		remotes: {
 			
@@ -49,6 +50,13 @@ return {
 				pattern: /^\/map\/?$/,
 				params: [],
 				page: { layouts: [0,], errors: [1,], leaf: 5 },
+				endpoint: null
+			},
+			{
+				id: "/setup",
+				pattern: /^\/setup\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 6 },
 				endpoint: null
 			}
 		],

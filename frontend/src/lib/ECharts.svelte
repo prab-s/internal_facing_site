@@ -12,6 +12,32 @@
   let chart;
   let handlerEntries = [];
 
+  function normalizeGraphicElements(graphic) {
+    if (!chart || !Array.isArray(graphic)) return graphic;
+
+    return graphic.map((element) => {
+      if (!element || !Array.isArray(element.dataCoord)) return element;
+
+      const [x, y] = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, element.dataCoord);
+      const nextElement = { ...element };
+      delete nextElement.dataCoord;
+      nextElement.x = x + (element.offsetX ?? 0);
+      nextElement.y = y + (element.offsetY ?? 0);
+      delete nextElement.offsetX;
+      delete nextElement.offsetY;
+      return nextElement;
+    });
+  }
+
+  function normalizeOption(nextOption) {
+    if (!nextOption || typeof nextOption !== 'object') return nextOption;
+    if (!Array.isArray(nextOption.graphic)) return nextOption;
+    return {
+      ...nextOption,
+      graphic: normalizeGraphicElements(nextOption.graphic)
+    };
+  }
+
   function attachHandlers() {
     if (!chart) return;
     // Remove old handlers first
@@ -35,7 +61,7 @@
       if (!chart) {
         chart = echarts.init(container);
       }
-      chart.setOption(option, { notMerge: true });
+      chart.setOption(normalizeOption(option), { notMerge: true });
       attachHandlers();
     } catch (e) {
       console.error('ECharts error:', e);
@@ -45,7 +71,7 @@
   onMount(() => {
     if (container && !chart) {
       chart = echarts.init(container);
-      if (option && Object.keys(option).length) chart.setOption(option, { notMerge: true });
+      if (option && Object.keys(option).length) chart.setOption(normalizeOption(option), { notMerge: true });
 
       if (typeof onChartReady === 'function') {
         onChartReady(chart);
@@ -60,8 +86,14 @@
   });
 
   function resize() {
-    if (chart) chart.resize();
+    if (chart) {
+      chart.resize();
+      if (option && Object.keys(option).length) {
+        chart.setOption(normalizeOption(option), { notMerge: true });
+        attachHandlers();
+      }
+    }
   }
 </script>
 
-<div bind:this={container} class="chart-container" style="height: {height}; border: 1px solid red; background: white;"></div>
+<div bind:this={container} class="chart-container echart-host" style="height: {height};"></div>

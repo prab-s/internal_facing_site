@@ -1,0 +1,758 @@
+const FULL_CHART_LINE_DEFINITIONS = [
+  {
+    key: "efficiency_centre",
+    label: "Efficiency Centre",
+    colorKey: "efficiency",
+    tooltipLabel: "Efficiency centre",
+    lineWidth: 1
+  },
+  {
+    key: "efficiency_lower_end",
+    label: "Efficiency Lower End",
+    colorKey: "permissible",
+    tooltipLabel: "Efficiency lower end",
+    lineWidth: 1
+  },
+  {
+    key: "efficiency_higher_end",
+    label: "Efficiency Higher End",
+    colorKey: "permissible",
+    tooltipLabel: "Efficiency higher end",
+    lineWidth: 1
+  },
+  {
+    key: "permissible_use",
+    label: "Permissible Use",
+    colorKey: "neutralLine",
+    tooltipLabel: "Permissible use",
+    lineWidth: 3
+  }
+];
+const RPM_BAND_FALLBACK_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#22d3ee"];
+const RPM_LINE_COLOR = "#0000ff";
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+function formatNumericValue(value) {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return value;
+  return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2).replace(/\.?0+$/, "");
+}
+function interpolateYAtX(lineData, x) {
+  if (!lineData.length) return null;
+  if (x < lineData[0][0] || x > lineData[lineData.length - 1][0]) return null;
+  for (let index = 0; index < lineData.length; index += 1) {
+    const [currentX, currentY] = lineData[index];
+    if (currentX === x) return currentY;
+    if (index === lineData.length - 1) return currentY;
+    const [nextX, nextY] = lineData[index + 1];
+    if (x > currentX && x < nextX) {
+      if (nextX === currentX) return currentY;
+      const ratio = (x - currentX) / (nextX - currentX);
+      return currentY + (nextY - currentY) * ratio;
+    }
+  }
+  return null;
+}
+function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
+  if (lineData.length <= 2) return lineData.slice();
+  const xs = lineData.map(([x]) => x);
+  const ys = lineData.map(([, y]) => y);
+  const deltas = [];
+  for (let index = 0; index < xs.length - 1; index += 1) {
+    const dx = xs[index + 1] - xs[index];
+    if (dx <= 0) continue;
+    deltas.push((ys[index + 1] - ys[index]) / dx);
+  }
+  if (deltas.length !== xs.length - 1) return lineData.slice();
+  const tangents = new Array(xs.length).fill(0);
+  tangents[0] = deltas[0];
+  tangents[tangents.length - 1] = deltas[deltas.length - 1];
+  for (let index = 1; index < xs.length - 1; index += 1) {
+    const previousDelta = deltas[index - 1];
+    const nextDelta = deltas[index];
+    if (previousDelta === 0 || nextDelta === 0 || previousDelta * nextDelta <= 0) {
+      tangents[index] = 0;
+      continue;
+    }
+    tangents[index] = (previousDelta + nextDelta) / 2;
+  }
+  for (let index = 0; index < deltas.length; index += 1) {
+    const delta = deltas[index];
+    if (delta === 0) {
+      tangents[index] = 0;
+      tangents[index + 1] = 0;
+      continue;
+    }
+    const alpha = tangents[index] / delta;
+    const beta = tangents[index + 1] / delta;
+    const distance = alpha * alpha + beta * beta;
+    if (distance > 9) {
+      const scale = 3 / Math.sqrt(distance);
+      tangents[index] = scale * alpha * delta;
+      tangents[index + 1] = scale * beta * delta;
+    }
+  }
+  const smoothed = [];
+  for (let index = 0; index < xs.length - 1; index += 1) {
+    const x0 = xs[index];
+    const x1 = xs[index + 1];
+    const y0 = ys[index];
+    const y1 = ys[index + 1];
+    const dx = x1 - x0;
+    const m0 = tangents[index];
+    const m1 = tangents[index + 1];
+    if (index === 0) {
+      smoothed.push([x0, y0]);
+    }
+    for (let step = 1; step < samplesPerSegment; step += 1) {
+      const t = step / samplesPerSegment;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const h00 = 2 * t3 - 3 * t2 + 1;
+      const h10 = t3 - 2 * t2 + t;
+      const h01 = -2 * t3 + 3 * t2;
+      const h11 = t3 - t2;
+      const x = x0 + dx * t;
+      const y = h00 * y0 + h10 * dx * m0 + h01 * y1 + h11 * dx * m1;
+      const boundedY = clamp(y, Math.min(y0, y1), Math.max(y0, y1));
+      smoothed.push([x, boundedY]);
+    }
+    smoothed.push([x1, y1]);
+  }
+  return smoothed;
+}
+function buildFullChartTooltipFormatter() {
+  return (params) => {
+    const items = Array.isArray(params) ? params : [params];
+    const visibleItems = items.filter((item) => {
+      const name = String(item.seriesName ?? "");
+      return !name.endsWith(" rpm band") && !name.endsWith(" rpm area");
+    });
+    if (!visibleItems.length) return "";
+    const flowValue = visibleItems.find((item) => Array.isArray(item.value))?.value?.[0] ?? visibleItems[0]?.axisValue;
+    const lines = [`Flow: ${formatNumericValue(flowValue)}`];
+    for (const item of visibleItems) {
+      const name = String(item.seriesName ?? "");
+      const marker = item.marker ?? "";
+      const pointValue = Array.isArray(item.value) ? item.value[1] : item.value;
+      lines.push(`Pressure: ${formatNumericValue(pointValue)}`);
+      lines.push(`${marker}${name}`);
+    }
+    return lines.join("<br/>");
+  };
+}
+function collectUniqueSortedFlows(rpmCurveEntries, permissibleBoundaryData, extraFlows = []) {
+  const values = /* @__PURE__ */ new Set();
+  for (const [, lineData] of rpmCurveEntries) {
+    for (const [flow] of lineData) {
+      values.add(flow);
+    }
+  }
+  for (const [flow] of permissibleBoundaryData) {
+    values.add(flow);
+  }
+  for (const flow of extraFlows) {
+    values.add(flow);
+  }
+  return Array.from(values).sort((a, b) => a - b);
+}
+function findCurveBoundaryCrossings(lineData, permissibleBoundaryData) {
+  if (lineData.length < 2 || permissibleBoundaryData.length < 2) return [];
+  const rawFlows = collectUniqueSortedFlows([[0, lineData]], permissibleBoundaryData);
+  const intersections = [];
+  for (let index = 0; index < rawFlows.length - 1; index += 1) {
+    const leftFlow = rawFlows[index];
+    const rightFlow = rawFlows[index + 1];
+    const curveLeft = interpolateYAtX(lineData, leftFlow);
+    const curveRight = interpolateYAtX(lineData, rightFlow);
+    const boundaryLeft = interpolateYAtX(permissibleBoundaryData, leftFlow);
+    const boundaryRight = interpolateYAtX(permissibleBoundaryData, rightFlow);
+    if (curveLeft == null || curveRight == null || boundaryLeft == null || boundaryRight == null) {
+      continue;
+    }
+    const diffLeft = curveLeft - boundaryLeft;
+    const diffRight = curveRight - boundaryRight;
+    if (diffLeft === 0) intersections.push(leftFlow);
+    if (diffRight === 0) intersections.push(rightFlow);
+    if (diffLeft * diffRight < 0) {
+      const ratio = diffLeft / (diffLeft - diffRight);
+      intersections.push(leftFlow + (rightFlow - leftFlow) * ratio);
+    }
+  }
+  return intersections;
+}
+function findBoundaryLevelCrossings(boundaryData, level) {
+  if (boundaryData.length < 2) return [];
+  const intersections = [];
+  for (let index = 0; index < boundaryData.length - 1; index += 1) {
+    const [leftFlow, leftValue] = boundaryData[index];
+    const [rightFlow, rightValue] = boundaryData[index + 1];
+    const diffLeft = leftValue - level;
+    const diffRight = rightValue - level;
+    if (diffLeft === 0) intersections.push(leftFlow);
+    if (diffRight === 0) intersections.push(rightFlow);
+    if (diffLeft * diffRight < 0) {
+      const ratio = diffLeft / (diffLeft - diffRight);
+      intersections.push(leftFlow + (rightFlow - leftFlow) * ratio);
+    }
+  }
+  return intersections;
+}
+function getLowerBoundaryActivationFlow(lowerLineData, permissibleBoundaryData) {
+  if (!permissibleBoundaryData.length) return null;
+  if (!lowerLineData?.length) {
+    return findBoundaryLevelCrossings(permissibleBoundaryData, 0)[0] ?? permissibleBoundaryData[0][0];
+  }
+  const lowerStartFlow = lowerLineData[0][0];
+  const lowerEndFlow = lowerLineData[lowerLineData.length - 1][0];
+  const lowerBoundaryCrossings = findCurveBoundaryCrossings(
+    lowerLineData,
+    permissibleBoundaryData
+  ).filter((flow) => flow >= lowerStartFlow && flow <= lowerEndFlow).sort((a, b) => a - b);
+  return lowerBoundaryCrossings[0] ?? lowerStartFlow;
+}
+function buildBoundarySegmentPoints(boundaryData, startFlow, endFlow) {
+  if (!boundaryData.length || startFlow == null || endFlow == null || startFlow === endFlow) {
+    return [];
+  }
+  const minimumFlow = Math.min(startFlow, endFlow);
+  const maximumFlow = Math.max(startFlow, endFlow);
+  const segmentFlows = /* @__PURE__ */ new Set([startFlow, endFlow]);
+  for (const [flow] of boundaryData) {
+    if (flow > minimumFlow && flow < maximumFlow) {
+      segmentFlows.add(flow);
+    }
+  }
+  return Array.from(segmentFlows).sort((a, b) => a - b).map((flow) => [flow, interpolateYAtX(boundaryData, flow)]).filter(([, value]) => value != null);
+}
+function buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData) {
+  if (!permissibleBoundaryData.length) {
+    return collectUniqueSortedFlows(rpmCurveEntries, permissibleBoundaryData);
+  }
+  const intersectionFlows = rpmCurveEntries.flatMap(
+    ([, lineData]) => findCurveBoundaryCrossings(lineData, permissibleBoundaryData)
+  );
+  const boundaryToAxisCrossings = findBoundaryLevelCrossings(permissibleBoundaryData, 0);
+  return collectUniqueSortedFlows(
+    rpmCurveEntries,
+    permissibleBoundaryData,
+    [...intersectionFlows, ...boundaryToAxisCrossings]
+  );
+}
+function buildBandTopValues(lineData, flows, permissibleBoundaryData, clipRpmAreaToPermissibleUse, maximumVisibleFlow = null, allowPermissibleFallbackBeforeLineStart = false) {
+  if (!flows.length) return [];
+  const minimumVisibleFlow = permissibleBoundaryData.length ? permissibleBoundaryData[0][0] : null;
+  const lineStartFlow = lineData.length ? lineData[0][0] : null;
+  const lineEndFlow = lineData.length ? lineData[lineData.length - 1][0] : null;
+  return flows.map((flow) => {
+    const pressure = interpolateYAtX(lineData, flow);
+    if (!clipRpmAreaToPermissibleUse) return pressure;
+    if (minimumVisibleFlow == null || maximumVisibleFlow == null) return null;
+    if (flow < minimumVisibleFlow || flow > maximumVisibleFlow) return null;
+    const permissibleBoundaryPressure = interpolateYAtX(permissibleBoundaryData, flow);
+    if (pressure == null) {
+      if (allowPermissibleFallbackBeforeLineStart && permissibleBoundaryPressure != null && lineStartFlow != null && flow < lineStartFlow) {
+        return permissibleBoundaryPressure;
+      }
+      return null;
+    }
+    if (lineEndFlow != null && flow > lineEndFlow) return pressure;
+    return permissibleBoundaryPressure == null ? pressure : Math.min(pressure, permissibleBoundaryPressure);
+  });
+}
+function buildBandLowerBoundaryValues(lowerLineData, flows, permissibleBoundaryData, clipRpmAreaToPermissibleUse, maximumVisibleFlow = null) {
+  if (!flows.length) return [];
+  if (!lowerLineData?.length) {
+    if (!clipRpmAreaToPermissibleUse) return flows.map(() => 0);
+    const minimumVisibleFlow2 = permissibleBoundaryData.length ? permissibleBoundaryData[0][0] : null;
+    const activationFlow2 = getLowerBoundaryActivationFlow(lowerLineData, permissibleBoundaryData) ?? minimumVisibleFlow2;
+    return flows.map(
+      (flow) => minimumVisibleFlow2 != null && maximumVisibleFlow != null && flow >= minimumVisibleFlow2 && flow <= maximumVisibleFlow ? flow < activationFlow2 ? interpolateYAtX(permissibleBoundaryData, flow) : 0 : null
+    );
+  }
+  const lowerStartFlow = lowerLineData[0][0];
+  const lowerEndFlow = lowerLineData[lowerLineData.length - 1][0];
+  const minimumVisibleFlow = permissibleBoundaryData.length ? permissibleBoundaryData[0][0] : null;
+  const activationFlow = getLowerBoundaryActivationFlow(lowerLineData, permissibleBoundaryData) ?? lowerStartFlow;
+  return flows.map((flow) => {
+    if (!clipRpmAreaToPermissibleUse) {
+      const lowerPressure2 = interpolateYAtX(lowerLineData, flow);
+      return lowerPressure2 ?? 0;
+    }
+    if (minimumVisibleFlow == null || maximumVisibleFlow == null) return null;
+    if (flow < minimumVisibleFlow || flow > maximumVisibleFlow) return null;
+    const permissibleBoundaryPressure = interpolateYAtX(permissibleBoundaryData, flow);
+    if (flow < activationFlow) return permissibleBoundaryPressure;
+    if (flow > lowerEndFlow) return 0;
+    const lowerPressure = interpolateYAtX(lowerLineData, flow);
+    return lowerPressure ?? 0;
+  });
+}
+function interpolateBetweenSamples(leftFlow, rightFlow, leftValue, rightValue, ratio) {
+  return [leftFlow + (rightFlow - leftFlow) * ratio, leftValue + (rightValue - leftValue) * ratio];
+}
+function buildBandPolygonsBetweenCurves(flows, upperCurve, lowerCurve) {
+  const polygons = [];
+  let topPoints = [];
+  let bottomPoints = [];
+  function pushCurrentPolygon() {
+    if (topPoints.length >= 2 && bottomPoints.length >= 2) {
+      polygons.push({
+        topPoints: [...topPoints],
+        bottomPoints: [...bottomPoints]
+      });
+    }
+    topPoints = [];
+    bottomPoints = [];
+  }
+  function appendPoint(flow, upperValue, lowerValue) {
+    topPoints.push([flow, upperValue]);
+    bottomPoints.push([flow, lowerValue]);
+  }
+  for (let index = 0; index < flows.length - 1; index += 1) {
+    const leftFlow = flows[index];
+    const rightFlow = flows[index + 1];
+    const upperLeft = upperCurve[index];
+    const upperRight = upperCurve[index + 1];
+    const lowerLeft = lowerCurve[index];
+    const lowerRight = lowerCurve[index + 1];
+    const leftVisible = upperLeft != null && lowerLeft != null && upperLeft > lowerLeft;
+    const rightVisible = upperRight != null && lowerRight != null && upperRight > lowerRight;
+    if (!leftVisible && !rightVisible) {
+      pushCurrentPolygon();
+      continue;
+    }
+    if (leftVisible && topPoints.length === 0) {
+      appendPoint(leftFlow, upperLeft, lowerLeft);
+    }
+    const leftDiff = upperLeft != null && lowerLeft != null ? upperLeft - lowerLeft : null;
+    const rightDiff = upperRight != null && lowerRight != null ? upperRight - lowerRight : null;
+    if (!leftVisible && rightVisible) {
+      if (leftDiff != null && rightDiff != null && leftDiff !== rightDiff) {
+        const ratio = leftDiff / (leftDiff - rightDiff);
+        const [transitionFlow, transitionUpper] = interpolateBetweenSamples(
+          leftFlow,
+          rightFlow,
+          upperLeft,
+          upperRight,
+          ratio
+        );
+        const [, transitionLower] = interpolateBetweenSamples(
+          leftFlow,
+          rightFlow,
+          lowerLeft,
+          lowerRight,
+          ratio
+        );
+        appendPoint(transitionFlow, transitionUpper, transitionLower);
+      }
+      appendPoint(rightFlow, upperRight, lowerRight);
+      continue;
+    }
+    if (leftVisible && !rightVisible) {
+      if (leftDiff != null && rightDiff != null && leftDiff !== rightDiff) {
+        const ratio = leftDiff / (leftDiff - rightDiff);
+        const [transitionFlow, transitionUpper] = interpolateBetweenSamples(
+          leftFlow,
+          rightFlow,
+          upperLeft,
+          upperRight,
+          ratio
+        );
+        const [, transitionLower] = interpolateBetweenSamples(
+          leftFlow,
+          rightFlow,
+          lowerLeft,
+          lowerRight,
+          ratio
+        );
+        appendPoint(transitionFlow, transitionUpper, transitionLower);
+      }
+      pushCurrentPolygon();
+      continue;
+    }
+    if (leftVisible && rightVisible) {
+      appendPoint(rightFlow, upperRight, lowerRight);
+    }
+  }
+  pushCurrentPolygon();
+  return polygons;
+}
+function attachLeftBoundarySegment(polygon, permissibleBoundaryData, upperStartFlow, lowerStartFlow) {
+  if (!polygon || !permissibleBoundaryData.length || upperStartFlow == null || lowerStartFlow == null || lowerStartFlow <= upperStartFlow) {
+    return polygon;
+  }
+  const boundarySegment = buildBoundarySegmentPoints(
+    permissibleBoundaryData,
+    upperStartFlow,
+    lowerStartFlow
+  );
+  if (!boundarySegment.length) return polygon;
+  return {
+    ...polygon,
+    leftBoundaryPoints: boundarySegment.slice().reverse()
+  };
+}
+function trimBottomBoundaryStart(polygon, startFlow) {
+  if (!polygon || startFlow == null) return polygon;
+  const originalPoints = polygon.bottomPoints ?? [];
+  if (!originalPoints.length) return polygon;
+  const trimmedPoints = [];
+  for (let index = 0; index < originalPoints.length; index += 1) {
+    const point = originalPoints[index];
+    const [flow, value] = point;
+    if (flow < startFlow) {
+      continue;
+    }
+    if (!trimmedPoints.length && index > 0) {
+      const [leftFlow, leftValue] = originalPoints[index - 1];
+      if (leftFlow < startFlow && flow > startFlow) {
+        const ratio = (startFlow - leftFlow) / (flow - leftFlow);
+        const [, interpolatedValue] = interpolateBetweenSamples(
+          leftFlow,
+          flow,
+          leftValue,
+          value,
+          ratio
+        );
+        trimmedPoints.push([startFlow, interpolatedValue]);
+      }
+    }
+    if (!trimmedPoints.length && flow > startFlow) {
+      trimmedPoints.push([startFlow, value]);
+    }
+    trimmedPoints.push(point);
+  }
+  return {
+    ...polygon,
+    bottomPoints: trimmedPoints.length ? trimmedPoints : originalPoints
+  };
+}
+function buildRpmBandPolygonSeries(rpmCurveEntries, chartTheme, permissibleBoundaryData, clipRpmAreaToPermissibleUse, maximumVisibleFlow = null) {
+  if (!rpmCurveEntries.length) return [];
+  const flows = buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData);
+  if (!flows.length) return [];
+  let previousLineData = null;
+  return rpmCurveEntries.map(([rpm, lineData], index) => {
+    const currentCurve = buildBandTopValues(
+      lineData,
+      flows,
+      permissibleBoundaryData,
+      clipRpmAreaToPermissibleUse,
+      maximumVisibleFlow,
+      previousLineData == null
+    );
+    const lowerBoundary = buildBandLowerBoundaryValues(
+      previousLineData,
+      flows,
+      permissibleBoundaryData,
+      clipRpmAreaToPermissibleUse,
+      maximumVisibleFlow
+    );
+    let polygons = buildBandPolygonsBetweenCurves(flows, currentCurve, lowerBoundary);
+    if (clipRpmAreaToPermissibleUse && polygons.length) {
+      const upperStartFlow = polygons[0].topPoints[0]?.[0] ?? null;
+      const lowerStartFlow = getLowerBoundaryActivationFlow(previousLineData, permissibleBoundaryData) ?? upperStartFlow;
+      polygons = [
+        trimBottomBoundaryStart(polygons[0], lowerStartFlow),
+        ...polygons.slice(1)
+      ];
+      polygons = [
+        attachLeftBoundarySegment(
+          polygons[0],
+          permissibleBoundaryData,
+          upperStartFlow,
+          lowerStartFlow
+        ),
+        ...polygons.slice(1)
+      ];
+    }
+    previousLineData = lineData;
+    return {
+      name: `${rpm} rpm band`,
+      type: "custom",
+      coordinateSystem: "cartesian2d",
+      renderItem(params, api) {
+        const polygon = polygons[params.dataIndex];
+        if (!polygon) return null;
+        const polygonPoints = [
+          ...polygon.topPoints,
+          ...polygon.bottomPoints.slice().reverse(),
+          ...polygon.leftBoundaryPoints?.slice(1) ?? []
+        ];
+        if (!polygonPoints.length) return null;
+        const points = polygonPoints.map(([x, y]) => api.coord([x, y]));
+        return {
+          type: "polygon",
+          shape: { points },
+          style: api.style({
+            fill: RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length],
+            opacity: 0.48,
+            stroke: "none"
+          }),
+          silent: true
+        };
+      },
+      data: polygons.map((_, polygonIndex) => polygonIndex),
+      emphasis: { disabled: true },
+      tooltip: { show: false },
+      silent: true,
+      z: Math.max(0, rpmCurveEntries.length - index - 1)
+    };
+  });
+}
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null) {
+  const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
+  const byRpm = {};
+  const rpmByLineId = Object.fromEntries(rpmLines.map((line) => [line.id, line.rpm]));
+  for (const point of rpmPoints) {
+    const key = String(point.rpm ?? rpmByLineId[point.rpm_line_id] ?? "");
+    if (!byRpm[key]) byRpm[key] = [];
+    byRpm[key].push({
+      value: [point.flow ?? 0, point.pressure ?? 0],
+      id: point.id,
+      rpm: point.rpm ?? rpmByLineId[point.rpm_line_id],
+      rpm_line_id: point.rpm_line_id
+    });
+  }
+  const rpms = Object.keys(byRpm).filter((key) => key !== "").map((rpm) => Number(rpm)).filter((rpm) => !Number.isNaN(rpm)).sort((a, b) => a - b);
+  const series = [];
+  const rpmCurveEntries = [];
+  for (const [idx, rpm] of rpms.entries()) {
+    const pointsAtRpm = byRpm[String(rpm)] ?? [];
+    const hasMultiplePoints = pointsAtRpm.length > 1;
+    const rawLineData = pointsAtRpm.map((point) => [point.value[0], point.value[1]]).sort((a, b) => a[0] - b[0]);
+    const displayLineData = !includeDragHandles && hasMultiplePoints ? buildSmoothedCurveSamples(rawLineData) : rawLineData;
+    rpmCurveEntries.push([rpm, displayLineData]);
+    series.push({
+      name: `${rpm} rpm`,
+      type: "line",
+      smooth: false,
+      data: displayLineData,
+      label: { show: false },
+      showSymbol: !includeDragHandles && !hasMultiplePoints,
+      symbolSize: !includeDragHandles && !hasMultiplePoints ? 8 : 0,
+      lineStyle: {
+        width: hasMultiplePoints ? 2 : includeDragHandles ? 0 : 1,
+        color: RPM_LINE_COLOR
+      },
+      itemStyle: {
+        color: RPM_LINE_COLOR
+      },
+      areaStyle: void 0,
+      emphasis: { focus: "series" },
+      z: includeDragHandles ? idx * 2 : rpms.length - idx
+    });
+    if (!includeDragHandles && displayLineData.length) {
+      series.push({
+        name: `${rpm} rpm label`,
+        type: "line",
+        smooth: false,
+        data: displayLineData.slice().reverse(),
+        showSymbol: false,
+        silent: true,
+        tooltip: { show: false },
+        lineStyle: { width: 0, opacity: 0 },
+        endLabel: {
+          show: true,
+          formatter: () => `${rpm} rpm`,
+          color: chartTheme.text,
+          fontFamily: chartFontFamily,
+          distance: 6,
+          offset: [5, -10],
+          fontSize: 16,
+          fontWeight: "normal"
+        },
+        labelLayout: {
+          hideOverlap: true
+        },
+        z: rpms.length + 20
+      });
+    }
+    if (showRpmBandShading && !includeDragHandles && !clipRpmAreaToPermissibleUse && hasMultiplePoints) {
+      series.push({
+        name: `${rpm} rpm area`,
+        type: "line",
+        smooth: false,
+        data: displayLineData,
+        showSymbol: false,
+        lineStyle: { width: 0, opacity: 0 },
+        areaStyle: { opacity: 0.48 },
+        emphasis: { disabled: true },
+        tooltip: { show: false },
+        z: Math.max(0, rpms.length - idx - 1)
+      });
+    }
+    if (!includeDragHandles) continue;
+    series.push({
+      name: `${rpm} rpm`,
+      type: "scatter",
+      data: pointsAtRpm.map((point) => ({
+        value: [point.value[0], point.value[1]],
+        id: point.id,
+        rpm: point.rpm,
+        rpm_line_id: point.rpm_line_id,
+        pointType: "rpm"
+      })),
+      symbol: "circle",
+      symbolSize: 10,
+      draggable: true,
+      showInLegend: false,
+      emphasis: {
+        focus: "series",
+        scale: true,
+        scaleSize: 1.2,
+        itemStyle: { borderColor: chartTheme.background, borderWidth: 2 }
+      },
+      z: idx * 2 + 1
+    });
+  }
+  if (!includeDragHandles && showRpmBandShading) {
+    series.unshift(
+      ...buildRpmBandPolygonSeries(
+        rpmCurveEntries,
+        chartTheme,
+        permissibleBoundaryData,
+        clipRpmAreaToPermissibleUse,
+        maximumVisibleFlow
+      )
+    );
+  }
+  return { series, rpmCurveEntries };
+}
+function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHandles) {
+  const series = [];
+  for (const definition of FULL_CHART_LINE_DEFINITIONS) {
+    const lineData = points.filter((point) => point[definition.key] != null).map((point) => [point.flow ?? 0, point[definition.key] ?? 0]).sort((a, b) => a[0] - b[0]);
+    if (!lineData.length) continue;
+    const color = chartTheme[definition.colorKey];
+    series.push({
+      name: definition.label,
+      type: "line",
+      smooth: lineData.length > 1 ? 0.18 : false,
+      data: lineData,
+      showSymbol: false,
+      yAxisIndex: 1,
+      itemStyle: { color },
+      lineStyle: { width: definition.lineWidth, color },
+      z: 999
+    });
+    if (!includeDragHandles) continue;
+    series.push({
+      name: definition.label,
+      type: "scatter",
+      data: points.filter((point) => point[definition.key] != null).map((point) => ({
+        value: [point.flow ?? 0, point[definition.key] ?? 0],
+        id: point.id,
+        lineKey: definition.key,
+        pointType: "efficiency"
+      })),
+      draggable: true,
+      showInLegend: false,
+      itemStyle: { color },
+      symbolSize: 10,
+      emphasis: {
+        focus: "series",
+        scale: true,
+        scaleSize: 1.2,
+        itemStyle: { borderColor: chartTheme.background, borderWidth: 2 }
+      },
+      yAxisIndex: 1,
+      z: 1e3
+    });
+  }
+  return series;
+}
+function buildFullChartOption({
+  rpmLines,
+  rpmPoints,
+  efficiencyPoints,
+  chartTheme,
+  title,
+  includeDragHandles = false,
+  clipRpmAreaToPermissibleUse = false,
+  showRpmBandShading = true,
+  showSecondaryAxis = true,
+  flowAxisMaxOverride = null,
+  pressureAxisMaxOverride = null,
+  tooltip = null
+}) {
+  const flowValues = [
+    ...rpmPoints.map((point) => Number(point.flow)),
+    ...efficiencyPoints.map((point) => Number(point.flow))
+  ].filter((value) => !Number.isNaN(value) && value >= 0);
+  const pressureValues = rpmPoints.map((point) => Number(point.pressure)).filter((value) => !Number.isNaN(value) && value >= 0);
+  const rpmFlowValues = rpmPoints.map((point) => Number(point.flow)).filter((value) => !Number.isNaN(value) && value >= 0);
+  const rawFlowMax = flowValues.length ? Math.max(...flowValues) : 0;
+  const rawRpmFlowMax = rpmFlowValues.length ? Math.max(...rpmFlowValues) : 0;
+  const flowAxisMax = flowAxisMaxOverride ?? (rawFlowMax > 0 ? rawFlowMax * 1.05 : 100);
+  const rawPressureMax = pressureValues.length ? Math.max(...pressureValues) : 0;
+  const pressureAxisMax = pressureAxisMaxOverride ?? (rawPressureMax > 0 ? rawPressureMax * 1.05 : 100);
+  const permissibleBoundaryData = efficiencyPoints.filter((point) => point.permissible_use != null).map((point) => [point.flow ?? 0, Number(point.permissible_use) / 100 * pressureAxisMax]).filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1])).sort((a, b) => a[0] - b[0]);
+  const rpmSeriesBundle = buildRpmSeries(
+    rpmLines,
+    rpmPoints,
+    chartTheme,
+    includeDragHandles,
+    permissibleBoundaryData,
+    clipRpmAreaToPermissibleUse,
+    showRpmBandShading,
+    rawRpmFlowMax || rawFlowMax
+  );
+  const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
+  return {
+    backgroundColor: chartTheme.background,
+    textStyle: {
+      color: chartTheme.text,
+      fontFamily: chartFontFamily
+    },
+    title: {
+      text: title,
+      left: "center",
+      textStyle: { color: chartTheme.text, fontFamily: chartFontFamily }
+    },
+    tooltip: tooltip ?? { trigger: "axis", formatter: buildFullChartTooltipFormatter() },
+    grid: { left: "9%", right: "5%", top: "12%", bottom: "8%" },
+    xAxis: {
+      type: "value",
+      name: "Flow",
+      nameTextStyle: { color: chartTheme.text, fontFamily: chartFontFamily },
+      axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily, show: true },
+      min: 0,
+      max: flowAxisMax,
+      splitLine: { lineStyle: { color: chartTheme.grid } }
+    },
+    yAxis: [
+      {
+        type: "value",
+        name: "Pressure",
+        nameTextStyle: { color: chartTheme.text, fontFamily: chartFontFamily },
+        axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily, show: true },
+        min: 0,
+        max: pressureAxisMax,
+        splitLine: { lineStyle: { color: chartTheme.grid } }
+      },
+      {
+        type: "value",
+        show: showSecondaryAxis,
+        name: showSecondaryAxis ? "Efficiency Lines (%)" : "",
+        nameTextStyle: { color: chartTheme.text, fontFamily: chartFontFamily },
+        axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily, show: showSecondaryAxis },
+        axisLine: { show: showSecondaryAxis },
+        axisTick: { show: showSecondaryAxis },
+        splitLine: { show: false },
+        min: 0,
+        max: 100
+      }
+    ],
+    series: [
+      ...rpmSeriesBundle.series,
+      ...buildEfficiencyAndPermissibleSeries(efficiencyPoints, chartTheme, includeDragHandles)
+    ]
+  };
+}
+export {
+  FULL_CHART_LINE_DEFINITIONS as F,
+  buildFullChartOption as b
+};

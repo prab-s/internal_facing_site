@@ -1,0 +1,103 @@
+import { s as store_get, h as head, e as escape_html, a as attr, d as ensure_array_like, b as attr_class, u as unsubscribe_stores } from "../../../chunks/index2.js";
+import { a as auth } from "../../../chunks/auth.js";
+import { j as getUsers } from "../../../chunks/api.js";
+function _page($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    var $$store_subs;
+    let users = [];
+    let usersLoaded = false;
+    let filteredUsers = [];
+    let userFilter = "";
+    let userError = "";
+    let loadingUsers = false;
+    let savingUser = false;
+    let currentPassword = "";
+    let newOwnPassword = "";
+    let newUsername = "";
+    let newPassword = "";
+    let newIsAdmin = false;
+    async function loadUsers() {
+      loadingUsers = true;
+      userError = "";
+      try {
+        users = await getUsers();
+        usersLoaded = true;
+      } catch (error) {
+        userError = error?.message || "Unable to load users.";
+      } finally {
+        loadingUsers = false;
+      }
+    }
+    if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && !usersLoaded && !loadingUsers) {
+      loadUsers();
+    }
+    filteredUsers = users.filter((user) => {
+      const needle = userFilter.trim().toLowerCase();
+      if (!needle) return true;
+      return user.username.toLowerCase().includes(needle);
+    });
+    head("g40i6i", $$renderer2, ($$renderer3) => {
+      $$renderer3.title(($$renderer4) => {
+        $$renderer4.push(`<title>Setup - Fan Graphs</title>`);
+      });
+    });
+    $$renderer2.push(`<div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Setup</p> <h1 class="h2 mb-2">Account and application setup.</h1> <p class="text-body-secondary">Manage your own password here. Admins can also create and manage internal user accounts.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-5"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p> <h2 class="h4">Change Password</h2> <p class="text-body-secondary">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}.</p> <form class="vstack gap-3"><div><label class="form-label" for="current-password">Current Password</label> <input id="current-password" class="form-control" type="password"${attr("value", currentPassword)}/></div> <div><label class="form-label" for="new-own-password">New Password</label> <input id="new-own-password" class="form-control" type="password"${attr("value", newOwnPassword)}/></div> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !currentPassword, true)}>${escape_html("Update Password")}</button></form></div></div></div> <div class="col-12 col-xl-7"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-center gap-2 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Current Users</p> <h2 class="h4 mb-0">Accounts</h2></div> <div class="d-flex align-items-center gap-2"><input class="form-control form-control-sm" type="search" placeholder="Filter users"${attr("value", userFilter)} style="max-width: 180px;"/> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingUsers, true)}>${escape_html(loadingUsers ? "Refreshing..." : "Refresh")}</button></div></div> `);
+    if (userError) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="alert alert-danger py-2">${escape_html(userError)}</div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Username</th><th>Role</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody><!--[-->`);
+    const each_array = ensure_array_like(filteredUsers);
+    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+      let user = each_array[$$index];
+      $$renderer2.push(`<tr><td><div class="d-flex align-items-center gap-2 justify-content-start"><span>${escape_html(user.username)}</span> `);
+      if (user.username === store_get($$store_subs ??= {}, "$auth", auth).username) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<span class="badge text-bg-primary">You</span>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></td><td><span${attr_class(`badge ${user.is_admin ? "text-bg-dark" : "text-bg-secondary"}`)}>${escape_html(user.is_admin ? "Admin" : "User")}</span></td><td><span${attr_class(`badge ${user.is_active ? "text-bg-success" : "text-bg-warning"}`)}>${escape_html(user.is_active ? "Active" : "Disabled")}</span></td><td class="text-end"><div class="d-flex justify-content-end gap-2 flex-wrap">`);
+      if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", user.username === store_get($$store_subs ??= {}, "$auth", auth).username, true)}>${escape_html(user.is_admin ? "Remove Admin" : "Make Admin")}</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", user.username === store_get($$store_subs ??= {}, "$auth", auth).username, true)}>${escape_html(user.is_active ? "Disable" : "Enable")}</button> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", savingUser, true)}>Reset Password</button>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></td></tr>`);
+    }
+    $$renderer2.push(`<!--]-->`);
+    if (!filteredUsers.length) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<tr><td colspan="4" class="text-body-secondary">No user accounts found.</td></tr>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></tbody></table></div></div></div></div></div> `);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="row g-3 mt-1"><div class="col-12 col-xl-5"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p> <h2 class="h4">User Accounts</h2> <p class="text-body-secondary">Create and manage accounts for internal users.</p> <form class="vstack gap-3"><div><label class="form-label" for="new-user-username">Username</label> <input id="new-user-username" class="form-control"${attr("value", newUsername)}/></div> <div><label class="form-label" for="new-user-password">Password</label> <input id="new-user-password" class="form-control" type="password"${attr("value", newPassword)}/></div> <div class="form-check"><input id="new-user-admin" class="form-check-input" type="checkbox"${attr("checked", newIsAdmin, true)}/> <label class="form-check-label" for="new-user-admin">Admin access</label></div> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !newUsername, true)}>${escape_html("Create User")}</button></form></div></div></div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]-->`);
+    if ($$store_subs) unsubscribe_stores($$store_subs);
+  });
+}
+export {
+  _page as default
+};

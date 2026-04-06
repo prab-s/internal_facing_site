@@ -1,6 +1,10 @@
 # Fan Graphs API (Backend)
 
-FastAPI + SQLite backend. Database file lives in `../data/fans.db` (relative to project root: `data/fans.db`).
+FastAPI backend for the fan graphs application. During the database transition,
+the app can run either:
+
+- Postgres as the primary database
+- SQLite as the primary database with Postgres mirroring writes
 
 ## Run order (local dev)
 
@@ -31,8 +35,76 @@ Docs: http://localhost:8000/docs
 
 ## Database
 
-- **Location**: `data/fans.db` (created automatically on first run).
-- **Strategy**: MVP uses auto-create tables on startup (no migrations). Tables: `fans`, `curve_points`, `map_points`.
+Primary database selection is controlled by `DATABASE_URL`.
+
+Examples:
+
+```bash
+# Postgres primary
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
+
+# SQLite primary
+DATABASE_URL=sqlite:////full/path/to/data/fans.db
+```
+
+## Dual database mode
+
+For the current transition period, SQLite can remain the primary database while
+Postgres mirrors writes.
+
+Set:
+
+```bash
+DATABASE_URL=sqlite:////full/path/to/data/fans.db
+POSTGRES_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
+```
+
+Behavior:
+
+- `DATABASE_URL` remains the primary read/write database for the API
+- when `POSTGRES_DATABASE_URL` is set, backend startup creates the Postgres schema
+  and backfills the current SQLite data into Postgres
+- subsequent writes are mirrored into Postgres by ID so both databases stay aligned
+
+Useful maintenance endpoints while testing:
+
+- `GET /api/maintenance/databases/mirror-status`
+- `POST /api/maintenance/databases/resync-postgres`
+
+## Recommended local/dev workflow
+
+Use env files in the project root instead of exporting variables every time:
+
+- `./run_sit.sh` loads `.env.sit` if present
+- `./redeploy.sh` loads `.env.deploy` if present and starts the Podman Compose deployment stack
+
+Example setup:
+
+```bash
+cp .env.sit.example .env.sit
+cp .env.deploy.example .env.deploy
+```
+
+For a Postgres-primary setup, set:
+
+```bash
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
+POSTGRES_DATABASE_URL=
+BOOTSTRAP_ADMIN_USERNAME=admin
+BOOTSTRAP_ADMIN_PASSWORD=A_STRONG_ADMIN_PASSWORD
+SESSION_SECRET=A_LONG_RANDOM_SECRET
+AUTH_COOKIE_SECURE=false   # true behind HTTPS
+```
+
+For the deployed Podman stack, `.env.deploy` should point the app at the
+Compose Postgres service name:
+
+```bash
+POSTGRES_DB=fan_graphs
+POSTGRES_USER=fan_graphs_user
+POSTGRES_PASSWORD=change_me
+DATABASE_URL=postgresql+psycopg://fan_graphs_user:change_me@postgres:5432/fan_graphs
+```
 
 ## Seed sample data (optional)
 

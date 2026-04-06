@@ -1,177 +1,118 @@
-import { c as create_ssr_component, d as add_attribute, f as each, e as escape, v as validate_component } from "../../../chunks/ssr.js";
-import { g as getFans, a as getMapPoints } from "../../../chunks/api.js";
+import { s as store_get, h as head, d as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
+import { g as getFans, c as getChartTheme, t as theme, a as getFanChartData, h as getFan } from "../../../chunks/api.js";
 import { E as ECharts } from "../../../chunks/ECharts.js";
-const Page = create_ssr_component(($$result, $$props, $$bindings, slots) => {
-  let fans = [];
-  let selectedFanId = null;
-  let mapPoints = [];
-  let chartOption = {};
-  let hasEfficiency = false;
-  let loading = false;
-  let error = "";
-  let chartInstance = null;
-  let showCursorTooltip = false;
-  let cursorTooltipAttached = false;
-  async function loadFans() {
-    try {
-      fans = await getFans();
-      if (fans.length && !selectedFanId) selectedFanId = fans[0].id;
-    } catch (e) {
-      error = e.message;
+import { b as buildFullChartOption } from "../../../chunks/fullChart.js";
+function _page($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    var $$store_subs;
+    let fans = [];
+    let selectedFanId = null;
+    let rpmLines = [];
+    let rpmPoints = [];
+    let efficiencyPoints = [];
+    let currentFan = null;
+    let chartOption = {};
+    let loading = false;
+    let error = "";
+    async function loadFans() {
+      try {
+        fans = await getFans();
+        if (fans.length && !selectedFanId) selectedFanId = fans[0].id;
+      } catch (e) {
+        error = e.message;
+      }
     }
-  }
-  async function loadMap() {
-    if (!selectedFanId) return;
-    loading = true;
-    error = "";
-    try {
-      mapPoints = await getMapPoints(selectedFanId);
-      buildChartOptions();
-      setupCursorTooltip();
-    } catch (e) {
-      error = e.message;
-    } finally {
-      loading = false;
+    async function loadMap() {
+      if (!selectedFanId) return;
+      loading = true;
+      error = "";
+      try {
+        const [chartData, fan] = await Promise.all([getFanChartData(selectedFanId), getFan(selectedFanId)]);
+        ({ rpmLines, rpmPoints, efficiencyPoints } = chartData);
+        currentFan = fan;
+        buildChartOptions();
+      } catch (e) {
+        error = e.message;
+      } finally {
+        loading = false;
+      }
     }
-  }
-  function getTooltipOption() {
-    return { trigger: "axis" };
-  }
-  function buildChartOptions() {
-    const byRpm = {};
-    for (const p of mapPoints) {
-      const key = String(p.rpm);
-      if (!byRpm[key]) byRpm[key] = [];
-      byRpm[key].push([p.flow, p.pressure]);
-    }
-    for (const k of Object.keys(byRpm)) {
-      byRpm[k].sort((a, b) => a[0] - b[0]);
-    }
-    const rpms = Object.keys(byRpm).map((r) => Number(r)).filter((r) => !Number.isNaN(r)).sort((a, b) => a - b);
-    const series = rpms.map((rpm, idx) => {
-      const pts = byRpm[String(rpm)] ?? [];
-      const hasMultiplePoints = pts.length > 1;
-      const z = rpms.length - idx;
-      return {
-        name: `${rpm} rpm`,
-        type: "line",
-        smooth: hasMultiplePoints,
-        data: pts,
-        showSymbol: !hasMultiplePoints,
-        // Show symbols for single points
-        symbolSize: hasMultiplePoints ? 0 : 8,
-        // Larger symbols for single points
-        lineStyle: {
-          width: hasMultiplePoints ? 1 : 0
-          // Hide line for single points
-        },
-        areaStyle: hasMultiplePoints ? { opacity: 0.48 } : void 0,
-        // Only show area for bands
-        emphasis: { focus: "series" },
-        z
-      };
-    });
-    const effPts = mapPoints.filter((p) => p.efficiency != null).map((p) => [p.flow, p.efficiency]).sort((a, b) => a[0] - b[0]);
-    hasEfficiency = effPts.length > 0;
-    if (hasEfficiency) {
-      series.push({
-        name: "Efficiency",
-        type: "line",
-        smooth: true,
-        data: effPts,
-        showSymbol: true,
-        symbolSize: 4,
-        yAxisIndex: 1,
-        lineStyle: { width: 3 },
-        itemStyle: { color: "#f7768e" },
-        z: 999
+    function buildChartOptions() {
+      const chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
+      chartOption = buildFullChartOption({
+        rpmLines,
+        rpmPoints,
+        efficiencyPoints,
+        chartTheme,
+        title: currentFan ? `${currentFan.manufacturer} ${currentFan.model}` : "Fan Map",
+        clipRpmAreaToPermissibleUse: true,
+        showRpmBandShading: currentFan?.show_rpm_band_shading ?? true,
+        showSecondaryAxis: false
       });
     }
-    chartOption = {
-      backgroundColor: "#1a1b26",
-      title: {
-        text: "Fan map: Flow vs pressure by RPM",
-        left: "center",
-        textStyle: { color: "#c0caf5" }
-      },
-      tooltip: getTooltipOption(),
-      legend: {
-        bottom: 0,
-        type: "scroll",
-        textStyle: { color: "#c0caf5" }
-      },
-      grid: {
-        left: "12%",
-        right: "8%",
-        top: "15%",
-        bottom: "20%"
-      },
-      xAxis: {
-        type: "value",
-        name: "Flow",
-        nameTextStyle: { color: "#c0caf5" },
-        axisLabel: { color: "#c0caf5" }
-      },
-      yAxis: [
-        {
-          type: "value",
-          name: "Pressure",
-          nameTextStyle: { color: "#c0caf5" },
-          axisLabel: { color: "#c0caf5" }
-        },
-        {
-          type: "value",
-          name: "Efficiency (%)",
-          nameTextStyle: { color: "#c0caf5" },
-          axisLabel: { color: "#c0caf5" },
-          min: 0,
-          max: 100
-        }
-      ],
-      series
-    };
-  }
-  loadFans();
-  function setupCursorTooltip() {
-    if (!chartInstance || cursorTooltipAttached) return;
-    const zr = chartInstance.getZr();
-    if (!zr) return;
-    cursorTooltipAttached = true;
-    zr.on("mousemove", (evt) => {
-      return;
-    });
-    zr.on("mouseout", () => {
-      return;
-    });
-  }
-  {
+    loadFans();
     if (selectedFanId) {
       loadMap();
     }
-  }
-  {
-    if (chartInstance) {
-      chartInstance.setOption({ tooltip: getTooltipOption() });
+    if (store_get($$store_subs ??= {}, "$theme", theme)) {
+      buildChartOptions();
     }
-  }
-  return `${$$result.head += `<!-- HEAD_svelte-1qnouqk_START -->${$$result.title = `<title>Fan map — Fan Graphs</title>`, ""}<!-- HEAD_svelte-1qnouqk_END -->`, ""} <div class="card" data-svelte-h="svelte-16lbihf"><h1>Fan map</h1></div> <div class="card"><label data-svelte-h="svelte-z4yiwn">Select fan</label> <select ${loading ? "disabled" : ""}><option${add_attribute("value", null, 0)} data-svelte-h="svelte-1hxxng1">— Select —</option>${each(fans, (fan) => {
-    return `<option${add_attribute("value", fan.id, 0)}>${escape(fan.manufacturer)} ${escape(fan.model)}</option>`;
-  })}</select></div> ${error ? `<p class="error">${escape(error)}</p>` : ``} ${selectedFanId ? `<div class="card"><h2 data-svelte-h="svelte-sqw1c4">Flow vs pressure (RPM bands)</h2> <p class="muted" data-svelte-h="svelte-1iy5gd7">Each shaded band is one RPM level. Efficiency is shown as a line if
-      available. TODO: units could be standardised (e.g. m³/s, Pa) in backend.</p> <div class="chart-container"><label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;"><input type="checkbox"${add_attribute("checked", showCursorTooltip, 1)}>
-        Show tooltip at mouse position (instead of nearest point)</label> ${validate_component(ECharts, "ECharts").$$render(
-    $$result,
-    {
-      option: chartOption,
-      height: "750px",
-      onChartReady: (c) => {
-        chartInstance = c;
-        setupCursorTooltip();
+    head("w85nl5", $$renderer2, ($$renderer3) => {
+      $$renderer3.title(($$renderer4) => {
+        $$renderer4.push(`<title>Fan map — Fan Graphs</title>`);
+      });
+    });
+    $$renderer2.push(`<div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Single Fan View</p> <h1 class="h2 mb-2">Fan map</h1> <p class="text-body-secondary">Review one fan’s flow vs pressure map with RPM bands and efficiency or permissible overlays.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-3"><div class="vstack gap-3"><div class="card shadow-sm p-3"><h2 class="h5">Select fan</h2> <label class="form-label" for="map-fan-select">Fan record</label> `);
+    $$renderer2.select(
+      {
+        class: "form-select",
+        id: "map-fan-select",
+        value: selectedFanId,
+        disabled: loading
+      },
+      ($$renderer3) => {
+        $$renderer3.option({ value: null }, ($$renderer4) => {
+          $$renderer4.push(`— Select —`);
+        });
+        $$renderer3.push(`<!--[-->`);
+        const each_array = ensure_array_like(fans);
+        for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+          let fan = each_array[$$index];
+          $$renderer3.option({ value: fan.id }, ($$renderer4) => {
+            $$renderer4.push(`${escape_html(fan.manufacturer)} ${escape_html(fan.model)}`);
+          });
+        }
+        $$renderer3.push(`<!--]-->`);
       }
-    },
-    {},
-    {}
-  )}</div></div> ${selectedFanId && mapPoints.length === 0 && !loading ? `<p class="muted" data-svelte-h="svelte-1wm4v67">No map points for this fan. Add map points on the Data entry page.</p>` : ``}` : ``}`;
-});
+    );
+    $$renderer2.push(`</div> `);
+    if (error) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="card shadow-sm p-3"><p class="text-danger mb-0">${escape_html(error)}</p></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="card shadow-sm p-3"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Reading Guide</p> <p class="text-body-secondary mb-0">RPM levels are shown as shaded bands. Efficiency centre appears in green,
+        efficiency lower and higher end in red, and permissible use in grey.</p></div></div></div> <div class="col-12 col-xl-9"><div class="vstack gap-3">`);
+    if (selectedFanId) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="card shadow-sm p-3"><h2 class="h5">Flow vs pressure (RPM bands)</h2> <div class="mt-3">`);
+      ECharts($$renderer2, { option: chartOption, height: "750px" });
+      $$renderer2.push(`<!----></div></div> `);
+      if (selectedFanId && rpmPoints.length === 0 && efficiencyPoints.length === 0 && !loading) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="card shadow-sm p-3"><p class="text-body-secondary mb-0">No map points for this fan. Add map points on the Data entry page.</p></div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]-->`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div></div></div>`);
+    if ($$store_subs) unsubscribe_stores($$store_subs);
+  });
+}
 export {
-  Page as default
+  _page as default
 };
