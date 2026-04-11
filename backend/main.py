@@ -546,7 +546,65 @@ def active_admin_count(db: Session) -> int:
     return db.query(User).filter(User.is_admin.is_(True), User.is_active.is_(True)).count()
 
 
-app = FastAPI(title="Fan Graphs API", docs_url=None, redoc_url=None, openapi_url=None)
+OPENAPI_TAGS = [
+    {
+        "name": "Public",
+        "description": "Endpoints that do not require the staff session cookie.",
+    },
+    {
+        "name": "Authentication",
+        "description": "Staff login and session management endpoints.",
+    },
+    {
+        "name": "Users",
+        "description": "Staff user administration endpoints.",
+    },
+    {
+        "name": "CMS",
+        "description": "Read-only customer-facing CMS endpoints secured by the CMS bearer token.",
+    },
+    {
+        "name": "Fans",
+        "description": "Fan catalogue CRUD endpoints for the internal app.",
+    },
+    {
+        "name": "RPM Lines",
+        "description": "RPM line management for a fan.",
+    },
+    {
+        "name": "RPM Points",
+        "description": "RPM curve point management for a fan.",
+    },
+    {
+        "name": "Efficiency Points",
+        "description": "Efficiency curve point management for a fan.",
+    },
+    {
+        "name": "Product Images",
+        "description": "Product image upload, ordering, and deletion endpoints.",
+    },
+    {
+        "name": "Media",
+        "description": "Protected media file serving endpoints.",
+    },
+    {
+        "name": "Maintenance",
+        "description": "Operational and data maintenance endpoints.",
+    },
+]
+
+app = FastAPI(
+    title="Fan Graphs API",
+    description=(
+        "Internal API for the Fan Graphs application.\n\n"
+        "Endpoints tagged `Public` do not require the staff session cookie.\n"
+        "Endpoints tagged `CMS` do not use the staff session cookie either; they require the CMS bearer token instead."
+    ),
+    openapi_tags=OPENAPI_TAGS,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.add_middleware(
     SessionMiddleware,
@@ -578,7 +636,7 @@ def startup():
 
 
 # --- Health ---
-@app.get("/api/health")
+@app.get("/api/health", tags=["Public"])
 def health():
     return {"ok": True}
 
@@ -593,7 +651,7 @@ def swagger_ui():
     return get_swagger_ui_html(openapi_url="/openapi.json", title="Fan Graphs API Docs")
 
 
-@app.get("/api/auth/session", response_model=AuthSessionResponse)
+@app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def get_auth_session(request: Request):
     if not is_authenticated(request):
         return AuthSessionResponse(authenticated=False)
@@ -604,7 +662,7 @@ def get_auth_session(request: Request):
     )
 
 
-@app.post("/api/auth/login", response_model=AuthSessionResponse)
+@app.post("/api/auth/login", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username.strip()).first()
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
@@ -616,13 +674,13 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     return AuthSessionResponse(authenticated=True, username=user.username, is_admin=user.is_admin)
 
 
-@app.post("/api/auth/logout", response_model=AuthSessionResponse)
+@app.post("/api/auth/logout", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def logout(request: Request):
     request.session.clear()
     return AuthSessionResponse(authenticated=False)
 
 
-@app.post("/api/auth/change-password", response_model=AuthSessionResponse)
+@app.post("/api/auth/change-password", response_model=AuthSessionResponse, tags=["Authentication"])
 def change_password(
     body: AuthPasswordChangeRequest,
     request: Request,
@@ -638,12 +696,12 @@ def change_password(
     return AuthSessionResponse(authenticated=True, username=current_user.username, is_admin=current_user.is_admin)
 
 
-@app.get("/api/users", response_model=list[UserResponse])
+@app.get("/api/users", response_model=list[UserResponse], tags=["Users"])
 def list_users(_: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return db.query(User).order_by(User.username).all()
 
 
-@app.post("/api/users", response_model=UserResponse)
+@app.post("/api/users", response_model=UserResponse, tags=["Users"])
 def create_user(body: UserCreate, _: User = Depends(require_admin_user), db: Session = Depends(get_db)):
     username = body.username.strip()
     existing_user = db.query(User).filter(User.username == username).first()
@@ -661,7 +719,7 @@ def create_user(body: UserCreate, _: User = Depends(require_admin_user), db: Ses
     return user
 
 
-@app.patch("/api/users/{user_id}", response_model=UserResponse)
+@app.patch("/api/users/{user_id}", response_model=UserResponse, tags=["Users"])
 def update_user(
     user_id: int,
     body: UserUpdate,
@@ -687,7 +745,7 @@ def update_user(
     return user
 
 
-@app.put("/api/users/{user_id}/password", response_model=UserResponse)
+@app.put("/api/users/{user_id}/password", response_model=UserResponse, tags=["Users"])
 def update_user_password(
     user_id: int,
     body: UserPasswordUpdate,
@@ -703,7 +761,7 @@ def update_user_password(
     return user
 
 
-@app.get("/api/cms/fans", response_model=list[CmsFanResponse], dependencies=[Depends(require_cms_token)])
+@app.get("/api/cms/fans", response_model=list[CmsFanResponse], dependencies=[Depends(require_cms_token)], tags=["CMS"])
 def list_cms_fans(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
@@ -718,7 +776,7 @@ def list_cms_fans(
     return q.order_by(Fan.manufacturer, Fan.model).all()
 
 
-@app.get("/api/cms/fans/{fan_id}", response_model=CmsFanResponse, dependencies=[Depends(require_cms_token)])
+@app.get("/api/cms/fans/{fan_id}", response_model=CmsFanResponse, dependencies=[Depends(require_cms_token)], tags=["CMS"])
 def get_cms_fan(fan_id: int, db: Session = Depends(get_db)):
     fan = db.get(Fan, fan_id)
     if not fan:
@@ -727,7 +785,7 @@ def get_cms_fan(fan_id: int, db: Session = Depends(get_db)):
 
 
 # --- Fans CRUD ---
-@app.get("/api/fans", response_model=list[FanResponse], dependencies=[Depends(get_current_user)])
+@app.get("/api/fans", response_model=list[FanResponse], dependencies=[Depends(get_current_user)], tags=["Fans"])
 def list_fans(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None, description="Search manufacturer or model"),
@@ -751,7 +809,7 @@ def list_fans(
     return q.all()
 
 
-@app.post("/api/fans", response_model=FanResponse, dependencies=[Depends(get_current_user)])
+@app.post("/api/fans", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
 def create_fan(body: FanCreate, db: Session = Depends(get_db)):
     fan = Fan(**body.model_dump())
     db.add(fan)
@@ -764,7 +822,7 @@ def create_fan(body: FanCreate, db: Session = Depends(get_db)):
     return fan
 
 
-@app.get("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)])
+@app.get("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
 def get_fan(fan_id: int, db: Session = Depends(get_db)):
     fan = db.get(Fan, fan_id)
     if not fan:
@@ -772,7 +830,7 @@ def get_fan(fan_id: int, db: Session = Depends(get_db)):
     return fan
 
 
-@app.put("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)])
+@app.put("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
 def update_fan(fan_id: int, body: FanUpdate, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     for k, v in body.model_dump(exclude_unset=True).items():
@@ -785,12 +843,12 @@ def update_fan(fan_id: int, body: FanUpdate, db: Session = Depends(get_db)):
     return fan
 
 
-@app.patch("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)])
+@app.patch("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
 def patch_fan(fan_id: int, body: FanUpdate, db: Session = Depends(get_db)):
     return update_fan(fan_id, body, db)
 
 
-@app.delete("/api/fans/{fan_id}", dependencies=[Depends(get_current_user)])
+@app.delete("/api/fans/{fan_id}", dependencies=[Depends(get_current_user)], tags=["Fans"])
 def delete_fan(fan_id: int, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     delete_fan_assets(fan)
@@ -801,13 +859,13 @@ def delete_fan(fan_id: int, db: Session = Depends(get_db)):
 
 
 # --- RPM lines / points ---
-@app.get("/api/fans/{fan_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)])
+@app.get("/api/fans/{fan_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def get_rpm_lines(fan_id: int, db: Session = Depends(get_db)):
     require_fan(db, fan_id)
     return db.query(RpmLine).filter(RpmLine.fan_id == fan_id).order_by(RpmLine.rpm).all()
 
 
-@app.post("/api/fans/{fan_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)])
+@app.post("/api/fans/{fan_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def create_rpm_line(fan_id: int, body: RpmLineCreate, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     existing = db.query(RpmLine).filter(RpmLine.fan_id == fan_id, RpmLine.rpm == body.rpm).first()
@@ -823,7 +881,7 @@ def create_rpm_line(fan_id: int, body: RpmLineCreate, db: Session = Depends(get_
     return line
 
 
-@app.delete("/api/fans/{fan_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)])
+@app.delete("/api/fans/{fan_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def delete_rpm_line(fan_id: int, line_id: int, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     line = db.get(RpmLine, line_id)
@@ -837,7 +895,7 @@ def delete_rpm_line(fan_id: int, line_id: int, db: Session = Depends(get_db)):
     return {"deleted": line_id}
 
 
-@app.get("/api/fans/{fan_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)])
+@app.get("/api/fans/{fan_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def get_rpm_points(fan_id: int, db: Session = Depends(get_db)):
     require_fan(db, fan_id)
     return (
@@ -849,7 +907,7 @@ def get_rpm_points(fan_id: int, db: Session = Depends(get_db)):
     )
 
 
-@app.post("/api/fans/{fan_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)])
+@app.post("/api/fans/{fan_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def create_rpm_point(
     fan_id: int,
     body: RpmPointCreate,
@@ -871,7 +929,7 @@ def create_rpm_point(
     return point
 
 
-@app.put("/api/fans/{fan_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)])
+@app.put("/api/fans/{fan_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def update_rpm_point(
     fan_id: int,
     point_id: int,
@@ -897,7 +955,7 @@ def update_rpm_point(
     return point
 
 
-@app.delete("/api/fans/{fan_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)])
+@app.delete("/api/fans/{fan_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def delete_rpm_point(
     fan_id: int,
     point_id: int,
@@ -917,7 +975,7 @@ def delete_rpm_point(
     return {"deleted": point_id}
 
 
-@app.get("/api/fans/{fan_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)])
+@app.get("/api/fans/{fan_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def get_efficiency_points(fan_id: int, db: Session = Depends(get_db)):
     require_fan(db, fan_id)
     return (
@@ -928,7 +986,7 @@ def get_efficiency_points(fan_id: int, db: Session = Depends(get_db)):
     )
 
 
-@app.post("/api/fans/{fan_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)])
+@app.post("/api/fans/{fan_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def create_efficiency_point(
     fan_id: int,
     body: EfficiencyPointCreate,
@@ -947,7 +1005,7 @@ def create_efficiency_point(
     return point
 
 
-@app.put("/api/fans/{fan_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)])
+@app.put("/api/fans/{fan_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def update_efficiency_point(
     fan_id: int,
     point_id: int,
@@ -970,7 +1028,7 @@ def update_efficiency_point(
     return point
 
 
-@app.delete("/api/fans/{fan_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)])
+@app.delete("/api/fans/{fan_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def delete_efficiency_point(
     fan_id: int,
     point_id: int,
@@ -990,7 +1048,7 @@ def delete_efficiency_point(
     return {"deleted": point_id}
 
 
-@app.post("/api/fans/{fan_id}/graph-image/refresh", response_model=FanResponse, dependencies=[Depends(get_current_user)])
+@app.post("/api/fans/{fan_id}/graph-image/refresh", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def refresh_fan_graph_image(fan_id: int, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     refresh_graph_for_fan(db, fan)
@@ -1000,7 +1058,7 @@ def refresh_fan_graph_image(fan_id: int, db: Session = Depends(get_db)):
     return fan
 
 
-@app.post("/api/maintenance/databases/resync-postgres", response_model=DatabaseMirrorStatusResponse, dependencies=[Depends(get_current_user)])
+@app.post("/api/maintenance/databases/resync-postgres", response_model=DatabaseMirrorStatusResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def resync_postgres_mirror():
     if not is_mirror_enabled():
         return DatabaseMirrorStatusResponse(
@@ -1026,7 +1084,7 @@ def resync_postgres_mirror():
     )
 
 
-@app.get("/api/maintenance/databases/mirror-status", response_model=DatabaseMirrorStatusResponse, dependencies=[Depends(get_current_user)])
+@app.get("/api/maintenance/databases/mirror-status", response_model=DatabaseMirrorStatusResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def get_postgres_mirror_status():
     with SessionLocal() as sqlite_db:
         sqlite_counts = get_database_counts(sqlite_db)
@@ -1053,7 +1111,7 @@ def get_postgres_mirror_status():
     )
 
 
-@app.post("/api/maintenance/graph-images/regenerate-all", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)])
+@app.post("/api/maintenance/graph-images/regenerate-all", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def regenerate_all_graph_images(db: Session = Depends(get_db)):
     fans = db.query(Fan).all()
     for fan in fans:
@@ -1067,7 +1125,7 @@ def regenerate_all_graph_images(db: Session = Depends(get_db)):
     )
 
 
-@app.delete("/api/maintenance/graph-images", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)])
+@app.delete("/api/maintenance/graph-images", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def delete_all_graph_images(db: Session = Depends(get_db)):
     deleted_files = clear_all_graph_images(db)
     db.commit()
@@ -1079,13 +1137,13 @@ def delete_all_graph_images(db: Session = Depends(get_db)):
     )
 
 
-@app.get("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)])
+@app.get("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
 def get_product_images(fan_id: int, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     return sorted(fan.product_images, key=lambda image: (image.sort_order, image.id))
 
 
-@app.post("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)])
+@app.post("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
 async def upload_product_images(
     fan_id: int,
     files: list[UploadFile] = File(...),
@@ -1117,7 +1175,7 @@ async def upload_product_images(
     return sorted(fan.product_images, key=lambda image: (image.sort_order, image.id))
 
 
-@app.post("/api/fans/{fan_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)])
+@app.post("/api/fans/{fan_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
 def reorder_product_images(fan_id: int, body: ProductImageReorder, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     images_by_id = {image.id: image for image in fan.product_images}
@@ -1134,7 +1192,7 @@ def reorder_product_images(fan_id: int, body: ProductImageReorder, db: Session =
     return sorted(fan.product_images, key=lambda image: (image.sort_order, image.id))
 
 
-@app.delete("/api/fans/{fan_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)])
+@app.delete("/api/fans/{fan_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Product Images"])
 def delete_product_image(fan_id: int, image_id: int, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     image = db.get(ProductImage, image_id)
@@ -1150,7 +1208,7 @@ def delete_product_image(fan_id: int, image_id: int, db: Session = Depends(get_d
     return {"deleted": image_id}
 
 
-@app.get("/api/media/product_images/{file_name}", dependencies=[Depends(get_current_user)])
+@app.get("/api/media/product_images/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
 def serve_product_image(file_name: str):
     file_path = image_file_path(file_name)
     if not file_path.is_file():
@@ -1158,7 +1216,7 @@ def serve_product_image(file_name: str):
     return FileResponse(file_path)
 
 
-@app.get("/api/media/product_graphs/{file_name}", dependencies=[Depends(get_current_user)])
+@app.get("/api/media/product_graphs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
 def serve_product_graph(file_name: str):
     file_path = PRODUCT_GRAPHS_DIR / file_name
     if not file_path.is_file():

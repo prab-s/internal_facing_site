@@ -61,7 +61,6 @@ declare module '$env/static/private' {
 	export const DBUS_SESSION_BUS_ADDRESS: string;
 	export const COMPOSE_PROFILES: string;
 	export const WORDPRESS_INTERNAL_API_BASE_URL: string;
-	export const WORDPRESS_API_TOKEN: string;
 	export const COLOR: string;
 	export const DEBUGINFOD_URLS: string;
 	export const npm_config_metrics_registry: string;
@@ -224,7 +223,6 @@ declare module '$env/dynamic/private' {
 		DBUS_SESSION_BUS_ADDRESS: string;
 		COMPOSE_PROFILES: string;
 		WORDPRESS_INTERNAL_API_BASE_URL: string;
-		WORDPRESS_API_TOKEN: string;
 		COLOR: string;
 		DEBUGINFOD_URLS: string;
 		npm_config_metrics_registry: string;
