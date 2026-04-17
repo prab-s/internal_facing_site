@@ -49,10 +49,16 @@
       rpmPoints,
       efficiencyPoints,
       chartTheme,
-      title: currentFan ? `${currentFan.manufacturer} ${currentFan.model}` : 'Fan Map',
+      title: currentFan ? currentFan.model : 'Fan Map',
       clipRpmAreaToPermissibleUse: true,
       showRpmBandShading: currentFan?.show_rpm_band_shading ?? true,
-      showSecondaryAxis: false
+      showSecondaryAxis: false,
+      graphStyle: currentFan
+        ? {
+            band_graph_background_color: currentFan.band_graph_background_color,
+            band_graph_label_text_color: currentFan.band_graph_label_text_color
+          }
+        : null
     });
   }
   
@@ -77,7 +83,7 @@
     <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Single Fan View</p>
     <h1 class="h2 mb-2">Fan map</h1>
     <p class="text-body-secondary">
-      Review one fan’s flow vs pressure map with RPM bands and efficiency or permissible overlays.
+      Review one fan’s airflow vs pressure map with RPM bands and efficiency or permissible overlays.
     </p>
   </div>
 </div>
@@ -91,7 +97,7 @@
       <select class="form-select" id="map-fan-select" bind:value={selectedFanId} disabled={loading}>
         <option value={null}>— Select —</option>
         {#each fans as fan}
-          <option value={fan.id}>{fan.manufacturer} {fan.model}</option>
+          <option value={fan.id}>{fan.model}</option>
         {/each}
       </select>
     </div>
@@ -116,7 +122,7 @@
   <div class="vstack gap-3">
     {#if selectedFanId}
       <div class="card shadow-sm p-3">
-        <h2 class="h5">Flow vs pressure (RPM bands)</h2>
+        <h2 class="h5">Airflow vs pressure (RPM bands)</h2>
         <div class="mt-3">
           <ECharts
             option={chartOption}

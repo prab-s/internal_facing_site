@@ -66,12 +66,16 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _ensure_fan_columns(engine)
+    _ensure_rpm_line_columns(engine)
+    _remove_deprecated_fan_manufacturer_column(engine)
     _ensure_user_columns(engine)
     _migrate_legacy_map_points(engine)
 
     if mirror_engine is not None:
         Base.metadata.create_all(bind=mirror_engine)
         _ensure_fan_columns(mirror_engine)
+        _ensure_rpm_line_columns(mirror_engine)
+        _remove_deprecated_fan_manufacturer_column(mirror_engine)
         _ensure_user_columns(mirror_engine)
         _migrate_legacy_map_points(mirror_engine)
 
@@ -89,6 +93,8 @@ def _ensure_fan_columns(target_engine):
         "discharge_type": "VARCHAR(255)",
         "graph_image_path": "VARCHAR(512)",
         "show_rpm_band_shading": f"BOOLEAN NOT NULL DEFAULT {boolean_true_sql}",
+        "band_graph_background_color": "VARCHAR(32)",
+        "band_graph_label_text_color": "VARCHAR(32)",
     }
 
     with target_engine.begin() as connection:
@@ -122,6 +128,98 @@ def _ensure_user_columns(target_engine):
                 connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"))
         connection.execute(text(f"UPDATE users SET is_admin = {boolean_true_sql} WHERE is_admin IS NULL"))
         connection.execute(text(f"UPDATE users SET is_active = {boolean_true_sql} WHERE is_active IS NULL"))
+
+
+def _ensure_rpm_line_columns(target_engine):
+    inspector = inspect(target_engine)
+    tables = set(inspector.get_table_names())
+    if "rpm_lines" not in tables:
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("rpm_lines")}
+    if "band_color" in existing_columns:
+        return
+
+    with target_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE rpm_lines ADD COLUMN band_color VARCHAR(32)"))
+
+
+def _remove_deprecated_fan_manufacturer_column(target_engine):
+    inspector = inspect(target_engine)
+    tables = set(inspector.get_table_names())
+    if "fans" not in tables:
+        return
+
+    existing_columns = [column["name"] for column in inspector.get_columns("fans")]
+    if "manufacturer" not in existing_columns:
+        return
+
+    if target_engine.dialect.name == "postgresql":
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE fans DROP COLUMN IF EXISTS manufacturer"))
+        return
+
+    if target_engine.dialect.name != "sqlite":
+        return
+
+    with target_engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=OFF"))
+        connection.execute(text("DROP TABLE IF EXISTS fans__new"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE fans__new (
+                    id INTEGER PRIMARY KEY,
+                    model VARCHAR(255) NOT NULL,
+                    notes TEXT,
+                    mounting_style VARCHAR(255),
+                    discharge_type VARCHAR(255),
+                    graph_image_path VARCHAR(512),
+                    show_rpm_band_shading BOOLEAN NOT NULL DEFAULT 1,
+                    band_graph_background_color VARCHAR(32),
+                    band_graph_label_text_color VARCHAR(32),
+                    diameter_mm FLOAT,
+                    max_rpm FLOAT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO fans__new (
+                    id,
+                    model,
+                    notes,
+                    mounting_style,
+                    discharge_type,
+                    graph_image_path,
+                    show_rpm_band_shading,
+                    band_graph_background_color,
+                    band_graph_label_text_color,
+                    diameter_mm,
+                    max_rpm
+                )
+                SELECT
+                    id,
+                    model,
+                    notes,
+                    mounting_style,
+                    discharge_type,
+                    graph_image_path,
+                    show_rpm_band_shading,
+                    NULL AS band_graph_background_color,
+                    NULL AS band_graph_label_text_color,
+                    diameter_mm,
+                    max_rpm
+                FROM fans
+                """
+            )
+        )
+        connection.execute(text("DROP TABLE fans"))
+        connection.execute(text("ALTER TABLE fans__new RENAME TO fans"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_fans_id ON fans (id)"))
+        connection.execute(text("PRAGMA foreign_keys=ON"))
 
 
 def _migrate_legacy_map_points(target_engine):

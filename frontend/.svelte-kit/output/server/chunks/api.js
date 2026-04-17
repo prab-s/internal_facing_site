@@ -10,12 +10,13 @@ const DISCHARGE_TYPE_OPTIONS = [
 ];
 function emptyFanForm() {
   return {
-    manufacturer: "",
     model: "",
     notes: "",
     mounting_style: "",
     discharge_type: "",
     show_rpm_band_shading: true,
+    band_graph_background_color: "#ffffff",
+    band_graph_label_text_color: "#000000",
     diameter_mm: "",
     max_rpm: ""
   };
@@ -109,6 +110,10 @@ async function getEfficiencyCurvePoints(fanId) {
   const points = await getEfficiencyPoints(fanId);
   return points.filter((point) => point.efficiency_centre != null);
 }
+async function getDatabaseMirrorStatus() {
+  const r = await apiFetch("/maintenance/databases/mirror-status");
+  return r.json();
+}
 async function getUsers() {
   const r = await apiFetch("/users");
   return r.json();
@@ -126,8 +131,9 @@ export {
   getFan as h,
   emptyFanForm as i,
   getUsers as j,
-  login as k,
+  getDatabaseMirrorStatus as k,
   logout as l,
-  getAuthSession as m,
+  login as m,
+  getAuthSession as n,
   theme as t
 };

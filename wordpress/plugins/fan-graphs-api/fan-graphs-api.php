@@ -62,7 +62,6 @@ function fan_graphs_api_request($path, $query = array()) {
 }
 
 function fan_graphs_render_card($fan, $show_notes = false) {
-    $manufacturer = esc_html($fan['manufacturer'] ?? '');
     $model = esc_html($fan['model'] ?? '');
     $mounting_style = esc_html($fan['mounting_style'] ?? '');
     $discharge_type = esc_html($fan['discharge_type'] ?? '');
@@ -73,7 +72,7 @@ function fan_graphs_render_card($fan, $show_notes = false) {
     ob_start();
     ?>
     <article class="fan-graphs-card">
-      <h3 class="fan-graphs-card__title"><?php echo $manufacturer; ?> <?php echo $model; ?></h3>
+      <h3 class="fan-graphs-card__title"><?php echo $model; ?></h3>
       <dl class="fan-graphs-card__meta">
         <?php if ($mounting_style !== '') : ?>
           <div><dt>Mounting</dt><dd><?php echo $mounting_style; ?></dd></div>
@@ -99,13 +98,11 @@ function fan_graphs_render_card($fan, $show_notes = false) {
 function fan_graphs_shortcode_list($atts) {
     $atts = shortcode_atts(array(
         'limit' => 12,
-        'manufacturer' => '',
         'search' => '',
         'show_notes' => 'false',
     ), $atts, 'fan_graphs_fans');
 
     $result = fan_graphs_api_request('/api/cms/fans', array(
-        'manufacturer' => $atts['manufacturer'],
         'search' => $atts['search'],
     ));
 

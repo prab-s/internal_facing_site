@@ -17,6 +17,10 @@ function _page($$renderer, $$props) {
     let rpmRangeMax = null;
     let rpmFilterMin = null;
     let rpmFilterMax = null;
+    let airflowRangeMin = null;
+    let airflowRangeMax = null;
+    let airflowFilterMin = null;
+    let airflowFilterMax = null;
     let pressureRangeMin = null;
     let pressureRangeMax = null;
     let pressureFilterMin = null;
@@ -25,10 +29,11 @@ function _page($$renderer, $$props) {
     let error = "";
     function fanMatchesSelectedRanges(fan) {
       const range = fanRanges[fan.id];
-      if (!range || rpmFilterMin == null || pressureFilterMin == null) return true;
+      if (!range || rpmFilterMin == null || airflowFilterMin == null || pressureFilterMin == null) return true;
       const rpmOverlaps = rpmFilterMin <= range.rpmMin && rpmFilterMax >= range.rpmMax;
+      const airflowOverlaps = airflowFilterMin <= range.airflowMin && airflowFilterMax >= range.airflowMax;
       const pressureOverlaps = pressureFilterMin <= range.pressureMin && pressureFilterMax >= range.pressureMax;
-      return rpmOverlaps && pressureOverlaps;
+      return rpmOverlaps && airflowOverlaps && pressureOverlaps;
     }
     async function loadFans() {
       loading = true;
@@ -49,15 +54,19 @@ function _page($$renderer, $$props) {
     async function loadFanRanges() {
       fanRanges = {};
       rpmRangeMin = rpmRangeMax = null;
+      airflowRangeMin = airflowRangeMax = null;
       pressureRangeMin = pressureRangeMax = null;
       await Promise.all(fans.map(async (fan) => {
         try {
           const { rpmPoints } = await getFanChartData(fan.id);
           const rpms = rpmPoints.map((p) => Number(p.rpm)).filter((v) => v != null && !Number.isNaN(v));
+          const airflows = rpmPoints.map((p) => Number(p.airflow)).filter((v) => v != null && !Number.isNaN(v));
           const pressures = rpmPoints.map((p) => Number(p.pressure)).filter((v) => v != null && !Number.isNaN(v));
           const range = {
             rpmMin: rpms.length ? Math.min(...rpms) : null,
             rpmMax: rpms.length ? Math.max(...rpms) : null,
+            airflowMin: airflows.length ? Math.min(...airflows) : null,
+            airflowMax: airflows.length ? Math.max(...airflows) : null,
             pressureMin: pressures.length ? Math.min(...pressures) : null,
             pressureMax: pressures.length ? Math.max(...pressures) : null
           };
@@ -65,6 +74,10 @@ function _page($$renderer, $$props) {
           if (range.rpmMin != null) {
             rpmRangeMin = rpmRangeMin == null ? range.rpmMin : Math.min(rpmRangeMin, range.rpmMin);
             rpmRangeMax = rpmRangeMax == null ? range.rpmMax : Math.max(rpmRangeMax, range.rpmMax);
+          }
+          if (range.airflowMin != null) {
+            airflowRangeMin = airflowRangeMin == null ? range.airflowMin : Math.min(airflowRangeMin, range.airflowMin);
+            airflowRangeMax = airflowRangeMax == null ? range.airflowMax : Math.max(airflowRangeMax, range.airflowMax);
           }
           if (range.pressureMin != null) {
             pressureRangeMin = pressureRangeMin == null ? range.pressureMin : Math.min(pressureRangeMin, range.pressureMin);
@@ -76,6 +89,10 @@ function _page($$renderer, $$props) {
       if (rpmRangeMin != null) {
         rpmFilterMin = rpmRangeMin;
         rpmFilterMax = rpmRangeMax;
+      }
+      if (airflowRangeMin != null) {
+        airflowFilterMin = airflowRangeMin;
+        airflowFilterMax = airflowRangeMax;
       }
       if (pressureRangeMin != null) {
         pressureFilterMin = pressureRangeMin;
@@ -112,10 +129,10 @@ function _page($$renderer, $$props) {
         const filtered = points.filter((p) => p.efficiency_centre != null);
         if (!filtered.length) continue;
         series.push({
-          name: `${fan.manufacturer} ${fan.model}`,
+          name: fan.model,
           type: "line",
           smooth: true,
-          data: filtered.map((p) => [p.flow, p.efficiency_centre]).sort((a, b) => a[0] - b[0]),
+          data: filtered.map((p) => [p.airflow, p.efficiency_centre]).sort((a, b) => a[0] - b[0]),
           symbol: "circle",
           symbolSize: 6
         });
@@ -136,7 +153,9 @@ function _page($$renderer, $$props) {
         grid: { left: "12%", right: "8%", top: "15%", bottom: "22%" },
         xAxis: {
           type: "value",
-          name: "Flow",
+          name: "Airflow (L/s)",
+          nameLocation: "middle",
+          nameGap: 30,
           nameTextStyle: { color: chartTheme.text },
           axisLabel: { color: chartTheme.text },
           splitLine: { lineStyle: { color: chartTheme.grid } }
@@ -174,7 +193,7 @@ function _page($$renderer, $$props) {
       });
     });
     $$renderer2.push(`<div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Browse &amp; Compare</p> <h1 class="h2 mb-2">Catalogue</h1> <p class="text-body-secondary">Search the library by product details and operating ranges, then compare
-      efficiency curves for the fans you select.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-3"><div class="vstack gap-3"><div class="card shadow-sm p-3"><h2 class="h5">Filters</h2> <div class="mb-3"><label class="form-label" for="catalogue-search">Search (manufacturer or model)</label> <input class="form-control" id="catalogue-search" type="text"${attr("value", search)} placeholder="e.g. Acme or AF-120"/></div> <div class="row g-3"><div class="col-12 col-md-6 col-xl-12"><label class="form-label" for="catalogue-mounting-style">Mounting Style</label> `);
+      efficiency curves for the fans you select.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-3"><div class="vstack gap-3"><div class="card shadow-sm p-3"><h2 class="h5">Filters</h2> <div class="mb-3"><label class="form-label" for="catalogue-search">Search (model)</label> <input class="form-control" id="catalogue-search" type="text"${attr("value", search)} placeholder="e.g. AF-120"/></div> <div class="row g-3"><div class="col-12 col-md-6 col-xl-12"><label class="form-label" for="catalogue-mounting-style">Mounting Style</label> `);
     $$renderer2.select(
       {
         class: "form-select",
@@ -219,9 +238,9 @@ function _page($$renderer, $$props) {
       }
     );
     $$renderer2.push(`</div></div> `);
-    if (rpmRangeMin != null && pressureRangeMin != null) {
+    if (rpmRangeMin != null && airflowRangeMin != null && pressureRangeMin != null) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="row g-3 mt-1"><div class="col-12"><div class="border rounded p-3"><div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">RPM range</span> <span class="fw-semibold">${escape_html(Math.round(Number(rpmFilterMin)))} - ${escape_html(Math.round(Number(rpmFilterMax)))}</span></div> <div class="row g-2"><div class="col-6"><label class="form-label" for="rpm-filter-min">Min RPM</label> <input id="rpm-filter-min" class="form-control" type="number" step="10"${attr("min", rpmRangeMin)}${attr("max", rpmRangeMax)}${attr("value", rpmFilterMin)}/></div> <div class="col-6"><label class="form-label" for="rpm-filter-max">Max RPM</label> <input id="rpm-filter-max" class="form-control" type="number" step="10"${attr("min", rpmRangeMin)}${attr("max", rpmRangeMax)}${attr("value", rpmFilterMax)}/></div> <div class="col-12"><p class="small text-body-secondary mb-0">Available range: ${escape_html(Math.round(Number(rpmRangeMin)))} to ${escape_html(Math.round(Number(rpmRangeMax)))}</p></div></div></div></div> <div class="col-12"><div class="border rounded p-3"><div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">Pressure range</span> <span class="fw-semibold">${escape_html(Math.round(Number(pressureFilterMin)))} - ${escape_html(Math.round(Number(pressureFilterMax)))}</span></div> <div class="row g-2"><div class="col-6"><label class="form-label" for="pressure-filter-min">Min Pressure</label> <input id="pressure-filter-min" class="form-control" type="number" step="5"${attr("min", pressureRangeMin)}${attr("max", pressureRangeMax)}${attr("value", pressureFilterMin)}/></div> <div class="col-6"><label class="form-label" for="pressure-filter-max">Max Pressure</label> <input id="pressure-filter-max" class="form-control" type="number" step="5"${attr("min", pressureRangeMin)}${attr("max", pressureRangeMax)}${attr("value", pressureFilterMax)}/></div> <div class="col-12"><p class="small text-body-secondary mb-0">Available range: ${escape_html(Math.round(Number(pressureRangeMin)))} to ${escape_html(Math.round(Number(pressureRangeMax)))}</p></div></div></div></div></div>`);
+      $$renderer2.push(`<div class="row g-3 mt-1"><div class="col-12"><div class="border rounded p-3"><div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">RPM range</span> <span class="fw-semibold">${escape_html(Math.round(Number(rpmFilterMin)))} - ${escape_html(Math.round(Number(rpmFilterMax)))}</span></div> <div class="row g-2"><div class="col-6"><label class="form-label" for="rpm-filter-min">Min RPM</label> <input id="rpm-filter-min" class="form-control" type="number" step="10"${attr("min", rpmRangeMin)}${attr("max", rpmRangeMax)}${attr("value", rpmFilterMin)}/></div> <div class="col-6"><label class="form-label" for="rpm-filter-max">Max RPM</label> <input id="rpm-filter-max" class="form-control" type="number" step="10"${attr("min", rpmRangeMin)}${attr("max", rpmRangeMax)}${attr("value", rpmFilterMax)}/></div> <div class="col-12"><p class="small text-body-secondary mb-0">Available range: ${escape_html(Math.round(Number(rpmRangeMin)))} to ${escape_html(Math.round(Number(rpmRangeMax)))}</p></div></div></div></div> <div class="col-12"><div class="border rounded p-3"><div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">Airflow range</span> <span class="fw-semibold">${escape_html(Math.round(Number(airflowFilterMin)))} - ${escape_html(Math.round(Number(airflowFilterMax)))}</span></div> <div class="row g-2"><div class="col-6"><label class="form-label" for="airflow-filter-min">Min Airflow</label> <input id="airflow-filter-min" class="form-control" type="number" step="5"${attr("min", airflowRangeMin)}${attr("max", airflowRangeMax)}${attr("value", airflowFilterMin)}/></div> <div class="col-6"><label class="form-label" for="airflow-filter-max">Max Airflow</label> <input id="airflow-filter-max" class="form-control" type="number" step="5"${attr("min", airflowRangeMin)}${attr("max", airflowRangeMax)}${attr("value", airflowFilterMax)}/></div> <div class="col-12"><p class="small text-body-secondary mb-0">Available range: ${escape_html(Math.round(Number(airflowRangeMin)))} to ${escape_html(Math.round(Number(airflowRangeMax)))}</p></div></div></div></div> <div class="col-12"><div class="border rounded p-3"><div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">Pressure range</span> <span class="fw-semibold">${escape_html(Math.round(Number(pressureFilterMin)))} - ${escape_html(Math.round(Number(pressureFilterMax)))}</span></div> <div class="row g-2"><div class="col-6"><label class="form-label" for="pressure-filter-min">Min Pressure</label> <input id="pressure-filter-min" class="form-control" type="number" step="5"${attr("min", pressureRangeMin)}${attr("max", pressureRangeMax)}${attr("value", pressureFilterMin)}/></div> <div class="col-6"><label class="form-label" for="pressure-filter-max">Max Pressure</label> <input id="pressure-filter-max" class="form-control" type="number" step="5"${attr("min", pressureRangeMin)}${attr("max", pressureRangeMax)}${attr("value", pressureFilterMax)}/></div> <div class="col-12"><p class="small text-body-secondary mb-0">Available range: ${escape_html(Math.round(Number(pressureRangeMin)))} to ${escape_html(Math.round(Number(pressureRangeMax)))}</p></div></div></div></div></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }
@@ -232,7 +251,7 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></div></div> <div class="col-12 col-xl-9"><div class="vstack gap-3"><div class="card shadow-sm p-3"><h2 class="h5">Results</h2> <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3"><p class="mb-0">Select one or more fans to compare their efficiency curves below.</p> <button class="btn btn-outline-secondary btn-sm">extra ${escape_html(">")}</button></div> <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Select</th><th>Image</th><th>Manufacturer</th><th>Model</th><th>Notes</th><th>Graph</th>`);
+    $$renderer2.push(`<!--]--></div></div> <div class="col-12 col-xl-9"><div class="vstack gap-3"><div class="card shadow-sm p-3"><h2 class="h5">Results</h2> <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3"><p class="mb-0">Select one or more fans to compare their efficiency curves below.</p> <button class="btn btn-outline-secondary btn-sm">extra ${escape_html(">")}</button></div> <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Select</th><th>Image</th><th>Model</th><th>Notes</th><th>Graph</th>`);
     {
       $$renderer2.push("<!--[-1-->");
     }
@@ -243,12 +262,12 @@ function _page($$renderer, $$props) {
       $$renderer2.push(`<tr><td><input class="form-check-input" type="checkbox"${attr("checked", selectedIds.includes(fan.id), true)}/></td><td style="width: 160px;">`);
       if (fan.primary_product_image_url) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<img class="img-fluid rounded border" style="width: 140px; height: 100px; object-fit: cover;"${attr("src", fan.primary_product_image_url)}${attr("alt", `${fan.manufacturer} ${fan.model}`)}/>`);
+        $$renderer2.push(`<img class="img-fluid rounded border" style="width: 140px; height: 100px; object-fit: cover;"${attr("src", fan.primary_product_image_url)}${attr("alt", fan.model)}/>`);
       } else {
         $$renderer2.push("<!--[-1-->");
         $$renderer2.push(`<span class="text-body-secondary">No image</span>`);
       }
-      $$renderer2.push(`<!--]--></td><td>${escape_html(fan.manufacturer)}</td><td>${escape_html(fan.model)}</td><td>${escape_html(fan.notes || "—")}</td><td>`);
+      $$renderer2.push(`<!--]--></td><td>${escape_html(fan.model)}</td><td>${escape_html(fan.notes || "—")}</td><td>`);
       if (fan.graph_image_url) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<a${attr("href", fan.graph_image_url)} download="">Download graph</a>`);
@@ -265,7 +284,7 @@ function _page($$renderer, $$props) {
     $$renderer2.push(`<!--]--></tbody></table></div> `);
     if (filteredFans.length === 0 && !loading) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<p class="text-body-secondary">No fans match the current filters. Try expanding the RPM/pressure
+      $$renderer2.push(`<p class="text-body-secondary">No fans match the current filters. Try expanding the RPM/airflow/pressure
             range or adjusting your search.</p>`);
     } else {
       $$renderer2.push("<!--[-1-->");

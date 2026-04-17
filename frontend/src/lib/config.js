@@ -19,12 +19,13 @@ export const DISCHARGE_TYPE_OPTIONS = [
 
 export function emptyFanForm() {
   return {
-    manufacturer: '',
     model: '',
     notes: '',
     mounting_style: '',
     discharge_type: '',
     show_rpm_band_shading: true,
+    band_graph_background_color: '#ffffff',
+    band_graph_label_text_color: '#000000',
     diameter_mm: '',
     max_rpm: ''
   };

@@ -1,4 +1,5 @@
 import csv
+import datetime
 import hashlib
 import io
 import json
@@ -8,6 +9,9 @@ import re
 import secrets
 import shutil
 import subprocess
+import tarfile
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import Optional
 
@@ -29,13 +33,16 @@ from backend.database import (
     mirror_db_session,
 )
 from backend.models import Fan, RpmLine, RpmPoint, EfficiencyPoint, ProductImage, User
+from backend.models import AppSettings
 from backend.schemas import (
+    BandGraphStyleSettings,
     DatabaseMirrorStatusResponse,
     FanCreate,
     FanUpdate,
     FanResponse,
     GraphImageMaintenanceResponse,
     RpmLineCreate,
+    RpmLineUpdate,
     RpmLineResponse,
     RpmPointCreate,
     RpmPointResponse,
@@ -56,16 +63,27 @@ from backend.schemas import (
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
+PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
+BACKUP_OUTPUT_DIR = Path(DEFAULT_DATA_DIR) / "backups"
+WORDPRESS_SITE_DIR = Path("/app/wordpress_site")
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 ECHARTS_RENDER_SCRIPT = FRONTEND_DIR / "scripts" / "render_product_graph.mjs"
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
+BACKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "admin").strip()
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "").strip()
 CMS_API_TOKEN = os.getenv("CMS_API_TOKEN", "").strip()
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+POSTGRES_DB = os.getenv("POSTGRES_DB", "").strip()
+POSTGRES_USER = os.getenv("POSTGRES_USER", "").strip()
+WORDPRESS_DB_NAME = os.getenv("WORDPRESS_DB_NAME", "").strip()
+WORDPRESS_DB_USER = os.getenv("WORDPRESS_DB_USER", "").strip()
+WORDPRESS_DB_PASSWORD = os.getenv("WORDPRESS_DB_PASSWORD", "").strip()
+WORDPRESS_DB_ROOT_PASSWORD = os.getenv("WORDPRESS_DB_ROOT_PASSWORD", "").strip()
 PASSWORD_HASH_ITERATIONS = 600_000
 
 
@@ -75,7 +93,7 @@ def sanitize_name(value: str) -> str:
 
 
 def fan_slug(fan: Fan) -> str:
-    return f"{sanitize_name(fan.manufacturer)}_{sanitize_name(fan.model)}"
+    return sanitize_name(fan.model)
 
 
 def product_image_file_name(fan: Fan, index: int, extension: str) -> str:
@@ -100,6 +118,22 @@ def remove_file(path: str | os.PathLike | None):
         Path(path).unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def normalize_color_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def get_or_create_app_settings(db: Session) -> AppSettings:
+    settings = db.get(AppSettings, 1)
+    if settings is None:
+        settings = AppSettings(id=1)
+        db.add(settings)
+        db.flush()
+    return settings
 
 
 def sync_product_image_files(fan: Fan):
@@ -133,9 +167,9 @@ def delete_product_image_file(image: ProductImage):
 def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list[EfficiencyPoint]):
     rpm_point_list = sorted(
         [point for rpm_line in rpm_lines for point in rpm_line.points],
-        key=lambda point: (point.rpm or 0, point.flow),
+        key=lambda point: (point.rpm or 0, point.airflow),
     )
-    efficiency_point_list = sorted(efficiency_points, key=lambda point: point.flow)
+    efficiency_point_list = sorted(efficiency_points, key=lambda point: point.airflow)
     previous_path = Path(fan.graph_image_path) if fan.graph_image_path else None
 
     if not rpm_point_list and not efficiency_point_list:
@@ -150,13 +184,18 @@ def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list
         tmp_path.unlink()
 
     payload = {
-        "title": f"{fan.manufacturer} {fan.model} Fan Map",
+        "title": f"{fan.model} Fan Map",
         "showRpmBandShading": fan.show_rpm_band_shading,
+        "graphStyle": {
+            "band_graph_background_color": fan.band_graph_background_color,
+            "band_graph_label_text_color": fan.band_graph_label_text_color,
+        },
         "rpmLines": [
             {
                 "id": line.id,
                 "fan_id": line.fan_id,
                 "rpm": line.rpm,
+                "band_color": line.band_color,
             }
             for line in sorted(rpm_lines, key=lambda line: line.rpm)
         ],
@@ -166,7 +205,7 @@ def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list
                 "fan_id": point.fan_id,
                 "rpm_line_id": point.rpm_line_id,
                 "rpm": point.rpm,
-                "flow": point.flow,
+                "airflow": point.airflow,
                 "pressure": point.pressure,
             }
             for point in rpm_point_list
@@ -175,7 +214,7 @@ def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list
             {
                 "id": point.id,
                 "fan_id": point.fan_id,
-                "flow": point.flow,
+                "airflow": point.airflow,
                 "efficiency_centre": point.efficiency_centre,
                 "efficiency_lower_end": point.efficiency_lower_end,
                 "efficiency_higher_end": point.efficiency_higher_end,
@@ -232,13 +271,14 @@ def clear_all_graph_images(db: Session) -> int:
 
 
 def _copy_fan_fields(source: Fan, target: Fan):
-    target.manufacturer = source.manufacturer
     target.model = source.model
     target.notes = source.notes
     target.mounting_style = source.mounting_style
     target.discharge_type = source.discharge_type
     target.graph_image_path = source.graph_image_path
     target.show_rpm_band_shading = source.show_rpm_band_shading
+    target.band_graph_background_color = source.band_graph_background_color
+    target.band_graph_label_text_color = source.band_graph_label_text_color
     target.diameter_mm = source.diameter_mm
     target.max_rpm = source.max_rpm
 
@@ -298,6 +338,7 @@ def mirror_fan_to_postgres(fan_id: int):
                 mirror_db.add(mirror_line)
             mirror_line.fan_id = fan_id
             mirror_line.rpm = source_line.rpm
+            mirror_line.band_color = source_line.band_color
 
         for mirror_line_id, mirror_line in mirror_rpm_lines.items():
             if mirror_line_id not in source_rpm_line_ids:
@@ -316,7 +357,7 @@ def mirror_fan_to_postgres(fan_id: int):
                 mirror_db.add(mirror_point)
             mirror_point.fan_id = fan_id
             mirror_point.rpm_line_id = source_point.rpm_line_id
-            mirror_point.flow = source_point.flow
+            mirror_point.airflow = source_point.airflow
             mirror_point.pressure = source_point.pressure
 
         for mirror_point_id, mirror_point in mirror_rpm_points.items():
@@ -341,7 +382,7 @@ def mirror_fan_to_postgres(fan_id: int):
                 mirror_point = EfficiencyPoint(id=source_point.id, fan_id=fan_id)
                 mirror_db.add(mirror_point)
             mirror_point.fan_id = fan_id
-            mirror_point.flow = source_point.flow
+            mirror_point.airflow = source_point.airflow
             mirror_point.efficiency_centre = source_point.efficiency_centre
             mirror_point.efficiency_lower_end = source_point.efficiency_lower_end
             mirror_point.efficiency_higher_end = source_point.efficiency_higher_end
@@ -407,6 +448,22 @@ def sync_all_data_to_postgres():
 
             mirror_db.commit()
 
+        if "app_settings" in source_tables and "app_settings" in mirror_tables:
+            source_settings = source_db.get(AppSettings, 1)
+            mirror_settings = mirror_db.get(AppSettings, 1)
+
+            if source_settings is None:
+                if mirror_settings is not None:
+                    mirror_db.delete(mirror_settings)
+            else:
+                if mirror_settings is None:
+                    mirror_settings = AppSettings(id=1)
+                    mirror_db.add(mirror_settings)
+                mirror_settings.band_graph_background_color = source_settings.band_graph_background_color
+                mirror_settings.band_graph_label_text_color = source_settings.band_graph_label_text_color
+
+            mirror_db.commit()
+
     with SessionLocal() as db:
         fan_ids = [fan_id for (fan_id,) in db.query(Fan.id).all()]
 
@@ -434,6 +491,7 @@ def mirror_fan_to_postgres_safely(fan_id: int):
 
 def get_database_counts(db: Session) -> dict[str, int]:
     return {
+        "app_settings": db.query(AppSettings).count(),
         "users": db.query(User).count(),
         "fans": db.query(Fan).count(),
         "rpm_lines": db.query(RpmLine).count(),
@@ -544,6 +602,171 @@ def require_cms_token(request: Request):
 
 def active_admin_count(db: Session) -> int:
     return db.query(User).filter(User.is_admin.is_(True), User.is_active.is_(True)).count()
+
+
+def postgres_cli_database_url() -> str:
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not configured")
+    if DATABASE_URL.startswith("postgresql+psycopg://"):
+        return "postgresql://" + DATABASE_URL[len("postgresql+psycopg://"):]
+    return DATABASE_URL
+
+
+def wordpress_available() -> bool:
+    return bool(WORDPRESS_DB_NAME and WORDPRESS_DB_USER and WORDPRESS_DB_PASSWORD and WORDPRESS_DB_ROOT_PASSWORD)
+
+
+def run_command(command: list[str], *, input_bytes: bytes | None = None):
+    result = subprocess.run(command, input=input_bytes, capture_output=True, check=False)
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", errors="ignore").strip()
+        stdout = result.stdout.decode("utf-8", errors="ignore").strip()
+        raise RuntimeError(stderr or stdout or f"Command failed: {' '.join(command)}")
+    return result
+
+
+def create_backup_bundle() -> Path:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_name = f"fan_graphs_backup_{timestamp}.zip"
+    archive_path = BACKUP_OUTPUT_DIR / archive_name
+
+    with tempfile.TemporaryDirectory() as staging_dir_raw:
+        staging_dir = Path(staging_dir_raw)
+        postgres_dump_path = staging_dir / "postgres_dump.sql"
+        postgres_dump = run_command(
+            ["pg_dump", postgres_cli_database_url(), "--no-owner", "--no-privileges"]
+        )
+        postgres_dump_path.write_bytes(postgres_dump.stdout)
+
+        for media_dir in [PRODUCT_IMAGES_DIR, PRODUCT_GRAPHS_DIR, PRODUCT_PDFS_DIR]:
+            if media_dir.is_dir():
+                target_dir = staging_dir / "data" / media_dir.name
+                target_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(media_dir, target_dir, dirs_exist_ok=True)
+
+        if wordpress_available():
+            wordpress_dump_path = staging_dir / "wordpress_dump.sql"
+            wordpress_dump = run_command(
+                [
+                    "mariadb-dump",
+                    "-h",
+                    "wordpress_db",
+                    "-u",
+                    WORDPRESS_DB_USER,
+                    f"-p{WORDPRESS_DB_PASSWORD}",
+                    WORDPRESS_DB_NAME,
+                ]
+            )
+            wordpress_dump_path.write_bytes(wordpress_dump.stdout)
+
+            wp_content_dir = WORDPRESS_SITE_DIR / "wp-content"
+            if wp_content_dir.is_dir():
+                wordpress_dir = staging_dir / "wordpress"
+                wordpress_dir.mkdir(parents=True, exist_ok=True)
+                with tarfile.open(wordpress_dir / "wp-content.tar", "w") as tar:
+                    tar.add(wp_content_dir, arcname="wp-content")
+
+        readme = staging_dir / "README.txt"
+        readme.write_text(
+            "\n".join(
+                [
+                    "Fan Graphs backup bundle",
+                    "Generated by the admin maintenance API.",
+                    "",
+                    "Contents:",
+                    "- postgres_dump.sql : PostgreSQL database dump",
+                    "- data/product_images : uploaded product images (if present)",
+                    "- data/product_graphs : generated graph images (if present)",
+                    "- data/product_pdfs : future PDF assets (if present)",
+                    "- wordpress_dump.sql : WordPress MariaDB dump (if present)",
+                    "- wordpress/wp-content.tar : WordPress content snapshot (if present)",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for root, _, files in os.walk(staging_dir):
+                for file_name in files:
+                    full_path = Path(root) / file_name
+                    archive.write(full_path, full_path.relative_to(staging_dir))
+
+    return archive_path
+
+
+def restore_backup_bundle(archive_bytes: bytes):
+    with tempfile.TemporaryDirectory() as staging_dir_raw:
+        staging_dir = Path(staging_dir_raw)
+        archive_path = staging_dir / "upload.zip"
+        archive_path.write_bytes(archive_bytes)
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            archive.extractall(staging_dir)
+
+        postgres_dump_path = staging_dir / "postgres_dump.sql"
+        if not postgres_dump_path.is_file():
+            raise RuntimeError("Backup archive does not contain postgres_dump.sql")
+
+        run_command(
+            [
+                "psql",
+                postgres_cli_database_url(),
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-c",
+                f"DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO {POSTGRES_USER}; GRANT ALL ON SCHEMA public TO public;",
+            ]
+        )
+        run_command(
+            ["psql", postgres_cli_database_url(), "-v", "ON_ERROR_STOP=1"],
+            input_bytes=postgres_dump_path.read_bytes(),
+        )
+
+        wordpress_dump_path = staging_dir / "wordpress_dump.sql"
+        wordpress_content_tar = staging_dir / "wordpress" / "wp-content.tar"
+        if wordpress_available() and wordpress_dump_path.is_file():
+            run_command(
+                [
+                    "mariadb",
+                    "-h",
+                    "wordpress_db",
+                    "-u",
+                    "root",
+                    f"-p{WORDPRESS_DB_ROOT_PASSWORD}",
+                    "-e",
+                    (
+                        f"DROP DATABASE IF EXISTS `{WORDPRESS_DB_NAME}`; "
+                        f"CREATE DATABASE `{WORDPRESS_DB_NAME}`; "
+                        f"GRANT ALL PRIVILEGES ON `{WORDPRESS_DB_NAME}`.* TO '{WORDPRESS_DB_USER}'@'%'; "
+                        "FLUSH PRIVILEGES;"
+                    ),
+                ]
+            )
+            run_command(
+                [
+                    "mariadb",
+                    "-h",
+                    "wordpress_db",
+                    "-u",
+                    "root",
+                    f"-p{WORDPRESS_DB_ROOT_PASSWORD}",
+                    WORDPRESS_DB_NAME,
+                ],
+                input_bytes=wordpress_dump_path.read_bytes(),
+            )
+
+        if wordpress_content_tar.is_file():
+            wp_content_dir = WORDPRESS_SITE_DIR / "wp-content"
+            shutil.rmtree(wp_content_dir, ignore_errors=True)
+            with tarfile.open(wordpress_content_tar, "r") as tar:
+                tar.extractall(WORDPRESS_SITE_DIR)
+
+        for media_dir in ["product_images", "product_graphs", "product_pdfs"]:
+            source_dir = staging_dir / "data" / media_dir
+            target_dir = Path(DEFAULT_DATA_DIR) / media_dir
+            shutil.rmtree(target_dir, ignore_errors=True)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            if source_dir.is_dir():
+                shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
 
 
 OPENAPI_TAGS = [
@@ -761,19 +984,32 @@ def update_user_password(
     return user
 
 
+@app.get("/api/settings/band-graph-style", response_model=BandGraphStyleSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def get_band_graph_style_settings(db: Session = Depends(get_db)):
+    return get_or_create_app_settings(db)
+
+
+@app.put("/api/settings/band-graph-style", response_model=BandGraphStyleSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def update_band_graph_style_settings(body: BandGraphStyleSettings, db: Session = Depends(get_db)):
+    settings = get_or_create_app_settings(db)
+    settings.band_graph_background_color = normalize_color_value(body.band_graph_background_color)
+    settings.band_graph_label_text_color = normalize_color_value(body.band_graph_label_text_color)
+    db.commit()
+    db.refresh(settings)
+    sync_all_data_to_postgres_safely()
+    return settings
+
+
 @app.get("/api/cms/fans", response_model=list[CmsFanResponse], dependencies=[Depends(require_cms_token)], tags=["CMS"])
 def list_cms_fans(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
-    manufacturer: Optional[str] = Query(None),
 ):
     q = db.query(Fan)
     if search:
         s = f"%{search}%"
-        q = q.filter((Fan.manufacturer.ilike(s)) | (Fan.model.ilike(s)))
-    if manufacturer:
-        q = q.filter(Fan.manufacturer.ilike(f"%{manufacturer}%"))
-    return q.order_by(Fan.manufacturer, Fan.model).all()
+        q = q.filter(Fan.model.ilike(s))
+    return q.order_by(Fan.model).all()
 
 
 @app.get("/api/cms/fans/{fan_id}", response_model=CmsFanResponse, dependencies=[Depends(require_cms_token)], tags=["CMS"])
@@ -788,8 +1024,7 @@ def get_cms_fan(fan_id: int, db: Session = Depends(get_db)):
 @app.get("/api/fans", response_model=list[FanResponse], dependencies=[Depends(get_current_user)], tags=["Fans"])
 def list_fans(
     db: Session = Depends(get_db),
-    search: Optional[str] = Query(None, description="Search manufacturer or model"),
-    manufacturer: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="Search model"),
     model: Optional[str] = Query(None),
     mounting_style: Optional[str] = Query(None),
     discharge_type: Optional[str] = Query(None),
@@ -797,21 +1032,22 @@ def list_fans(
     q = db.query(Fan)
     if search:
         s = f"%{search}%"
-        q = q.filter((Fan.manufacturer.ilike(s)) | (Fan.model.ilike(s)))
-    if manufacturer:
-        q = q.filter(Fan.manufacturer.ilike(f"%{manufacturer}%"))
+        q = q.filter(Fan.model.ilike(s))
     if model:
         q = q.filter(Fan.model.ilike(f"%{model}%"))
     if mounting_style:
         q = q.filter(Fan.mounting_style == mounting_style)
     if discharge_type:
         q = q.filter(Fan.discharge_type == discharge_type)
-    return q.all()
+    return q.order_by(Fan.model).all()
 
 
 @app.post("/api/fans", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
 def create_fan(body: FanCreate, db: Session = Depends(get_db)):
-    fan = Fan(**body.model_dump())
+    fan_data = body.model_dump()
+    fan_data["band_graph_background_color"] = normalize_color_value(fan_data.get("band_graph_background_color"))
+    fan_data["band_graph_label_text_color"] = normalize_color_value(fan_data.get("band_graph_label_text_color"))
+    fan = Fan(**fan_data)
     db.add(fan)
     db.commit()
     db.refresh(fan)
@@ -834,7 +1070,10 @@ def get_fan(fan_id: int, db: Session = Depends(get_db)):
 def update_fan(fan_id: int, body: FanUpdate, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(fan, k, v)
+        if k in {"band_graph_background_color", "band_graph_label_text_color"}:
+            setattr(fan, k, normalize_color_value(v))
+        else:
+            setattr(fan, k, v)
     sync_product_image_files(fan)
     sync_graph_image(fan, list(fan.rpm_lines), list(fan.efficiency_points))
     db.commit()
@@ -871,8 +1110,36 @@ def create_rpm_line(fan_id: int, body: RpmLineCreate, db: Session = Depends(get_
     existing = db.query(RpmLine).filter(RpmLine.fan_id == fan_id, RpmLine.rpm == body.rpm).first()
     if existing:
         raise HTTPException(400, "RPM line already exists")
-    line = RpmLine(fan_id=fan_id, rpm=body.rpm)
+    line = RpmLine(fan_id=fan_id, rpm=body.rpm, band_color=normalize_color_value(body.band_color))
     db.add(line)
+    db.commit()
+    refresh_graph_for_fan(db, fan)
+    db.commit()
+    db.refresh(line)
+    mirror_fan_to_postgres_safely(fan_id)
+    return line
+
+
+@app.put("/api/fans/{fan_id}/rpm-lines/{line_id}", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+def update_rpm_line(fan_id: int, line_id: int, body: RpmLineUpdate, db: Session = Depends(get_db)):
+    fan = require_fan(db, fan_id)
+    line = db.get(RpmLine, line_id)
+    if not line or line.fan_id != fan_id:
+        raise HTTPException(404, "RPM line not found")
+
+    updates = body.model_dump(exclude_unset=True)
+    if "rpm" in updates and updates["rpm"] is not None:
+        existing = (
+            db.query(RpmLine)
+            .filter(RpmLine.fan_id == fan_id, RpmLine.rpm == updates["rpm"], RpmLine.id != line_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(400, "RPM line already exists")
+        line.rpm = updates["rpm"]
+    if "band_color" in updates:
+        line.band_color = normalize_color_value(updates["band_color"])
+
     db.commit()
     refresh_graph_for_fan(db, fan)
     db.commit()
@@ -902,7 +1169,7 @@ def get_rpm_points(fan_id: int, db: Session = Depends(get_db)):
         db.query(RpmPoint)
         .join(RpmLine, RpmPoint.rpm_line_id == RpmLine.id)
         .filter(RpmPoint.fan_id == fan_id)
-        .order_by(RpmLine.rpm, RpmPoint.flow)
+        .order_by(RpmLine.rpm, RpmPoint.airflow)
         .all()
     )
 
@@ -981,7 +1248,7 @@ def get_efficiency_points(fan_id: int, db: Session = Depends(get_db)):
     return (
         db.query(EfficiencyPoint)
         .filter(EfficiencyPoint.fan_id == fan_id)
-        .order_by(EfficiencyPoint.flow)
+        .order_by(EfficiencyPoint.airflow)
         .all()
     )
 
@@ -1135,6 +1402,34 @@ def delete_all_graph_images(db: Session = Depends(get_db)):
         fans_processed=0,
         files_deleted=deleted_files,
     )
+
+
+@app.get("/api/maintenance/backups/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"])
+def download_backup_bundle():
+    try:
+        archive_path = create_backup_bundle()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to create backup bundle: {exc}") from exc
+
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=archive_path.name,
+    )
+
+
+@app.post("/api/maintenance/backups/restore", dependencies=[Depends(require_admin_user)], tags=["Maintenance"])
+async def restore_backup_bundle_endpoint(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Please upload a .zip backup bundle.")
+
+    try:
+        archive_bytes = await file.read()
+        restore_backup_bundle(archive_bytes)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to restore backup bundle: {exc}") from exc
+
+    return {"message": "Backup bundle restored successfully."}
 
 
 @app.get("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])

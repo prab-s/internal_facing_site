@@ -20,14 +20,14 @@ def parse_map_csv(text: str):
         row = [c.strip() for c in row if c]
         if not row or (len(row) == 1 and row[0].startswith("#")):
             continue
-        if row[0].lower() in ("rpm", "flow", "pressure", "efficiency", "efficiency_centre") and len(rows) == 0:
+        if row[0].lower() in ("rpm", "airflow", "pressure", "efficiency", "efficiency_centre") and len(rows) == 0:
             continue
         try:
             rpm = float(row[0])
-            flow = float(row[1])
+            airflow = float(row[1])
             pressure = float(row[2])
             efficiency_centre = float(row[3]) if len(row) > 3 and row[3] else None
-            rows.append({"rpm": rpm, "flow": flow, "pressure": pressure, "efficiency_centre": efficiency_centre})
+            rows.append({"rpm": rpm, "airflow": airflow, "pressure": pressure, "efficiency_centre": efficiency_centre})
         except (ValueError, IndexError):
             continue
     return rows
@@ -42,13 +42,13 @@ def main():
             return
         
         # Create first fan
-        fan1 = Fan(manufacturer="Example", model="Fan-1", notes="Seed data for MVP")
+        fan1 = Fan(model="Fan-1", notes="Seed data for MVP")
         db.add(fan1)
         db.commit()
         db.refresh(fan1)
         
         # Create second fan
-        fan2 = Fan(manufacturer="Test", model="100 series", notes="Additional test fan")
+        fan2 = Fan(model="100 series", notes="Additional test fan")
         db.add(fan2)
         db.commit()
         db.refresh(fan2)
@@ -72,38 +72,38 @@ def main():
             print("CSV file not found, creating basic test data")
             # For fan 1: multiple points per RPM (bands)
             test_data_1 = [
-                {"rpm": 1000, "flow": 0.2, "pressure": 120, "efficiency_centre": 42},
-                {"rpm": 1000, "flow": 0.5, "pressure": 110, "efficiency_centre": 50},
-                {"rpm": 1000, "flow": 1.0, "pressure": 80, "efficiency_centre": 52},
-                {"rpm": 1500, "flow": 0.3, "pressure": 200, "efficiency_centre": 48},
-                {"rpm": 1500, "flow": 0.6, "pressure": 185, "efficiency_centre": 56},
-                {"rpm": 1500, "flow": 1.2, "pressure": 140, "efficiency_centre": 62},
-                {"rpm": 2000, "flow": 0.4, "pressure": 280, "efficiency_centre": 50},
-                {"rpm": 2000, "flow": 0.7, "pressure": 260, "efficiency_centre": 58},
-                {"rpm": 2000, "flow": 1.3, "pressure": 200, "efficiency_centre": 64},
+                {"rpm": 1000, "airflow": 0.2, "pressure": 120, "efficiency_centre": 42},
+                {"rpm": 1000, "airflow": 0.5, "pressure": 110, "efficiency_centre": 50},
+                {"rpm": 1000, "airflow": 1.0, "pressure": 80, "efficiency_centre": 52},
+                {"rpm": 1500, "airflow": 0.3, "pressure": 200, "efficiency_centre": 48},
+                {"rpm": 1500, "airflow": 0.6, "pressure": 185, "efficiency_centre": 56},
+                {"rpm": 1500, "airflow": 1.2, "pressure": 140, "efficiency_centre": 62},
+                {"rpm": 2000, "airflow": 0.4, "pressure": 280, "efficiency_centre": 50},
+                {"rpm": 2000, "airflow": 0.7, "pressure": 260, "efficiency_centre": 58},
+                {"rpm": 2000, "airflow": 1.3, "pressure": 200, "efficiency_centre": 64},
             ]
             for r in test_data_1:
                 db.add(MapPoint(fan_id=fan1.id, **r))
             
             # For fan 2: also multiple points per RPM (bands)
             test_data_2 = [
-                {"rpm": 1200, "flow": 0.2, "pressure": 96, "efficiency_centre": 45},  # 1200 = 1000 * 1.2, pressure = 120 * 0.8
-                {"rpm": 1200, "flow": 0.5, "pressure": 88, "efficiency_centre": 52},
-                {"rpm": 1200, "flow": 1.0, "pressure": 64, "efficiency_centre": 55},
-                {"rpm": 1800, "flow": 0.3, "pressure": 160, "efficiency_centre": 50},  # 1800 = 1500 * 1.2, pressure = 200 * 0.8
-                {"rpm": 1800, "flow": 0.6, "pressure": 148, "efficiency_centre": 58},
-                {"rpm": 1800, "flow": 1.2, "pressure": 112, "efficiency_centre": 65},
-                {"rpm": 2400, "flow": 0.4, "pressure": 224, "efficiency_centre": 52},  # 2400 = 2000 * 1.2, pressure = 280 * 0.8
-                {"rpm": 2400, "flow": 0.7, "pressure": 208, "efficiency_centre": 60},
-                {"rpm": 2400, "flow": 1.3, "pressure": 160, "efficiency_centre": 67},
+                {"rpm": 1200, "airflow": 0.2, "pressure": 96, "efficiency_centre": 45},  # 1200 = 1000 * 1.2, pressure = 120 * 0.8
+                {"rpm": 1200, "airflow": 0.5, "pressure": 88, "efficiency_centre": 52},
+                {"rpm": 1200, "airflow": 1.0, "pressure": 64, "efficiency_centre": 55},
+                {"rpm": 1800, "airflow": 0.3, "pressure": 160, "efficiency_centre": 50},  # 1800 = 1500 * 1.2, pressure = 200 * 0.8
+                {"rpm": 1800, "airflow": 0.6, "pressure": 148, "efficiency_centre": 58},
+                {"rpm": 1800, "airflow": 1.2, "pressure": 112, "efficiency_centre": 65},
+                {"rpm": 2400, "airflow": 0.4, "pressure": 224, "efficiency_centre": 52},  # 2400 = 2000 * 1.2, pressure = 280 * 0.8
+                {"rpm": 2400, "airflow": 0.7, "pressure": 208, "efficiency_centre": 60},
+                {"rpm": 2400, "airflow": 1.3, "pressure": 160, "efficiency_centre": 67},
             ]
             for r in test_data_2:
                 db.add(MapPoint(fan_id=fan2.id, **r))
 
         db.commit()
         print("Seed done.")
-        print(f"Fan 1: {fan1.manufacturer} {fan1.model} (id={fan1.id})")
-        print(f"Fan 2: {fan2.manufacturer} {fan2.model} (id={fan2.id})")
+        print(f"Fan 1: {fan1.model} (id={fan1.id})")
+        print(f"Fan 2: {fan2.model} (id={fan2.id})")
     finally:
         db.close()
 

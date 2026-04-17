@@ -21,7 +21,11 @@ ENV DATABASE_URL=sqlite:////app/data/fans.db
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends \
+        fontconfig \
+        fonts-dejavu-core \
+        mariadb-client \
+        postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt /app/backend/requirements.txt

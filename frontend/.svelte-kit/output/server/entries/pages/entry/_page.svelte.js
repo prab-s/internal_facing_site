@@ -7,7 +7,7 @@ import "../../../chunks/root.js";
 import "../../../chunks/state.svelte.js";
 import { g as getFans, c as getChartTheme, t as theme, d as getRpmLines, e as getRpmPoints, f as getEfficiencyPoints, h as getFan, i as emptyFanForm } from "../../../chunks/api.js";
 import "echarts";
-import { b as buildFullChartOption, F as FULL_CHART_LINE_DEFINITIONS } from "../../../chunks/fullChart.js";
+import { b as buildFullChartOption, R as RPM_BAND_FALLBACK_COLORS, F as FULL_CHART_LINE_DEFINITIONS } from "../../../chunks/fullChart.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
@@ -23,8 +23,19 @@ function _page($$renderer, $$props) {
     let originalRpmPointIds = [];
     let originalEfficiencyPointIds = [];
     Promise.resolve();
+    function defaultGraphStyleForm() {
+      return {
+        band_graph_background_color: "#ffffff",
+        band_graph_label_text_color: "#000000"
+      };
+    }
+    let graphStyleForm = defaultGraphStyleForm();
     let fanForm = emptyFanForm();
-    let rpmPointForm = { rpm_line_id: "", flow: "", pressure: "" };
+    let rpmPointForm = { rpm_line_id: "", airflow: "", pressure: "" };
+    function normalizeOptionalColor(value) {
+      const normalized = String(value ?? "").trim();
+      return normalized || "";
+    }
     function applyRpmPointSort(points) {
       return points;
     }
@@ -45,12 +56,19 @@ function _page($$renderer, $$props) {
           getEfficiencyPoints(selectedFanId),
           getFan(selectedFanId)
         ]);
-        rpmLines = nextRpmLines;
+        rpmLines = nextRpmLines.map((line, index) => ({
+          ...line,
+          band_color: normalizeOptionalColor(line.band_color) || RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+        }));
         rpmPoints = applyRpmPointSort(nextRpmPoints);
         efficiencyPoints = nextEfficiencyPoints;
         originalRpmPointIds = nextRpmPoints.map((point) => point.id);
         originalEfficiencyPointIds = nextEfficiencyPoints.map((point) => point.id);
         currentFan = nextFan;
+        graphStyleForm = {
+          band_graph_background_color: normalizeOptionalColor(nextFan?.band_graph_background_color) || "#ffffff",
+          band_graph_label_text_color: normalizeOptionalColor(nextFan?.band_graph_label_text_color) || "#000000"
+        };
         productImages = currentFan.product_images || [];
         const validTargets = /* @__PURE__ */ new Set([
           ...nextRpmLines.map((line) => `rpm:${line.id}`),
@@ -79,16 +97,17 @@ function _page($$renderer, $$props) {
         showRpmBandShading: fanForm.show_rpm_band_shading,
         flowAxisMaxOverride: null,
         pressureAxisMaxOverride: null,
+        graphStyle: graphStyleForm,
         tooltip: {
           trigger: "item",
           formatter: (params) => {
             const rawValue = Array.isArray(params.value) ? params.value : params.value?.value;
-            const [flow, second] = rawValue || [];
+            const [airflow, second] = rawValue || [];
             const matchingDefinition = FULL_CHART_LINE_DEFINITIONS.find((definition) => definition.label === params.seriesName);
             if (matchingDefinition) {
-              return `${matchingDefinition.tooltipLabel}: ${second}<br/>flow: ${flow}`;
+              return `${matchingDefinition.tooltipLabel}: ${second}<br/>airflow: ${airflow}`;
             }
-            return `${params.seriesName}<br/>flow: ${flow}<br/>pressure: ${second}`;
+            return `${params.seriesName}<br/>airflow: ${airflow}<br/>pressure: ${second}`;
           }
         }
       });

@@ -44,8 +44,15 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE}
       CMS_API_TOKEN: ${CMS_API_TOKEN}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_DB_ROOT_PASSWORD: ${WORDPRESS_DB_ROOT_PASSWORD}
     volumes:
       - ./data:/app/data:Z
+      - fan_graphs_wordpress_data:/app/wordpress_site:Z
 
   wordpress_db:
     profiles: ["wordpress"]

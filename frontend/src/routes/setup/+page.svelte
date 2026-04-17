@@ -2,7 +2,19 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { auth } from '$lib/auth.js';
-  import { changePassword, createUser, getUsers, updateUser, updateUserPassword } from '$lib/api.js';
+  import {
+    changePassword,
+    createUser,
+    deleteAllGraphImages,
+    downloadBackupBundle,
+    getDatabaseMirrorStatus,
+    getUsers,
+    regenerateAllGraphImages,
+    restoreBackupBundle,
+    resyncPostgresMirror,
+    updateUser,
+    updateUserPassword
+  } from '$lib/api.js';
 
   let users = [];
   let usersLoaded = false;
@@ -22,16 +34,28 @@
   let newUsername = '';
   let newPassword = '';
   let newIsAdmin = false;
+  let maintenanceLoading = false;
+  let maintenanceError = '';
+  let maintenanceSuccess = '';
+  let mirrorStatus = null;
+  let backupFile = null;
 
   onMount(() => {
     const session = get(auth);
     if (session.authenticated) {
       loadUsers();
+      if (session.is_admin) {
+        loadMirrorStatus();
+      }
     }
   });
 
   $: if ($auth.authenticated && !usersLoaded && !loadingUsers) {
     loadUsers();
+  }
+
+  $: if ($auth.authenticated && $auth.is_admin && mirrorStatus == null && !maintenanceLoading) {
+    loadMirrorStatus();
   }
 
   async function loadUsers() {
@@ -136,6 +160,100 @@
       ownPasswordError = error?.message || 'Unable to update password.';
     } finally {
       savingOwnPassword = false;
+    }
+  }
+
+  async function loadMirrorStatus() {
+    maintenanceLoading = true;
+    maintenanceError = '';
+    try {
+      mirrorStatus = await getDatabaseMirrorStatus();
+    } catch (error) {
+      maintenanceError = error?.message || 'Unable to load maintenance status.';
+    } finally {
+      maintenanceLoading = false;
+    }
+  }
+
+  async function runMaintenance(action, options = {}) {
+    if (options.confirmMessage && !window.confirm(options.confirmMessage)) {
+      return;
+    }
+
+    maintenanceLoading = true;
+    maintenanceError = '';
+    maintenanceSuccess = '';
+    try {
+      const result = await action();
+      if (result?.mirror_enabled !== undefined) {
+        mirrorStatus = result;
+      } else {
+        await loadMirrorStatus();
+      }
+      maintenanceSuccess = result?.message || options.successMessage || 'Maintenance task completed.';
+    } catch (error) {
+      maintenanceError = error?.message || options.errorMessage || 'Unable to run maintenance task.';
+    } finally {
+      maintenanceLoading = false;
+    }
+  }
+
+  async function handleBackupDownload() {
+    maintenanceLoading = true;
+    maintenanceError = '';
+    maintenanceSuccess = '';
+    try {
+      const { blob, filename } = await downloadBackupBundle();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      maintenanceSuccess = `Backup bundle downloaded as ${filename}.`;
+    } catch (error) {
+      maintenanceError = error?.message || 'Unable to download backup bundle.';
+    } finally {
+      maintenanceLoading = false;
+    }
+  }
+
+  function handleBackupFileChange(event) {
+    backupFile = event.currentTarget?.files?.[0] || null;
+  }
+
+  async function handleBackupRestore() {
+    if (!backupFile) {
+      maintenanceError = 'Choose a backup ZIP file first.';
+      maintenanceSuccess = '';
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Restore this backup bundle? This will overwrite the current database and WordPress content with the uploaded backup.'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    maintenanceLoading = true;
+    maintenanceError = '';
+    maintenanceSuccess = '';
+    try {
+      const result = await restoreBackupBundle(backupFile);
+      backupFile = null;
+      const input = document.getElementById('backup-restore-file');
+      if (input) {
+        input.value = '';
+      }
+      await loadMirrorStatus();
+      maintenanceSuccess = result?.message || 'Backup bundle restored successfully.';
+    } catch (error) {
+      maintenanceError = error?.message || 'Unable to restore backup bundle.';
+    } finally {
+      maintenanceLoading = false;
     }
   }
 
@@ -307,6 +425,147 @@
               {savingUser ? 'Saving...' : 'Create User'}
             </button>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+      <div class="card shadow-sm h-100">
+        <div class="card-body bg-body-secondary bg-opacity-10">
+          <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p>
+          <h2 class="h4">Operational Tools</h2>
+          <p class="text-body-secondary">
+            Run special admin-only tasks that are otherwise only exposed through the API.
+          </p>
+
+          {#if maintenanceError}
+            <div class="alert alert-danger py-2">{maintenanceError}</div>
+          {/if}
+          {#if maintenanceSuccess}
+            <div class="alert alert-success py-2">{maintenanceSuccess}</div>
+          {/if}
+
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Postgres Mirror</h3>
+                  <p class="mb-2 text-body-secondary">
+                    The Postgres mirror is the PostgreSQL copy of the fan data. It is mainly there for the deployed
+                    environment, backups, and future migration away from the original source database. Refresh Status
+                    checks whether the mirror is enabled and compares record counts. Resync Postgres Mirror copies the
+                    current source data back into PostgreSQL.
+                  </p>
+                  {#if mirrorStatus}
+                    <p class="mb-1 text-body-secondary">{mirrorStatus.message}</p>
+                    <p class="mb-0 small text-body-secondary">
+                      Mirror enabled: {mirrorStatus.mirror_enabled ? 'Yes' : 'No'}
+                    </p>
+                  {:else}
+                    <p class="mb-0 text-body-secondary">
+                      {maintenanceLoading ? 'Loading status...' : 'Status not loaded yet.'}
+                    </p>
+                  {/if}
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-outline-secondary btn-sm" type="button" on:click={loadMirrorStatus} disabled={maintenanceLoading}>
+                    {maintenanceLoading ? 'Loading...' : 'Refresh Status'}
+                  </button>
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={() => runMaintenance(resyncPostgresMirror, { successMessage: 'Postgres mirror resynced.' })}
+                    disabled={maintenanceLoading}
+                  >
+                    Resync Postgres Mirror
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Backups</h3>
+                  <p class="mb-2 text-body-secondary">
+                    Download a full backup ZIP of the deployed data, or restore one here. The backup bundle includes
+                    the app database and media, plus the WordPress database and `wp-content`.
+                  </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={handleBackupDownload}
+                    disabled={maintenanceLoading}
+                  >
+                    Download Backup ZIP
+                  </button>
+                </div>
+              </div>
+
+              <div class="row g-2 align-items-end mt-1">
+                <div class="col-12 col-lg">
+                  <label class="form-label form-label-sm" for="backup-restore-file">Restore Backup ZIP</label>
+                  <input
+                    id="backup-restore-file"
+                    class="form-control form-control-sm"
+                    type="file"
+                    accept=".zip,application/zip"
+                    on:change={handleBackupFileChange}
+                    disabled={maintenanceLoading}
+                  />
+                </div>
+                <div class="col-12 col-lg-auto">
+                  <button
+                    class="btn btn-outline-danger btn-sm"
+                    type="button"
+                    on:click={handleBackupRestore}
+                    disabled={maintenanceLoading || !backupFile}
+                  >
+                    Restore Backup ZIP
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Graph Images</h3>
+                  <p class="mb-0 text-body-secondary">
+                    Rebuild all generated graph images, or clear them so they can be regenerated later.
+                  </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={() => runMaintenance(regenerateAllGraphImages, { successMessage: 'Graph images regenerated.' })}
+                    disabled={maintenanceLoading}
+                  >
+                    Regenerate Graph Images
+                  </button>
+                  <button
+                    class="btn btn-outline-danger btn-sm"
+                    type="button"
+                    on:click={() =>
+                      runMaintenance(deleteAllGraphImages, {
+                        confirmMessage: 'Delete all generated graph images and clear their saved paths?',
+                        successMessage: 'Graph images cleared.'
+                      })}
+                    disabled={maintenanceLoading}
+                  >
+                    Clear Graph Images
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

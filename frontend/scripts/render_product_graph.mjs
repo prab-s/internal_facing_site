@@ -44,7 +44,8 @@ async function main() {
     showRpmBandShading: payload.showRpmBandShading ?? true,
     clipRpmAreaToPermissibleUse: true,
     showSecondaryAxis: false,
-    tooltip: { show: false }
+    tooltip: { show: false },
+    graphStyle: payload.graphStyle ?? null
   });
 
   option.animation = false;

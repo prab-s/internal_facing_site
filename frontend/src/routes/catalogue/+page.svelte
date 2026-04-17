@@ -21,13 +21,17 @@
   let selectedIds = [];
   let showExtraColumns = false;
 
-  // Efficiency comparison (flow vs efficiency centre from map points)
+  // Efficiency comparison (airflow vs efficiency centre from map points)
   let effRawData = []; // [{ fan, points }]
   let effChartOption = {};
   let rpmRangeMin = null;
   let rpmRangeMax = null;
   let rpmFilterMin = null;
   let rpmFilterMax = null;
+  let airflowRangeMin = null;
+  let airflowRangeMax = null;
+  let airflowFilterMin = null;
+  let airflowFilterMax = null;
   let pressureRangeMin = null;
   let pressureRangeMax = null;
   let pressureFilterMin = null;
@@ -60,6 +64,21 @@
       return;
     }
 
+    if (kind === "airflow") {
+      if (edge === "min") {
+        airflowFilterMin =
+          normalizedValue == null
+            ? airflowRangeMin
+            : Math.min(normalizedValue, Number(airflowFilterMax));
+      } else {
+        airflowFilterMax =
+          normalizedValue == null
+            ? airflowRangeMax
+            : Math.max(normalizedValue, Number(airflowFilterMin));
+      }
+      return;
+    }
+
     if (kind === "pressure") {
       if (edge === "min") {
         pressureFilterMin =
@@ -79,26 +98,31 @@
   // Results-table filtering helper.
   // This uses FULL-CONTAINMENT logic:
   // a fan is kept only when the selected RPM band fully contains that fan's RPM range,
+  // the selected airflow band fully contains that fan's airflow range,
   // and the selected pressure band fully contains that fan's pressure range.
   function fanMatchesSelectedRanges(fan) {
     const range = fanRanges[fan.id];
-    if (!range || rpmFilterMin == null || pressureFilterMin == null)
+    if (!range || rpmFilterMin == null || airflowFilterMin == null || pressureFilterMin == null)
       return true;
 
     const rpmOverlaps =
       rpmFilterMin <= range.rpmMin && rpmFilterMax >= range.rpmMax;
 
+    const airflowOverlaps =
+      airflowFilterMin <= range.airflowMin &&
+      airflowFilterMax >= range.airflowMax;
+
     const pressureOverlaps =
       pressureFilterMin <= range.pressureMin &&
       pressureFilterMax >= range.pressureMax;
 
-    // console.log(`\n\nChecking fan ${fan.manufacturer} ${fan.model} (id ${fan.id})`);
+    // console.log(`\n\nChecking fan ${fan.model} (id ${fan.id})`);
     // console.log(`rpmOverlaps: ${rpmOverlaps}, pressureOverlaps: ${pressureOverlaps}\n\n`);
     // console.log(`range rpmMin: ${range.rpmMin}, rpmMax: ${range.rpmMax}`);
     // console.log(`range pressureMin: ${range.pressureMin}, pressureMax: ${range.pressureMax}\n\n`);
     // console.log(`filter rpmMin: ${rpmFilterMin}, rpmMax: ${rpmFilterMax}`);
     // console.log(`filter pressureMin: ${pressureFilterMin}, pressureMax: ${pressureFilterMax}\n---\n`);
-    return rpmOverlaps && pressureOverlaps;
+    return rpmOverlaps && airflowOverlaps && pressureOverlaps;
   }
 
   async function loadFans() {
@@ -121,6 +145,7 @@
   async function loadFanRanges() {
     fanRanges = {};
     rpmRangeMin = rpmRangeMax = null;
+    airflowRangeMin = airflowRangeMax = null;
     pressureRangeMin = pressureRangeMax = null;
 
     // Build each fan's full min/max envelope from its map points.
@@ -132,12 +157,17 @@
           const rpms = rpmPoints
             .map((p) => Number(p.rpm))
             .filter((v) => v != null && !Number.isNaN(v));
+          const airflows = rpmPoints
+            .map((p) => Number(p.airflow))
+            .filter((v) => v != null && !Number.isNaN(v));
           const pressures = rpmPoints
             .map((p) => Number(p.pressure))
             .filter((v) => v != null && !Number.isNaN(v));
           const range = {
             rpmMin: rpms.length ? Math.min(...rpms) : null,
             rpmMax: rpms.length ? Math.max(...rpms) : null,
+            airflowMin: airflows.length ? Math.min(...airflows) : null,
+            airflowMax: airflows.length ? Math.max(...airflows) : null,
             pressureMin: pressures.length ? Math.min(...pressures) : null,
             pressureMax: pressures.length ? Math.max(...pressures) : null,
           };
@@ -152,6 +182,16 @@
               rpmRangeMax == null
                 ? range.rpmMax
                 : Math.max(rpmRangeMax, range.rpmMax);
+          }
+          if (range.airflowMin != null) {
+            airflowRangeMin =
+              airflowRangeMin == null
+                ? range.airflowMin
+                : Math.min(airflowRangeMin, range.airflowMin);
+            airflowRangeMax =
+              airflowRangeMax == null
+                ? range.airflowMax
+                : Math.max(airflowRangeMax, range.airflowMax);
           }
           if (range.pressureMin != null) {
             pressureRangeMin =
@@ -172,6 +212,10 @@
     if (rpmRangeMin != null) {
       rpmFilterMin = rpmRangeMin;
       rpmFilterMax = rpmRangeMax;
+    }
+    if (airflowRangeMin != null) {
+      airflowFilterMin = airflowRangeMin;
+      airflowFilterMax = airflowRangeMax;
     }
     if (pressureRangeMin != null) {
       pressureFilterMin = pressureRangeMin;
@@ -235,11 +279,11 @@
       const filtered = points.filter((p) => p.efficiency_centre != null);
       if (!filtered.length) continue;
       series.push({
-        name: `${fan.manufacturer} ${fan.model}`,
+        name: fan.model,
         type: "line",
         smooth: true,
         data: filtered
-          .map((p) => [p.flow, p.efficiency_centre])
+          .map((p) => [p.airflow, p.efficiency_centre])
           .sort((a, b) => a[0] - b[0]),
         symbol: "circle",
         symbolSize: 6,
@@ -266,7 +310,9 @@
           grid: { left: "12%", right: "8%", top: "15%", bottom: "22%" },
           xAxis: {
             type: "value",
-            name: "Flow",
+            name: "Airflow (L/s)",
+            nameLocation: "middle",
+            nameGap: 30,
             nameTextStyle: { color: chartTheme.text },
             axisLabel: { color: chartTheme.text },
             splitLine: { lineStyle: { color: chartTheme.grid } },
@@ -289,6 +335,8 @@
     $theme,
     rpmFilterMin,
     rpmFilterMax,
+    airflowFilterMin,
+    airflowFilterMax,
     pressureFilterMin,
     pressureFilterMax)
   ) {
@@ -301,6 +349,8 @@
   $: {
     rpmFilterMin;
     rpmFilterMax;
+    airflowFilterMin;
+    airflowFilterMax;
     pressureFilterMin;
     pressureFilterMax;
     fanRanges;
@@ -334,14 +384,14 @@
         <h2 class="h5">Filters</h2>
         <div class="mb-3">
           <label class="form-label" for="catalogue-search"
-            >Search (manufacturer or model)</label
+            >Search (model)</label
           >
           <input
             class="form-control"
             id="catalogue-search"
             type="text"
             bind:value={search}
-            placeholder="e.g. Acme or AF-120"
+            placeholder="e.g. AF-120"
           />
         </div>
         <div class="row g-3">
@@ -377,7 +427,7 @@
           </div>
         </div>
 
-        {#if rpmRangeMin != null && pressureRangeMin != null}
+        {#if rpmRangeMin != null && airflowRangeMin != null && pressureRangeMin != null}
           <div class="row g-3 mt-1">
             <div class="col-12">
               <div class="border rounded p-3">
@@ -417,6 +467,49 @@
                   <div class="col-12">
                     <p class="small text-body-secondary mb-0">
                       Available range: {Math.round(Number(rpmRangeMin))} to {Math.round(Number(rpmRangeMax))}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="border rounded p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="fw-semibold">Airflow range</span>
+                  <span class="fw-semibold">
+                    {Math.round(Number(airflowFilterMin))} - {Math.round(Number(airflowFilterMax))}
+                  </span>
+                </div>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <label class="form-label" for="airflow-filter-min">Min Airflow</label>
+                    <input
+                      id="airflow-filter-min"
+                      class="form-control"
+                      type="number"
+                      step="5"
+                      min={airflowRangeMin}
+                      max={airflowRangeMax}
+                      value={airflowFilterMin}
+                      on:input={(event) => setRangeFilter("airflow", "min", event.currentTarget.value)}
+                    />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="airflow-filter-max">Max Airflow</label>
+                    <input
+                      id="airflow-filter-max"
+                      class="form-control"
+                      type="number"
+                      step="5"
+                      min={airflowRangeMin}
+                      max={airflowRangeMax}
+                      value={airflowFilterMax}
+                      on:input={(event) => setRangeFilter("airflow", "max", event.currentTarget.value)}
+                    />
+                  </div>
+                  <div class="col-12">
+                    <p class="small text-body-secondary mb-0">
+                      Available range: {Math.round(Number(airflowRangeMin))} to {Math.round(Number(airflowRangeMax))}
                     </p>
                   </div>
                 </div>
@@ -507,7 +600,6 @@
               <tr>
                 <th>Select</th>
                 <th>Image</th>
-                <th>Manufacturer</th>
                 <th>Model</th>
                 <th>Notes</th>
                 <th>Graph</th>
@@ -515,6 +607,7 @@
                   <th>Mounting Style</th>
                   <th>Discharge Type</th>
                   <th>RPM range</th>
+                  <th>Airflow range</th>
                   <th>Pressure range</th>
                 {/if}
               </tr>
@@ -536,13 +629,12 @@
                         class="img-fluid rounded border"
                         style="width: 140px; height: 100px; object-fit: cover;"
                         src={fan.primary_product_image_url}
-                        alt={`${fan.manufacturer} ${fan.model}`}
+                        alt={fan.model}
                       />
                     {:else}
                       <span class="text-body-secondary">No image</span>
                     {/if}
                   </td>
-                  <td>{fan.manufacturer}</td>
                   <td>{fan.model}</td>
                   <td>{fan.notes || "—"}</td>
                   <td>
@@ -563,6 +655,12 @@
                     >
                     <td
                       >{formatRange(
+                        fanRanges[fan.id]?.airflowMin,
+                        fanRanges[fan.id]?.airflowMax,
+                      )}</td
+                    >
+                    <td
+                      >{formatRange(
                         fanRanges[fan.id]?.pressureMin,
                         fanRanges[fan.id]?.pressureMax,
                       )}</td
@@ -575,7 +673,7 @@
         </div>
         {#if filteredFans.length === 0 && !loading}
           <p class="text-body-secondary">
-            No fans match the current filters. Try expanding the RPM/pressure
+            No fans match the current filters. Try expanding the RPM/airflow/pressure
             range or adjusting your search.
           </p>
         {/if}

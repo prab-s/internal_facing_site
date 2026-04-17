@@ -44,10 +44,14 @@ function _page($$renderer, $$props) {
         rpmPoints,
         efficiencyPoints,
         chartTheme,
-        title: currentFan ? `${currentFan.manufacturer} ${currentFan.model}` : "Fan Map",
+        title: currentFan ? currentFan.model : "Fan Map",
         clipRpmAreaToPermissibleUse: true,
         showRpmBandShading: currentFan?.show_rpm_band_shading ?? true,
-        showSecondaryAxis: false
+        showSecondaryAxis: false,
+        graphStyle: currentFan ? {
+          band_graph_background_color: currentFan.band_graph_background_color,
+          band_graph_label_text_color: currentFan.band_graph_label_text_color
+        } : null
       });
     }
     loadFans();
@@ -62,7 +66,7 @@ function _page($$renderer, $$props) {
         $$renderer4.push(`<title>Fan map — Fan Graphs</title>`);
       });
     });
-    $$renderer2.push(`<div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Single Fan View</p> <h1 class="h2 mb-2">Fan map</h1> <p class="text-body-secondary">Review one fan’s flow vs pressure map with RPM bands and efficiency or permissible overlays.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-3"><div class="vstack gap-3"><div class="card shadow-sm p-3"><h2 class="h5">Select fan</h2> <label class="form-label" for="map-fan-select">Fan record</label> `);
+    $$renderer2.push(`<div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Single Fan View</p> <h1 class="h2 mb-2">Fan map</h1> <p class="text-body-secondary">Review one fan’s airflow vs pressure map with RPM bands and efficiency or permissible overlays.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-3"><div class="vstack gap-3"><div class="card shadow-sm p-3"><h2 class="h5">Select fan</h2> <label class="form-label" for="map-fan-select">Fan record</label> `);
     $$renderer2.select(
       {
         class: "form-select",
@@ -79,7 +83,7 @@ function _page($$renderer, $$props) {
         for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
           let fan = each_array[$$index];
           $$renderer3.option({ value: fan.id }, ($$renderer4) => {
-            $$renderer4.push(`${escape_html(fan.manufacturer)} ${escape_html(fan.model)}`);
+            $$renderer4.push(`${escape_html(fan.model)}`);
           });
         }
         $$renderer3.push(`<!--]-->`);
@@ -96,7 +100,7 @@ function _page($$renderer, $$props) {
         efficiency lower and higher end in red, and permissible use in grey.</p></div></div></div> <div class="col-12 col-xl-9"><div class="vstack gap-3">`);
     if (selectedFanId) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="card shadow-sm p-3"><h2 class="h5">Flow vs pressure (RPM bands)</h2> <div class="mt-3">`);
+      $$renderer2.push(`<div class="card shadow-sm p-3"><h2 class="h5">Airflow vs pressure (RPM bands)</h2> <div class="mt-3">`);
       ECharts($$renderer2, { option: chartOption, height: "750px" });
       $$renderer2.push(`<!----></div></div> `);
       if (selectedFanId && rpmPoints.length === 0 && efficiencyPoints.length === 0 && !loading) {

@@ -105,6 +105,15 @@ export async function createRpmLine(fanId, body) {
   return r.json();
 }
 
+export async function updateRpmLine(fanId, lineId, body) {
+  const r = await apiFetch(`/fans/${fanId}/rpm-lines/${lineId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
 export async function deleteRpmLine(fanId, lineId) {
   const r = await apiFetch(`/fans/${fanId}/rpm-lines/${lineId}`, { method: 'DELETE' });
   return r.json();
@@ -257,6 +266,53 @@ export async function reorderProductImages(fanId, imageIds) {
 export async function deleteProductImage(fanId, imageId) {
   const r = await apiFetch(`/fans/${fanId}/product-images/${imageId}`, {
     method: 'DELETE'
+  });
+  return r.json();
+}
+
+export async function getDatabaseMirrorStatus() {
+  const r = await apiFetch('/maintenance/databases/mirror-status');
+  return r.json();
+}
+
+export async function resyncPostgresMirror() {
+  const r = await apiFetch('/maintenance/databases/resync-postgres', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function regenerateAllGraphImages() {
+  const r = await apiFetch('/maintenance/graph-images/regenerate-all', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function deleteAllGraphImages() {
+  const r = await apiFetch('/maintenance/graph-images', {
+    method: 'DELETE'
+  });
+  return r.json();
+}
+
+export async function downloadBackupBundle() {
+  const r = await apiFetch('/maintenance/backups/download');
+  const blob = await r.blob();
+  const disposition = r.headers.get('content-disposition') || '';
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return {
+    blob,
+    filename: filenameMatch?.[1] || 'fan_graphs_backup.zip'
+  };
+}
+
+export async function restoreBackupBundle(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await apiFetch('/maintenance/backups/restore', {
+    method: 'POST',
+    body: formData
   });
   return r.json();
 }

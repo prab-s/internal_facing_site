@@ -2,17 +2,18 @@
 Pydantic schemas for request/response validation.
 """
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 # --- Fan ---
 class FanBase(BaseModel):
-    manufacturer: str
     model: str
     notes: Optional[str] = None
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
     show_rpm_band_shading: bool = True
+    band_graph_background_color: Optional[str] = None
+    band_graph_label_text_color: Optional[str] = None
     diameter_mm: Optional[float] = None
     max_rpm: Optional[float] = None
 
@@ -22,12 +23,13 @@ class FanCreate(FanBase):
 
 
 class FanUpdate(BaseModel):
-    manufacturer: Optional[str] = None
     model: Optional[str] = None
     notes: Optional[str] = None
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
     show_rpm_band_shading: Optional[bool] = None
+    band_graph_background_color: Optional[str] = None
+    band_graph_label_text_color: Optional[str] = None
     diameter_mm: Optional[float] = None
     max_rpm: Optional[float] = None
 
@@ -38,30 +40,39 @@ class FanResponse(FanBase):
     primary_product_image_url: Optional[str] = None
     product_images: list["ProductImageResponse"] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- RPM lines / points ---
 class RpmLineBase(BaseModel):
     rpm: float
+    band_color: Optional[str] = None
 
 
 class RpmLineCreate(RpmLineBase):
     pass
 
 
+class RpmLineUpdate(BaseModel):
+    rpm: Optional[float] = None
+    band_color: Optional[str] = None
+
+
 class RpmLineResponse(RpmLineBase):
     id: int
     fan_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RpmPointBase(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     rpm_line_id: int
-    flow: float
+    airflow: float = Field(
+        ...,
+        validation_alias=AliasChoices("airflow", "flow"),
+        serialization_alias="airflow",
+    )
     pressure: float
 
 
@@ -74,13 +85,17 @@ class RpmPointResponse(RpmPointBase):
     fan_id: int
     rpm: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 # --- Efficiency points ---
 class EfficiencyPointBase(BaseModel):
-    flow: float
+    model_config = ConfigDict(populate_by_name=True)
+    airflow: float = Field(
+        ...,
+        validation_alias=AliasChoices("airflow", "flow"),
+        serialization_alias="airflow",
+    )
     efficiency_centre: Optional[float] = None
     efficiency_lower_end: Optional[float] = None
     efficiency_higher_end: Optional[float] = None
@@ -95,8 +110,7 @@ class EfficiencyPointResponse(EfficiencyPointBase):
     id: int
     fan_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ProductImageResponse(BaseModel):
@@ -106,8 +120,7 @@ class ProductImageResponse(BaseModel):
     sort_order: int
     url: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProductImageReorder(BaseModel):
@@ -126,6 +139,13 @@ class DatabaseMirrorStatusResponse(BaseModel):
     sqlite_counts: dict[str, int] = Field(default_factory=dict)
     postgres_counts: dict[str, int] = Field(default_factory=dict)
     count_differences: dict[str, int] = Field(default_factory=dict)
+
+
+class BandGraphStyleSettings(BaseModel):
+    band_graph_background_color: Optional[str] = None
+    band_graph_label_text_color: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LoginRequest(BaseModel):
@@ -165,13 +185,11 @@ class UserResponse(BaseModel):
     is_admin: bool
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CmsFanResponse(BaseModel):
     id: int
-    manufacturer: str
     model: str
     notes: Optional[str] = None
     mounting_style: Optional[str] = None
@@ -181,8 +199,7 @@ class CmsFanResponse(BaseModel):
     graph_image_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 FanResponse.model_rebuild()
