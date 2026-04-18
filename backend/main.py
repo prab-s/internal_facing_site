@@ -21,25 +21,31 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-from sqlalchemy import inspect, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload, joinedload
 
 from backend.database import (
     DEFAULT_DATA_DIR,
     SessionLocal,
     get_db,
     init_db,
-    is_mirror_enabled,
-    mirror_db_session,
 )
-from backend.models import Fan, RpmLine, RpmPoint, EfficiencyPoint, ProductImage, User
+from backend.models import (
+    Product,
+    RpmLine,
+    RpmPoint,
+    EfficiencyPoint,
+    ProductImage,
+    ProductType,
+    ProductParameterGroup,
+    ProductParameter,
+    User,
+)
 from backend.models import AppSettings
 from backend.schemas import (
     BandGraphStyleSettings,
-    DatabaseMirrorStatusResponse,
-    FanCreate,
-    FanUpdate,
-    FanResponse,
+    ProductCreate,
+    ProductUpdate,
+    ProductResponse,
     GraphImageMaintenanceResponse,
     RpmLineCreate,
     RpmLineUpdate,
@@ -50,7 +56,7 @@ from backend.schemas import (
     EfficiencyPointResponse,
     AuthSessionResponse,
     AuthPasswordChangeRequest,
-    CmsFanResponse,
+    CmsProductResponse,
     LoginRequest,
     UserCreate,
     UserPasswordUpdate,
@@ -58,6 +64,7 @@ from backend.schemas import (
     UserUpdate,
     ProductImageResponse,
     ProductImageReorder,
+    ProductTypeResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -92,19 +99,19 @@ def sanitize_name(value: str) -> str:
     return cleaned or "unknown"
 
 
-def fan_slug(fan: Fan) -> str:
-    return sanitize_name(fan.model)
+def product_slug(product: Product) -> str:
+    return sanitize_name(product.model)
 
 
-def product_image_file_name(fan: Fan, index: int, extension: str) -> str:
+def product_image_file_name(product: Product, index: int, extension: str) -> str:
     ext = extension.lower()
     if not ext.startswith("."):
         ext = f".{ext}"
-    return f"pic_{fan_slug(fan)}_{index}{ext}"
+    return f"pic_{product_slug(product)}_{index}{ext}"
 
 
-def graph_file_name(fan: Fan) -> str:
-    return f"graph_{fan_slug(fan)}.png"
+def graph_file_name(product: Product) -> str:
+    return f"graph_{product_slug(product)}.png"
 
 
 def image_file_path(file_name: str) -> Path:
@@ -127,6 +134,79 @@ def normalize_color_value(value: str | None) -> str | None:
     return stripped or None
 
 
+def get_product_type_by_key(db: Session, product_type_key: str | None) -> ProductType:
+    desired_key = (product_type_key or "fan").strip() or "fan"
+    product_type = db.query(ProductType).filter(ProductType.key == desired_key).first()
+    if product_type is None:
+        raise HTTPException(status_code=400, detail=f"Unknown product type: {desired_key}")
+    return product_type
+
+
+def sync_product_parameter_groups(product: Product, groups_payload: list[dict]):
+    normalized_groups: list[dict] = []
+    for group_index, group in enumerate(groups_payload or []):
+        group_name = str(group.get("group_name", "")).strip()
+        if not group_name:
+            raise HTTPException(status_code=400, detail="Each parameter group must have a name.")
+
+        seen_parameter_names: set[str] = set()
+        normalized_parameters: list[dict] = []
+        for parameter_index, parameter in enumerate(group.get("parameters") or []):
+            parameter_name = str(parameter.get("parameter_name", "")).strip()
+            if not parameter_name:
+                raise HTTPException(status_code=400, detail=f"Each parameter in '{group_name}' must have a name.")
+            if parameter_name.lower() in seen_parameter_names:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parameter names must be unique within '{group_name}'.",
+                )
+            seen_parameter_names.add(parameter_name.lower())
+
+            raw_value_string = parameter.get("value_string")
+            value_string = None if raw_value_string is None else str(raw_value_string).strip() or None
+            value_number = parameter.get("value_number")
+            unit = None if parameter.get("unit") is None else str(parameter.get("unit")).strip() or None
+
+            if value_string is not None and value_number is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parameter '{parameter_name}' in '{group_name}' cannot have both text and numeric values.",
+                )
+            if value_string is not None and unit is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parameter '{parameter_name}' in '{group_name}' cannot have a unit without a numeric value.",
+                )
+
+            normalized_parameters.append(
+                {
+                    "parameter_name": parameter_name,
+                    "sort_order": parameter_index,
+                    "value_string": value_string,
+                    "value_number": None if value_number is None else float(value_number),
+                    "unit": unit,
+                }
+            )
+
+        normalized_groups.append(
+            {
+                "group_name": group_name,
+                "sort_order": group_index,
+                "parameters": normalized_parameters,
+            }
+        )
+
+    product.parameter_groups.clear()
+    for group_data in normalized_groups:
+        group = ProductParameterGroup(
+            group_name=group_data["group_name"],
+            sort_order=group_data["sort_order"],
+        )
+        for parameter_data in group_data["parameters"]:
+            group.parameters.append(ProductParameter(**parameter_data))
+        product.parameter_groups.append(group)
+
+
 def get_or_create_app_settings(db: Session) -> AppSettings:
     settings = db.get(AppSettings, 1)
     if settings is None:
@@ -136,8 +216,8 @@ def get_or_create_app_settings(db: Session) -> AppSettings:
     return settings
 
 
-def sync_product_image_files(fan: Fan):
-    ordered_images = sorted(fan.product_images, key=lambda image: (image.sort_order, image.id))
+def sync_product_image_files(product: Product):
+    ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
     temp_paths = {}
 
     for image in ordered_images:
@@ -149,7 +229,7 @@ def sync_product_image_files(fan: Fan):
 
     for index, image in enumerate(ordered_images, start=1):
         suffix = Path(image.file_name).suffix or ".jpg"
-        final_name = product_image_file_name(fan, index, suffix)
+        final_name = product_image_file_name(product, index, suffix)
         final_path = image_file_path(final_name)
         temp_path = temp_paths.get(image.id)
         if temp_path and temp_path.exists():
@@ -164,38 +244,160 @@ def delete_product_image_file(image: ProductImage):
     remove_file(image_file_path(image.file_name))
 
 
-def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list[EfficiencyPoint]):
+def build_graph_config(product_type: ProductType | None) -> dict:
+    return {
+        "graph_kind": product_type.graph_kind if product_type else "fan_map",
+        "supports_graph_overlays": product_type.supports_graph_overlays if product_type else True,
+        "supports_band_graph_style": product_type.supports_band_graph_style if product_type else True,
+        "graph_line_value_label": product_type.graph_line_value_label if product_type else "RPM",
+        "graph_line_value_unit": product_type.graph_line_value_unit if product_type else "RPM",
+        "graph_x_axis_label": product_type.graph_x_axis_label if product_type else "Airflow",
+        "graph_x_axis_unit": product_type.graph_x_axis_unit if product_type else "L/s",
+        "graph_y_axis_label": product_type.graph_y_axis_label if product_type else "Pressure",
+        "graph_y_axis_unit": product_type.graph_y_axis_unit if product_type else "Pa",
+    }
+
+
+def parse_parameter_filters(raw_filters: str | None) -> list[dict]:
+    if not raw_filters:
+        return []
+
+    try:
+        decoded = json.loads(raw_filters)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid parameter_filters JSON: {exc.msg}") from exc
+
+    if not isinstance(decoded, list):
+        raise HTTPException(status_code=400, detail="parameter_filters must be a JSON array")
+
+    normalized_filters: list[dict] = []
+    for item in decoded:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="Each parameter filter must be an object")
+
+        group_name = str(item.get("group_name", "")).strip()
+        parameter_name = str(item.get("parameter_name", "")).strip()
+        value_string = item.get("value_string")
+        min_number = item.get("min_number")
+        max_number = item.get("max_number")
+
+        if not group_name or not parameter_name:
+            raise HTTPException(status_code=400, detail="Each parameter filter must include group_name and parameter_name")
+
+        try:
+            normalized = {
+                "group_name": group_name,
+                "parameter_name": parameter_name,
+                "value_string": str(value_string).strip() if value_string not in {None, ""} else None,
+                "min_number": float(min_number) if min_number not in {None, ""} else None,
+                "max_number": float(max_number) if max_number not in {None, ""} else None,
+            }
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="parameter_filters numeric bounds must be valid numbers") from exc
+
+        if normalized["value_string"] is None and normalized["min_number"] is None and normalized["max_number"] is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Each parameter filter must include value_string or at least one numeric bound",
+            )
+
+        if (
+            normalized["min_number"] is not None and
+            normalized["max_number"] is not None and
+            normalized["min_number"] > normalized["max_number"]
+        ):
+            raise HTTPException(status_code=400, detail="parameter_filters numeric min cannot be greater than max")
+
+        normalized_filters.append(normalized)
+
+    return normalized_filters
+
+
+def product_matches_parameter_filters(product: Product, parameter_filters: list[dict]) -> bool:
+    if not parameter_filters:
+        return True
+
+    grouped_parameters: dict[tuple[str, str], list[ProductParameter]] = {}
+    for group in product.parameter_groups:
+        group_name = (group.group_name or "").strip().casefold()
+        for parameter in group.parameters:
+            parameter_name = (parameter.parameter_name or "").strip().casefold()
+            grouped_parameters.setdefault((group_name, parameter_name), []).append(parameter)
+
+    for filter_item in parameter_filters:
+        filter_key = (
+            filter_item["group_name"].strip().casefold(),
+            filter_item["parameter_name"].strip().casefold(),
+        )
+        matching_parameters = grouped_parameters.get(filter_key, [])
+        if not matching_parameters:
+            return False
+
+        value_string = filter_item.get("value_string")
+        min_number = filter_item.get("min_number")
+        max_number = filter_item.get("max_number")
+
+        matched = False
+        for parameter in matching_parameters:
+            if value_string is not None:
+                if (parameter.value_string or "").strip().casefold() == value_string.casefold():
+                    matched = True
+                    break
+                continue
+
+            if parameter.value_number is None:
+                continue
+
+            if min_number is not None and parameter.value_number < min_number:
+                continue
+            if max_number is not None and parameter.value_number > max_number:
+                continue
+
+            matched = True
+            break
+
+        if not matched:
+            return False
+
+    return True
+
+
+fan_matches_parameter_filters = product_matches_parameter_filters
+
+
+def sync_graph_image(product: Product, rpm_lines: list[RpmLine], efficiency_points: list[EfficiencyPoint]):
     rpm_point_list = sorted(
         [point for rpm_line in rpm_lines for point in rpm_line.points],
         key=lambda point: (point.rpm or 0, point.airflow),
     )
     efficiency_point_list = sorted(efficiency_points, key=lambda point: point.airflow)
-    previous_path = Path(fan.graph_image_path) if fan.graph_image_path else None
+    previous_path = Path(product.graph_image_path) if product.graph_image_path else None
 
     if not rpm_point_list and not efficiency_point_list:
         if previous_path:
             remove_file(previous_path)
-        fan.graph_image_path = None
+        product.graph_image_path = None
         return
 
-    final_path = PRODUCT_GRAPHS_DIR / graph_file_name(fan)
-    tmp_path = PRODUCT_GRAPHS_DIR / f"tmp_{graph_file_name(fan)}"
+    final_path = PRODUCT_GRAPHS_DIR / graph_file_name(product)
+    tmp_path = PRODUCT_GRAPHS_DIR / f"tmp_{graph_file_name(product)}"
     if tmp_path.exists():
         tmp_path.unlink()
 
     payload = {
-        "title": f"{fan.model} Fan Map",
-        "showRpmBandShading": fan.show_rpm_band_shading,
+        "title": f"{product.model} Product Graph",
+        "showRpmBandShading": product.show_rpm_band_shading,
+        "graphConfig": build_graph_config(product.product_type),
         "graphStyle": {
-            "band_graph_background_color": fan.band_graph_background_color,
-            "band_graph_label_text_color": fan.band_graph_label_text_color,
-            "band_graph_faded_opacity": fan.band_graph_faded_opacity,
-            "band_graph_permissible_label_color": fan.band_graph_permissible_label_color,
+            "band_graph_background_color": product.band_graph_background_color,
+            "band_graph_label_text_color": product.band_graph_label_text_color,
+            "band_graph_faded_opacity": product.band_graph_faded_opacity,
+            "band_graph_permissible_label_color": product.band_graph_permissible_label_color,
         },
         "rpmLines": [
             {
                 "id": line.id,
-                "fan_id": line.fan_id,
+                "product_id": line.product_id,
                 "rpm": line.rpm,
                 "band_color": line.band_color,
             }
@@ -204,7 +406,7 @@ def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list
         "rpmPoints": [
             {
                 "id": point.id,
-                "fan_id": point.fan_id,
+                "product_id": point.product_id,
                 "rpm_line_id": point.rpm_line_id,
                 "rpm": point.rpm,
                 "airflow": point.airflow,
@@ -215,7 +417,7 @@ def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list
         "efficiencyPoints": [
             {
                 "id": point.id,
-                "fan_id": point.fan_id,
+                "product_id": point.product_id,
                 "airflow": point.airflow,
                 "efficiency_centre": point.efficiency_centre,
                 "efficiency_lower_end": point.efficiency_lower_end,
@@ -243,19 +445,19 @@ def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list
     if previous_path and previous_path != final_path:
         remove_file(previous_path)
     shutil.move(tmp_path, final_path)
-    fan.graph_image_path = str(final_path)
+    product.graph_image_path = str(final_path)
 
 
-def delete_fan_assets(fan: Fan):
-    for image in fan.product_images:
+def delete_product_assets(product: Product):
+    for image in product.product_images:
         delete_product_image_file(image)
-    if fan.graph_image_path:
-        remove_file(fan.graph_image_path)
+    if product.graph_image_path:
+        remove_file(product.graph_image_path)
 
 
-def refresh_graph_for_fan(db: Session, fan: Fan):
-    db.refresh(fan)
-    sync_graph_image(fan, list(fan.rpm_lines), list(fan.efficiency_points))
+def refresh_graph_for_product(db: Session, product: Product):
+    db.refresh(product)
+    sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
 
 
 def clear_all_graph_images(db: Session) -> int:
@@ -266,250 +468,20 @@ def clear_all_graph_images(db: Session) -> int:
         graph_file.unlink(missing_ok=True)
         deleted_files += 1
 
-    for fan in db.query(Fan).all():
-        fan.graph_image_path = None
+    for product in db.query(Product).all():
+        product.graph_image_path = None
 
     return deleted_files
 
 
-def _copy_fan_fields(source: Fan, target: Fan):
-    target.model = source.model
-    target.notes = source.notes
-    target.mounting_style = source.mounting_style
-    target.discharge_type = source.discharge_type
-    target.graph_image_path = source.graph_image_path
-    target.show_rpm_band_shading = source.show_rpm_band_shading
-    target.band_graph_background_color = source.band_graph_background_color
-    target.band_graph_label_text_color = source.band_graph_label_text_color
-    target.band_graph_faded_opacity = source.band_graph_faded_opacity
-    target.band_graph_permissible_label_color = source.band_graph_permissible_label_color
-    target.diameter_mm = source.diameter_mm
-    target.max_rpm = source.max_rpm
+def require_product(db: Session, product_id: int) -> Product:
+    product = db.get(Product, product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    return product
 
 
-def _sync_postgres_sequences(db: Session):
-    if db.bind.dialect.name != "postgresql":
-        return
-
-    for table_name in ["fans", "rpm_lines", "rpm_points", "efficiency_points", "product_images"]:
-        db.execute(
-            text(
-                f"""
-                SELECT setval(
-                    pg_get_serial_sequence('{table_name}', 'id'),
-                    COALESCE((SELECT MAX(id) FROM {table_name}), 1),
-                    (SELECT COUNT(*) > 0 FROM {table_name})
-                )
-                """
-            )
-        )
-
-
-def mirror_fan_to_postgres(fan_id: int):
-    if not is_mirror_enabled():
-        return
-
-    with SessionLocal() as source_db, mirror_db_session() as mirror_db:
-        if mirror_db is None:
-            return
-
-        source_fan = source_db.get(Fan, fan_id)
-        mirror_fan = mirror_db.get(Fan, fan_id)
-
-        if source_fan is None:
-            if mirror_fan is not None:
-                mirror_db.delete(mirror_fan)
-                mirror_db.commit()
-            return
-
-        if mirror_fan is None:
-            mirror_fan = Fan(id=fan_id)
-            mirror_db.add(mirror_fan)
-
-        _copy_fan_fields(source_fan, mirror_fan)
-        mirror_db.flush()
-
-        source_rpm_lines = (
-            source_db.query(RpmLine).filter(RpmLine.fan_id == fan_id).order_by(RpmLine.id).all()
-        )
-        mirror_rpm_lines = {line.id: line for line in mirror_db.query(RpmLine).filter(RpmLine.fan_id == fan_id).all()}
-        source_rpm_line_ids = {line.id for line in source_rpm_lines}
-
-        for source_line in source_rpm_lines:
-            mirror_line = mirror_rpm_lines.get(source_line.id)
-            if mirror_line is None:
-                mirror_line = RpmLine(id=source_line.id, fan_id=fan_id)
-                mirror_db.add(mirror_line)
-            mirror_line.fan_id = fan_id
-            mirror_line.rpm = source_line.rpm
-            mirror_line.band_color = source_line.band_color
-
-        for mirror_line_id, mirror_line in mirror_rpm_lines.items():
-            if mirror_line_id not in source_rpm_line_ids:
-                mirror_db.delete(mirror_line)
-
-        source_rpm_points = (
-            source_db.query(RpmPoint).filter(RpmPoint.fan_id == fan_id).order_by(RpmPoint.id).all()
-        )
-        mirror_rpm_points = {point.id: point for point in mirror_db.query(RpmPoint).filter(RpmPoint.fan_id == fan_id).all()}
-        source_rpm_point_ids = {point.id for point in source_rpm_points}
-
-        for source_point in source_rpm_points:
-            mirror_point = mirror_rpm_points.get(source_point.id)
-            if mirror_point is None:
-                mirror_point = RpmPoint(id=source_point.id, fan_id=fan_id)
-                mirror_db.add(mirror_point)
-            mirror_point.fan_id = fan_id
-            mirror_point.rpm_line_id = source_point.rpm_line_id
-            mirror_point.airflow = source_point.airflow
-            mirror_point.pressure = source_point.pressure
-
-        for mirror_point_id, mirror_point in mirror_rpm_points.items():
-            if mirror_point_id not in source_rpm_point_ids:
-                mirror_db.delete(mirror_point)
-
-        source_efficiency_points = (
-            source_db.query(EfficiencyPoint)
-            .filter(EfficiencyPoint.fan_id == fan_id)
-            .order_by(EfficiencyPoint.id)
-            .all()
-        )
-        mirror_efficiency_points = {
-            point.id: point
-            for point in mirror_db.query(EfficiencyPoint).filter(EfficiencyPoint.fan_id == fan_id).all()
-        }
-        source_efficiency_point_ids = {point.id for point in source_efficiency_points}
-
-        for source_point in source_efficiency_points:
-            mirror_point = mirror_efficiency_points.get(source_point.id)
-            if mirror_point is None:
-                mirror_point = EfficiencyPoint(id=source_point.id, fan_id=fan_id)
-                mirror_db.add(mirror_point)
-            mirror_point.fan_id = fan_id
-            mirror_point.airflow = source_point.airflow
-            mirror_point.efficiency_centre = source_point.efficiency_centre
-            mirror_point.efficiency_lower_end = source_point.efficiency_lower_end
-            mirror_point.efficiency_higher_end = source_point.efficiency_higher_end
-            mirror_point.permissible_use = source_point.permissible_use
-
-        for mirror_point_id, mirror_point in mirror_efficiency_points.items():
-            if mirror_point_id not in source_efficiency_point_ids:
-                mirror_db.delete(mirror_point)
-
-        source_product_images = (
-            source_db.query(ProductImage).filter(ProductImage.fan_id == fan_id).order_by(ProductImage.id).all()
-        )
-        mirror_product_images = {
-            image.id: image
-            for image in mirror_db.query(ProductImage).filter(ProductImage.fan_id == fan_id).all()
-        }
-        source_product_image_ids = {image.id for image in source_product_images}
-
-        for source_image in source_product_images:
-            mirror_image = mirror_product_images.get(source_image.id)
-            if mirror_image is None:
-                mirror_image = ProductImage(id=source_image.id, fan_id=fan_id)
-                mirror_db.add(mirror_image)
-            mirror_image.fan_id = fan_id
-            mirror_image.file_name = source_image.file_name
-            mirror_image.sort_order = source_image.sort_order
-
-        for mirror_image_id, mirror_image in mirror_product_images.items():
-            if mirror_image_id not in source_product_image_ids:
-                mirror_db.delete(mirror_image)
-
-        mirror_db.flush()
-        _sync_postgres_sequences(mirror_db)
-        mirror_db.commit()
-
-
-def sync_all_data_to_postgres():
-    if not is_mirror_enabled():
-        return
-
-    with SessionLocal() as source_db, mirror_db_session() as mirror_db:
-        source_tables = set(inspect(source_db.bind).get_table_names())
-        mirror_tables = set(inspect(mirror_db.bind).get_table_names())
-
-        if "users" in source_tables and "users" in mirror_tables:
-            source_users = source_db.query(User).order_by(User.id).all()
-            mirror_users = {user.id: user for user in mirror_db.query(User).all()}
-            source_user_ids = {user.id for user in source_users}
-
-            for source_user in source_users:
-                mirror_user = mirror_users.get(source_user.id)
-                if mirror_user is None:
-                    mirror_user = User(id=source_user.id)
-                    mirror_db.add(mirror_user)
-                mirror_user.username = source_user.username
-                mirror_user.password_hash = source_user.password_hash
-                mirror_user.is_admin = source_user.is_admin
-                mirror_user.is_active = source_user.is_active
-
-            for mirror_user_id, mirror_user in mirror_users.items():
-                if mirror_user_id not in source_user_ids:
-                    mirror_db.delete(mirror_user)
-
-            mirror_db.commit()
-
-        if "app_settings" in source_tables and "app_settings" in mirror_tables:
-            source_settings = source_db.get(AppSettings, 1)
-            mirror_settings = mirror_db.get(AppSettings, 1)
-
-            if source_settings is None:
-                if mirror_settings is not None:
-                    mirror_db.delete(mirror_settings)
-            else:
-                if mirror_settings is None:
-                    mirror_settings = AppSettings(id=1)
-                    mirror_db.add(mirror_settings)
-                mirror_settings.band_graph_background_color = source_settings.band_graph_background_color
-                mirror_settings.band_graph_label_text_color = source_settings.band_graph_label_text_color
-
-            mirror_db.commit()
-
-    with SessionLocal() as db:
-        fan_ids = [fan_id for (fan_id,) in db.query(Fan.id).all()]
-
-    for fan_id in fan_ids:
-        mirror_fan_to_postgres(fan_id)
-
-
-def sync_all_data_to_postgres_safely():
-    if not is_mirror_enabled():
-        return
-    try:
-        sync_all_data_to_postgres()
-    except Exception:
-        logger.exception("Postgres mirror full sync failed")
-
-
-def mirror_fan_to_postgres_safely(fan_id: int):
-    if not is_mirror_enabled():
-        return
-    try:
-        mirror_fan_to_postgres(fan_id)
-    except Exception:
-        logger.exception("Postgres mirror sync failed for fan_id=%s", fan_id)
-
-
-def get_database_counts(db: Session) -> dict[str, int]:
-    return {
-        "app_settings": db.query(AppSettings).count(),
-        "users": db.query(User).count(),
-        "fans": db.query(Fan).count(),
-        "rpm_lines": db.query(RpmLine).count(),
-        "rpm_points": db.query(RpmPoint).count(),
-        "efficiency_points": db.query(EfficiencyPoint).count(),
-        "product_images": db.query(ProductImage).count(),
-    }
-
-
-def require_fan(db: Session, fan_id: int) -> Fan:
-    fan = db.get(Fan, fan_id)
-    if not fan:
-        raise HTTPException(404, "Fan not found")
-    return fan
+require_fan = require_product
 
 
 def hash_password(password: str) -> str:
@@ -674,7 +646,7 @@ def create_backup_bundle() -> Path:
         readme.write_text(
             "\n".join(
                 [
-                    "Fan Graphs backup bundle",
+                    "Internal Facing backup bundle",
                     "Generated by the admin maintenance API.",
                     "",
                     "Contents:",
@@ -791,20 +763,24 @@ OPENAPI_TAGS = [
         "description": "Read-only customer-facing CMS endpoints secured by the CMS bearer token.",
     },
     {
-        "name": "Fans",
-        "description": "Fan catalogue CRUD endpoints for the internal app.",
+        "name": "Products",
+        "description": "Product catalogue CRUD endpoints for the internal app.",
+    },
+    {
+        "name": "Product Types",
+        "description": "Product type definitions and seeded parameter preset libraries.",
     },
     {
         "name": "RPM Lines",
-        "description": "RPM line management for a fan.",
+        "description": "RPM line management for a graph-capable product.",
     },
     {
         "name": "RPM Points",
-        "description": "RPM curve point management for a fan.",
+        "description": "RPM curve point management for a graph-capable product.",
     },
     {
         "name": "Efficiency Points",
-        "description": "Efficiency curve point management for a fan.",
+        "description": "Efficiency curve point management for a graph-capable product.",
     },
     {
         "name": "Product Images",
@@ -821,9 +797,9 @@ OPENAPI_TAGS = [
 ]
 
 app = FastAPI(
-    title="Fan Graphs API",
+    title="Internal Facing API",
     description=(
-        "Internal API for the Fan Graphs application.\n\n"
+        "Internal API for the Internal Facing application.\n\n"
         "Endpoints tagged `Public` do not require the staff session cookie.\n"
         "Endpoints tagged `CMS` do not use the staff session cookie either; they require the CMS bearer token instead."
     ),
@@ -859,7 +835,6 @@ def startup():
     ensure_auth_config()
     init_db()
     ensure_bootstrap_admin()
-    sync_all_data_to_postgres_safely()
 
 
 # --- Health ---
@@ -875,7 +850,12 @@ def openapi_schema():
 
 @app.get("/docs", include_in_schema=False, dependencies=[Depends(get_current_user)])
 def swagger_ui():
-    return get_swagger_ui_html(openapi_url="/openapi.json", title="Fan Graphs API Docs")
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="Internal Facing API Docs")
+
+
+@app.get("/api/product-types", response_model=list[ProductTypeResponse], dependencies=[Depends(get_current_user)], tags=["Product Types"])
+def list_product_types(db: Session = Depends(get_db)):
+    return db.query(ProductType).order_by(ProductType.label).all()
 
 
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
@@ -1000,145 +980,184 @@ def update_band_graph_style_settings(body: BandGraphStyleSettings, db: Session =
     settings.band_graph_label_text_color = normalize_color_value(body.band_graph_label_text_color)
     db.commit()
     db.refresh(settings)
-    sync_all_data_to_postgres_safely()
     return settings
 
 
-@app.get("/api/cms/fans", response_model=list[CmsFanResponse], dependencies=[Depends(require_cms_token)], tags=["CMS"])
-def list_cms_fans(
+@app.get("/api/cms/fans", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["CMS"])
+@app.get("/api/cms/products", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["CMS"])
+def list_cms_products(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
+    product_type_key: Optional[str] = Query(None),
+    parameter_filters: Optional[str] = Query(None),
 ):
-    q = db.query(Fan)
+    parsed_parameter_filters = parse_parameter_filters(parameter_filters)
+    q = db.query(Product).options(
+        joinedload(Product.product_type),
+        selectinload(Product.product_images),
+        selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+    )
     if search:
         s = f"%{search}%"
-        q = q.filter(Fan.model.ilike(s))
-    return q.order_by(Fan.model).all()
+        q = q.filter(Product.model.ilike(s))
+    if product_type_key:
+        q = q.join(ProductType).filter(ProductType.key == product_type_key)
+    results = q.order_by(Product.model).all()
+    return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
 
-@app.get("/api/cms/fans/{fan_id}", response_model=CmsFanResponse, dependencies=[Depends(require_cms_token)], tags=["CMS"])
-def get_cms_fan(fan_id: int, db: Session = Depends(get_db)):
-    fan = db.get(Fan, fan_id)
-    if not fan:
-        raise HTTPException(status_code=404, detail="Fan not found")
-    return fan
+@app.get("/api/cms/fans/{fan_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["CMS"])
+@app.get("/api/cms/products/{fan_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["CMS"])
+def get_cms_product(fan_id: int, db: Session = Depends(get_db)):
+    product = db.get(Product, fan_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
 
 
-# --- Fans CRUD ---
-@app.get("/api/fans", response_model=list[FanResponse], dependencies=[Depends(get_current_user)], tags=["Fans"])
-def list_fans(
+# --- Products CRUD ---
+@app.get("/api/fans", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.get("/api/products", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"])
+def list_products(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None, description="Search model"),
     model: Optional[str] = Query(None),
+    product_type_key: Optional[str] = Query(None),
     mounting_style: Optional[str] = Query(None),
     discharge_type: Optional[str] = Query(None),
+    parameter_filters: Optional[str] = Query(None),
 ):
-    q = db.query(Fan)
+    parsed_parameter_filters = parse_parameter_filters(parameter_filters)
+    q = db.query(Product).options(
+        joinedload(Product.product_type),
+        selectinload(Product.product_images),
+        selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+    )
     if search:
         s = f"%{search}%"
-        q = q.filter(Fan.model.ilike(s))
+        q = q.filter(Product.model.ilike(s))
     if model:
-        q = q.filter(Fan.model.ilike(f"%{model}%"))
+        q = q.filter(Product.model.ilike(f"%{model}%"))
+    if product_type_key:
+        q = q.join(ProductType).filter(ProductType.key == product_type_key)
     if mounting_style:
-        q = q.filter(Fan.mounting_style == mounting_style)
+        q = q.filter(Product.mounting_style == mounting_style)
     if discharge_type:
-        q = q.filter(Fan.discharge_type == discharge_type)
-    return q.order_by(Fan.model).all()
+        q = q.filter(Product.discharge_type == discharge_type)
+    results = q.order_by(Product.model).all()
+    return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
 
-@app.post("/api/fans", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
-def create_fan(body: FanCreate, db: Session = Depends(get_db)):
-    fan_data = body.model_dump()
-    fan_data["band_graph_background_color"] = normalize_color_value(fan_data.get("band_graph_background_color"))
-    fan_data["band_graph_label_text_color"] = normalize_color_value(fan_data.get("band_graph_label_text_color"))
-    fan_data["band_graph_permissible_label_color"] = normalize_color_value(fan_data.get("band_graph_permissible_label_color"))
-    fan = Fan(**fan_data)
-    db.add(fan)
+@app.post("/api/fans", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.post("/api/products", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+def create_product(body: ProductCreate, db: Session = Depends(get_db)):
+    product_data = body.model_dump()
+    product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
+    parameter_groups = product_data.pop("parameter_groups", [])
+    product_data["band_graph_background_color"] = normalize_color_value(product_data.get("band_graph_background_color"))
+    product_data["band_graph_label_text_color"] = normalize_color_value(product_data.get("band_graph_label_text_color"))
+    product_data["band_graph_permissible_label_color"] = normalize_color_value(product_data.get("band_graph_permissible_label_color"))
+    product_data["product_type_id"] = product_type.id
+    product = Product(**product_data)
+    product.product_type = product_type
+    db.add(product)
+    db.flush()
+    sync_product_parameter_groups(product, parameter_groups)
     db.commit()
-    db.refresh(fan)
-    sync_graph_image(fan, [], [])
+    db.refresh(product)
+    sync_graph_image(product, [], [])
     db.commit()
-    db.refresh(fan)
-    mirror_fan_to_postgres_safely(fan.id)
-    return fan
+    db.refresh(product)
+    return product
 
 
-@app.get("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
-def get_fan(fan_id: int, db: Session = Depends(get_db)):
-    fan = db.get(Fan, fan_id)
-    if not fan:
-        raise HTTPException(404, "Fan not found")
-    return fan
+@app.get("/api/fans/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.get("/api/products/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+def get_product(fan_id: int, db: Session = Depends(get_db)):
+    product = db.get(Product, fan_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    return product
 
 
-@app.put("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
-def update_fan(fan_id: int, body: FanUpdate, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
-    for k, v in body.model_dump(exclude_unset=True).items():
+@app.put("/api/fans/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.put("/api/products/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+def update_product(fan_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
+    product = require_product(db, fan_id)
+    updates = body.model_dump(exclude_unset=True)
+    if "product_type_key" in updates:
+        product_type = get_product_type_by_key(db, updates.pop("product_type_key"))
+        product.product_type_id = product_type.id
+        product.product_type = product_type
+    if "parameter_groups" in updates:
+        sync_product_parameter_groups(product, updates.pop("parameter_groups"))
+    for k, v in updates.items():
         if k in {"band_graph_background_color", "band_graph_label_text_color", "band_graph_permissible_label_color"}:
-            setattr(fan, k, normalize_color_value(v))
+            setattr(product, k, normalize_color_value(v))
         elif k == "band_graph_faded_opacity":
-            setattr(fan, k, None if v is None else max(0, min(1, float(v))))
+            setattr(product, k, None if v is None else max(0, min(1, float(v))))
         else:
-            setattr(fan, k, v)
-    sync_product_image_files(fan)
-    sync_graph_image(fan, list(fan.rpm_lines), list(fan.efficiency_points))
+            setattr(product, k, v)
+    sync_product_image_files(product)
+    sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
     db.commit()
-    db.refresh(fan)
-    mirror_fan_to_postgres_safely(fan.id)
-    return fan
+    db.refresh(product)
+    return product
 
 
-@app.patch("/api/fans/{fan_id}", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Fans"])
-def patch_fan(fan_id: int, body: FanUpdate, db: Session = Depends(get_db)):
-    return update_fan(fan_id, body, db)
+@app.patch("/api/fans/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.patch("/api/products/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+def patch_product(fan_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
+    return update_product(fan_id, body, db)
 
 
-@app.delete("/api/fans/{fan_id}", dependencies=[Depends(get_current_user)], tags=["Fans"])
-def delete_fan(fan_id: int, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
-    delete_fan_assets(fan)
-    db.delete(fan)
+@app.delete("/api/fans/{fan_id}", dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.delete("/api/products/{fan_id}", dependencies=[Depends(get_current_user)], tags=["Products"])
+def delete_product(fan_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, fan_id)
+    delete_product_assets(product)
+    db.delete(product)
     db.commit()
-    mirror_fan_to_postgres_safely(fan_id)
     return {"deleted": fan_id}
 
 
 # --- RPM lines / points ---
 @app.get("/api/fans/{fan_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+@app.get("/api/products/{fan_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def get_rpm_lines(fan_id: int, db: Session = Depends(get_db)):
-    require_fan(db, fan_id)
-    return db.query(RpmLine).filter(RpmLine.fan_id == fan_id).order_by(RpmLine.rpm).all()
+    require_product(db, fan_id)
+    return db.query(RpmLine).filter(RpmLine.product_id == fan_id).order_by(RpmLine.rpm).all()
 
 
 @app.post("/api/fans/{fan_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+@app.post("/api/products/{fan_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def create_rpm_line(fan_id: int, body: RpmLineCreate, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
-    existing = db.query(RpmLine).filter(RpmLine.fan_id == fan_id, RpmLine.rpm == body.rpm).first()
+    product = require_product(db, fan_id)
+    existing = db.query(RpmLine).filter(RpmLine.product_id == fan_id, RpmLine.rpm == body.rpm).first()
     if existing:
         raise HTTPException(400, "RPM line already exists")
-    line = RpmLine(fan_id=fan_id, rpm=body.rpm, band_color=normalize_color_value(body.band_color))
+    line = RpmLine(product_id=fan_id, rpm=body.rpm, band_color=normalize_color_value(body.band_color))
     db.add(line)
     db.commit()
-    refresh_graph_for_fan(db, fan)
+    refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(line)
-    mirror_fan_to_postgres_safely(fan_id)
     return line
 
 
 @app.put("/api/fans/{fan_id}/rpm-lines/{line_id}", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+@app.put("/api/products/{fan_id}/rpm-lines/{line_id}", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def update_rpm_line(fan_id: int, line_id: int, body: RpmLineUpdate, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     line = db.get(RpmLine, line_id)
-    if not line or line.fan_id != fan_id:
+    if not line or line.product_id != fan_id:
         raise HTTPException(404, "RPM line not found")
 
     updates = body.model_dump(exclude_unset=True)
     if "rpm" in updates and updates["rpm"] is not None:
         existing = (
             db.query(RpmLine)
-            .filter(RpmLine.fan_id == fan_id, RpmLine.rpm == updates["rpm"], RpmLine.id != line_id)
+            .filter(RpmLine.product_id == fan_id, RpmLine.rpm == updates["rpm"], RpmLine.id != line_id)
             .first()
         )
         if existing:
@@ -1148,62 +1167,63 @@ def update_rpm_line(fan_id: int, line_id: int, body: RpmLineUpdate, db: Session 
         line.band_color = normalize_color_value(updates["band_color"])
 
     db.commit()
-    refresh_graph_for_fan(db, fan)
+    refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(line)
-    mirror_fan_to_postgres_safely(fan_id)
     return line
 
 
 @app.delete("/api/fans/{fan_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+@app.delete("/api/products/{fan_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def delete_rpm_line(fan_id: int, line_id: int, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     line = db.get(RpmLine, line_id)
-    if not line or line.fan_id != fan_id:
+    if not line or line.product_id != fan_id:
         raise HTTPException(404, "RPM line not found")
     db.delete(line)
     db.commit()
-    refresh_graph_for_fan(db, fan)
+    refresh_graph_for_product(db, product)
     db.commit()
-    mirror_fan_to_postgres_safely(fan_id)
     return {"deleted": line_id}
 
 
 @app.get("/api/fans/{fan_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+@app.get("/api/products/{fan_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def get_rpm_points(fan_id: int, db: Session = Depends(get_db)):
-    require_fan(db, fan_id)
+    require_product(db, fan_id)
     return (
         db.query(RpmPoint)
         .join(RpmLine, RpmPoint.rpm_line_id == RpmLine.id)
-        .filter(RpmPoint.fan_id == fan_id)
+        .filter(RpmPoint.product_id == fan_id)
         .order_by(RpmLine.rpm, RpmPoint.airflow)
         .all()
     )
 
 
 @app.post("/api/fans/{fan_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+@app.post("/api/products/{fan_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def create_rpm_point(
     fan_id: int,
     body: RpmPointCreate,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     line = db.get(RpmLine, body.rpm_line_id)
-    if not line or line.fan_id != fan_id:
+    if not line or line.product_id != fan_id:
         raise HTTPException(404, "RPM line not found")
-    point = RpmPoint(fan_id=fan_id, **body.model_dump())
+    point = RpmPoint(product_id=fan_id, **body.model_dump())
     db.add(point)
     db.commit()
     if regenerate_graph:
-        refresh_graph_for_fan(db, fan)
+        refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
-    mirror_fan_to_postgres_safely(fan_id)
     return point
 
 
 @app.put("/api/fans/{fan_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+@app.put("/api/products/{fan_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def update_rpm_point(
     fan_id: int,
     point_id: int,
@@ -1211,75 +1231,76 @@ def update_rpm_point(
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     line = db.get(RpmLine, body.rpm_line_id)
-    if not line or line.fan_id != fan_id:
+    if not line or line.product_id != fan_id:
         raise HTTPException(404, "RPM line not found")
     point = db.get(RpmPoint, point_id)
-    if not point or point.fan_id != fan_id:
+    if not point or point.product_id != fan_id:
         raise HTTPException(404, "RPM point not found")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(point, key, value)
     db.commit()
     if regenerate_graph:
-        refresh_graph_for_fan(db, fan)
+        refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
-    mirror_fan_to_postgres_safely(fan_id)
     return point
 
 
 @app.delete("/api/fans/{fan_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+@app.delete("/api/products/{fan_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def delete_rpm_point(
     fan_id: int,
     point_id: int,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     point = db.get(RpmPoint, point_id)
-    if not point or point.fan_id != fan_id:
+    if not point or point.product_id != fan_id:
         raise HTTPException(404, "RPM point not found")
     db.delete(point)
     db.commit()
     if regenerate_graph:
-        refresh_graph_for_fan(db, fan)
+        refresh_graph_for_product(db, product)
         db.commit()
-    mirror_fan_to_postgres_safely(fan_id)
     return {"deleted": point_id}
 
 
 @app.get("/api/fans/{fan_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+@app.get("/api/products/{fan_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def get_efficiency_points(fan_id: int, db: Session = Depends(get_db)):
-    require_fan(db, fan_id)
+    require_product(db, fan_id)
     return (
         db.query(EfficiencyPoint)
-        .filter(EfficiencyPoint.fan_id == fan_id)
+        .filter(EfficiencyPoint.product_id == fan_id)
         .order_by(EfficiencyPoint.airflow)
         .all()
     )
 
 
 @app.post("/api/fans/{fan_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+@app.post("/api/products/{fan_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def create_efficiency_point(
     fan_id: int,
     body: EfficiencyPointCreate,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    fan = require_fan(db, fan_id)
-    point = EfficiencyPoint(fan_id=fan_id, **body.model_dump())
+    product = require_product(db, fan_id)
+    point = EfficiencyPoint(product_id=fan_id, **body.model_dump())
     db.add(point)
     db.commit()
     if regenerate_graph:
-        refresh_graph_for_fan(db, fan)
+        refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
-    mirror_fan_to_postgres_safely(fan_id)
     return point
 
 
 @app.put("/api/fans/{fan_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+@app.put("/api/products/{fan_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def update_efficiency_point(
     fan_id: int,
     point_id: int,
@@ -1287,114 +1308,59 @@ def update_efficiency_point(
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     point = db.get(EfficiencyPoint, point_id)
-    if not point or point.fan_id != fan_id:
+    if not point or point.product_id != fan_id:
         raise HTTPException(404, "Efficiency point not found")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(point, key, value)
     db.commit()
     if regenerate_graph:
-        refresh_graph_for_fan(db, fan)
+        refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
-    mirror_fan_to_postgres_safely(fan_id)
     return point
 
 
 @app.delete("/api/fans/{fan_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+@app.delete("/api/products/{fan_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def delete_efficiency_point(
     fan_id: int,
     point_id: int,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     point = db.get(EfficiencyPoint, point_id)
-    if not point or point.fan_id != fan_id:
+    if not point or point.product_id != fan_id:
         raise HTTPException(404, "Efficiency point not found")
     db.delete(point)
     db.commit()
     if regenerate_graph:
-        refresh_graph_for_fan(db, fan)
+        refresh_graph_for_product(db, product)
         db.commit()
-    mirror_fan_to_postgres_safely(fan_id)
     return {"deleted": point_id}
 
 
-@app.post("/api/fans/{fan_id}/graph-image/refresh", response_model=FanResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
-def refresh_fan_graph_image(fan_id: int, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
-    refresh_graph_for_fan(db, fan)
+@app.post("/api/fans/{fan_id}/graph-image/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+@app.post("/api/products/{fan_id}/graph-image/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def refresh_product_graph_image(fan_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, fan_id)
+    refresh_graph_for_product(db, product)
     db.commit()
-    db.refresh(fan)
-    mirror_fan_to_postgres_safely(fan_id)
-    return fan
-
-
-@app.post("/api/maintenance/databases/resync-postgres", response_model=DatabaseMirrorStatusResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
-def resync_postgres_mirror():
-    if not is_mirror_enabled():
-        return DatabaseMirrorStatusResponse(
-            mirror_enabled=False,
-            message="Postgres mirror is not enabled.",
-        )
-
-    sync_all_data_to_postgres()
-
-    with SessionLocal() as sqlite_db, mirror_db_session() as postgres_db:
-        sqlite_counts = get_database_counts(sqlite_db)
-        postgres_counts = get_database_counts(postgres_db)
-
-    return DatabaseMirrorStatusResponse(
-        mirror_enabled=True,
-        message="Postgres mirror resynced from SQLite.",
-        sqlite_counts=sqlite_counts,
-        postgres_counts=postgres_counts,
-        count_differences={
-            key: postgres_counts.get(key, 0) - sqlite_counts.get(key, 0)
-            for key in sqlite_counts
-        },
-    )
-
-
-@app.get("/api/maintenance/databases/mirror-status", response_model=DatabaseMirrorStatusResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
-def get_postgres_mirror_status():
-    with SessionLocal() as sqlite_db:
-        sqlite_counts = get_database_counts(sqlite_db)
-
-    if not is_mirror_enabled():
-        return DatabaseMirrorStatusResponse(
-            mirror_enabled=False,
-            message="Postgres mirror is not enabled.",
-            sqlite_counts=sqlite_counts,
-        )
-
-    with mirror_db_session() as postgres_db:
-        postgres_counts = get_database_counts(postgres_db)
-
-    return DatabaseMirrorStatusResponse(
-        mirror_enabled=True,
-        message="Postgres mirror is enabled.",
-        sqlite_counts=sqlite_counts,
-        postgres_counts=postgres_counts,
-        count_differences={
-            key: postgres_counts.get(key, 0) - sqlite_counts.get(key, 0)
-            for key in sqlite_counts
-        },
-    )
+    db.refresh(product)
+    return product
 
 
 @app.post("/api/maintenance/graph-images/regenerate-all", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def regenerate_all_graph_images(db: Session = Depends(get_db)):
-    fans = db.query(Fan).all()
-    for fan in fans:
-        refresh_graph_for_fan(db, fan)
+    products = db.query(Product).all()
+    for product in products:
+        refresh_graph_for_product(db, product)
     db.commit()
-    sync_all_data_to_postgres_safely()
     return GraphImageMaintenanceResponse(
         message="Graph images regenerated.",
-        fans_processed=len(fans),
+        products_processed=len(products),
         files_deleted=0,
     )
 
@@ -1403,10 +1369,9 @@ def regenerate_all_graph_images(db: Session = Depends(get_db)):
 def delete_all_graph_images(db: Session = Depends(get_db)):
     deleted_files = clear_all_graph_images(db)
     db.commit()
-    sync_all_data_to_postgres_safely()
     return GraphImageMaintenanceResponse(
-        message="Graph image files deleted and fan graph paths cleared.",
-        fans_processed=0,
+        message="Graph image files deleted and product graph paths cleared.",
+        products_processed=0,
         files_deleted=deleted_files,
     )
 
@@ -1440,26 +1405,28 @@ async def restore_backup_bundle_endpoint(file: UploadFile = File(...)):
 
 
 @app.get("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
+@app.get("/api/products/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
 def get_product_images(fan_id: int, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
-    return sorted(fan.product_images, key=lambda image: (image.sort_order, image.id))
+    product = require_product(db, fan_id)
+    return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
 @app.post("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
+@app.post("/api/products/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
 async def upload_product_images(
     fan_id: int,
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     if not files:
         raise HTTPException(400, "No files provided")
 
-    next_order = len(fan.product_images)
+    next_order = len(product.product_images)
     for upload in files:
         suffix = os.path.splitext(upload.filename or "")[1].lower() or ".jpg"
         image = ProductImage(
-            fan_id=fan_id,
+            product_id=fan_id,
             file_name=f"upload_{fan_id}_{next_order}{suffix}",
             sort_order=next_order,
         )
@@ -1470,43 +1437,42 @@ async def upload_product_images(
             output.write(contents)
         next_order += 1
 
-    sync_product_image_files(fan)
+    sync_product_image_files(product)
     db.commit()
-    db.refresh(fan)
-    mirror_fan_to_postgres_safely(fan_id)
-    return sorted(fan.product_images, key=lambda image: (image.sort_order, image.id))
+    db.refresh(product)
+    return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
 @app.post("/api/fans/{fan_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
+@app.post("/api/products/{fan_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
 def reorder_product_images(fan_id: int, body: ProductImageReorder, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
-    images_by_id = {image.id: image for image in fan.product_images}
+    product = require_product(db, fan_id)
+    images_by_id = {image.id: image for image in product.product_images}
     if set(body.image_ids) != set(images_by_id.keys()):
         raise HTTPException(400, "Image order must include every existing image exactly once")
 
     for index, image_id in enumerate(body.image_ids):
         images_by_id[image_id].sort_order = index
 
-    sync_product_image_files(fan)
+    sync_product_image_files(product)
     db.commit()
-    db.refresh(fan)
-    mirror_fan_to_postgres_safely(fan_id)
-    return sorted(fan.product_images, key=lambda image: (image.sort_order, image.id))
+    db.refresh(product)
+    return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
 @app.delete("/api/fans/{fan_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Product Images"])
+@app.delete("/api/products/{fan_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Product Images"])
 def delete_product_image(fan_id: int, image_id: int, db: Session = Depends(get_db)):
-    fan = require_fan(db, fan_id)
+    product = require_product(db, fan_id)
     image = db.get(ProductImage, image_id)
-    if not image or image.fan_id != fan_id:
+    if not image or image.product_id != fan_id:
         raise HTTPException(404, "Product image not found")
 
     delete_product_image_file(image)
     db.delete(image)
     db.flush()
-    sync_product_image_files(fan)
+    sync_product_image_files(product)
     db.commit()
-    mirror_fan_to_postgres_safely(fan_id)
     return {"deleted": image_id}
 
 

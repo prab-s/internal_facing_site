@@ -76,14 +76,14 @@ ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" build --no-cache
 podman image prune -f >/dev/null 2>&1 || true
 ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" up -d
 
-wait_for_url "${HEALTH_URL}" "Fan Graphs API" "${HEALTH_TIMEOUT_SECONDS}"
+wait_for_url "${HEALTH_URL}" "Internal Facing API" "${HEALTH_TIMEOUT_SECONDS}"
 
 if [[ "${COMPOSE_PROFILES:-}" == *wordpress* ]]; then
   wait_for_url "${WORDPRESS_URL}" "WordPress" "${HEALTH_TIMEOUT_SECONDS}"
 fi
 
 echo
-echo "fan-graphs is up:"
+echo "internal-facing is up:"
 echo "  http://127.0.0.1:8000"
 if [[ "${COMPOSE_PROFILES:-}" == *wordpress* ]]; then
   echo "  http://127.0.0.1:${WORDPRESS_PORT:-8003} (WordPress)"

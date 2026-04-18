@@ -5,7 +5,21 @@ import { writable } from 'svelte/store';
  * Centralised API base URL. Change this for deployment (e.g. to relative /api or full URL).
  */
 export const API_BASE = '/api';
-const THEME_STORAGE_KEY = 'fan-graphs-theme';
+const THEME_STORAGE_KEY = 'internal-facing-theme';
+
+export const GLOBAL_UNIT_OPTIONS = [
+  'A',
+  'Hz',
+  'kg',
+  'kW',
+  'L/s',
+  'm3/h',
+  'mm',
+  'Pa',
+  'RPM',
+  'V',
+  '°C'
+];
 
 export const MOUNTING_STYLE_OPTIONS = [
   'roof mounted',
@@ -20,14 +34,16 @@ export const DISCHARGE_TYPE_OPTIONS = [
 export function emptyFanForm() {
   return {
     model: '',
-    notes: '',
+    product_type_key: 'fan',
     mounting_style: '',
     discharge_type: '',
+    description_html: '',
+    features_html: '',
+    specifications_html: '',
+    comments_html: '',
     show_rpm_band_shading: true,
     band_graph_background_color: '#ffffff',
-    band_graph_label_text_color: '#000000',
-    diameter_mm: '',
-    max_rpm: ''
+    band_graph_label_text_color: '#000000'
   };
 }
 

@@ -11,6 +11,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-backups}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 ARCHIVE_NAME="${ARCHIVE_NAME:-fan_graphs_backup_${TIMESTAMP}.zip}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
+PG_TOOL_DATABASE_URL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -91,8 +92,20 @@ dump_postgres_via_url() {
     exit 1
   fi
 
+  PG_TOOL_DATABASE_URL="$(python3 - <<'PY' "${DATABASE_URL}"
+from sqlalchemy.engine import make_url
+import sys
+url = make_url(sys.argv[1])
+drivername = url.drivername
+if "+" in drivername:
+    drivername = drivername.split("+", 1)[0]
+url = url.set(drivername=drivername)
+print(url.render_as_string(hide_password=False))
+PY
+)"
+
   podman run --rm --network host \
-    -e DATABASE_URL="${DATABASE_URL}" \
+    -e DATABASE_URL="${PG_TOOL_DATABASE_URL}" \
     "${PG_CLIENT_IMAGE}" \
     sh -lc 'pg_dump "$DATABASE_URL" --no-owner --no-privileges' > "${DB_DUMP_PATH}"
 }
@@ -137,7 +150,7 @@ for media_dir in product_images product_graphs product_pdfs; do
 done
 
 cat > "$STAGING_DIR/README.txt" <<EOF
-Fan Graphs backup bundle
+Internal Facing backup bundle
 Generated: ${TIMESTAMP}
 Mode: ${BACKUP_MODE}
 Env file: ${ENV_FILE}

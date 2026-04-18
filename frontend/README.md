@@ -1,4 +1,4 @@
-# Fan Graphs (Frontend)
+# Internal Facing (Frontend)
 
 SvelteKit app. Calls the backend API at `http://localhost:8000` (see `src/lib/config.js` to change for deployment).
 

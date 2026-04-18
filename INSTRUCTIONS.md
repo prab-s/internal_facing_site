@@ -1,4 +1,4 @@
-## Fan Graphs Project Notes
+## Internal Facing Project Notes
 
 This file explains how the project is currently structured, how authentication works, and what the main helper scripts do.
 
@@ -13,7 +13,7 @@ Current stack layout:
   - Uvicorn
   - built inward-facing Svelte frontend
 - `postgres`
-  - primary database for the Fan Graphs app
+  - primary database for the Internal Facing app
 
 Future stack services already scaffolded in the same compose file:
 
@@ -38,7 +38,7 @@ Important ports:
 - internal app/API container address inside the compose network: `app:8000`
 - deployed internal app exposed on the host: `8000`
 - customer-facing WordPress exposed on the host: `8003`
-- deployment Postgres bound to host loopback only: `127.0.0.1:5432`
+- deployment Postgres exposed on the host: `5432`
 
 `app:8000` is the internal compose-network address used by other containers.
 For example, WordPress uses `http://app:8000` to talk to FastAPI from inside the same stack.
@@ -53,10 +53,10 @@ For production exposure, the intended shape is:
 
 `postgres` is intentionally a special case:
 
-- it is not exposed publicly to the outside world
-- but it is bound to `127.0.0.1:5432` on the host so local SIT and admin tasks can use the same database safely
+- it is not part of the public web app surface
+- but it is exposed on host port `5432`, so local SIT/admin tasks and LAN tools can connect when networking and firewall rules allow
 
-So the databases are still not public, but the app Postgres database is available locally on the host machine.
+So the app Postgres server is reachable from the host machine and should be protected with sensible credentials/firewalling.
 
 ## Project Shape
 
@@ -90,10 +90,6 @@ Example:
 ```env
 DATABASE_URL=postgresql+psycopg://fan_graphs_user:password@postgres:5432/fan_graphs
 ```
-
-### Optional mirror database
-
-There is still code support for a Postgres mirror via `POSTGRES_DATABASE_URL`, but once you are fully Postgres-primary you should normally leave that empty.
 
 ## Authentication
 
@@ -131,7 +127,7 @@ Public endpoints:
 
 Protected endpoints:
 
-- all fan CRUD endpoints
+- all product CRUD endpoints
 - chart/media endpoints
 - graph maintenance endpoints
 - database maintenance endpoints
@@ -218,7 +214,7 @@ Main internal pages:
 - `/` Home
 - `/entry` Data Entry
 - `/catalogue` Catalogue
-- `/map` Fan Map
+- `/map` Product Map
 - `/setup` Account and admin setup
 
 The `Setup` page now contains:
@@ -239,12 +235,11 @@ Used by:
 
 `run_sit.sh` now loads:
 
-1. [`.env.deploy`](/home/user1/Documents/fan_graphs_website/.env.deploy)
-2. [`.env.sit`](/home/user1/Documents/fan_graphs_website/.env.sit)
+1. [`.env.sit`](/home/user1/Documents/fan_graphs_website/.env.sit)
 
-in that order.
+SIT should use its own PostgreSQL database name, even if it shares the same Postgres server as deployment.
 
-That means SIT can share the same PostgreSQL database as deployment by default, while still overriding things like:
+That lets SIT keep its own schema/data while still overriding things like:
 
 - `SESSION_SECRET`
 - `AUTH_COOKIE_SECURE`
@@ -291,8 +286,9 @@ Purpose:
 
 - starts the SIT backend on port `8002`
 - starts the SIT frontend on port `8001`
-- loads `.env.deploy` first, then `.env.sit`
-- lets SIT reuse the deployment Postgres database while keeping SIT-specific overrides
+- loads `.env.sit`
+- prepares the configured database with Alembic before startup
+- keeps SIT on a separate database from deployment by default
 
 Use:
 
@@ -308,6 +304,7 @@ Purpose:
 - brings down the existing deployment stack
 - rebuilds the application image
 - starts the Podman Compose deployment stack
+- app startup prepares/applies database migrations before `uvicorn` starts
 - waits for the FastAPI health endpoint
 - if the WordPress profile is enabled, waits for WordPress too
 - prints compose status and recent logs if startup times out
@@ -316,6 +313,22 @@ Use:
 
 ```bash
 ./redeploy.sh
+```
+
+### `migrate_db.sh`
+
+Purpose:
+
+- prepares the configured database(s) with Alembic
+- creates the target database first when needed
+- upgrades brand-new databases to the current baseline
+- stamps and normalizes older databases so future revisions have a consistent base
+
+Use:
+
+```bash
+./migrate_db.sh --sit
+./migrate_db.sh --deploy
 ```
 
 This now manages the whole stack from:
@@ -390,28 +403,6 @@ This script currently restores:
 - `data/product_graphs`
 - `data/product_pdfs` if present in the backup
 - WordPress MariaDB + `wp-content` if present in the backup and restoring into deployment
-
-### `migrate_sqlite_to_postgres.sh`
-
-Purpose:
-
-- one-off import of the legacy SQLite `fans.db` data into PostgreSQL
-- uses the existing application sync logic
-- copies:
-  - users
-  - fans
-  - RPM lines
-  - RPM points
-  - efficiency points
-  - product image rows
-
-Use:
-
-```bash
-./migrate_sqlite_to_postgres.sh --sqlite-path data/fans.db --postgres-url "postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/fan_graphs"
-```
-
-If `.env.deploy` already contains the correct `DATABASE_URL`, you can omit `--postgres-url`.
 
 ### `postgres-compose.yml`
 
@@ -500,8 +491,8 @@ The reverse proxy should preserve headers such as:
 
 A dedicated read-only CMS API path now exists on the FastAPI side:
 
-- `/api/cms/fans`
-- `/api/cms/fans/{id}`
+- `/api/cms/products`
+- `/api/cms/products/{id}`
 
 These endpoints use a dedicated CMS token, not the internal session-cookie login.
 
@@ -541,7 +532,7 @@ and complete the standard WordPress installer.
 Once that is done, you can:
 
 1. sign into WordPress admin
-2. activate the `Fan Graphs API` plugin
+2. activate the `Internal Facing API` plugin
 3. create a basic page
 4. place one of the shortcodes on the page
 
@@ -572,15 +563,9 @@ That gives one zip archive containing both structured data and related media fil
 
 ## SIT to PROD initialisation
 
-If SIT and deployment are configured to use the same PostgreSQL database, then they are already looking at the same app data and you do not need a SIT-to-PROD restore just to copy records across.
+SIT and deployment should normally use separate databases.
 
-In that shared-database setup, backup/restore is still useful for:
-
-- seeding a brand-new deployment database
-- disaster recovery
-- moving data to a completely different host
-
-If SIT and deployment are not sharing the same database, the intended flow is:
+If you intentionally want to copy current SIT data into deployment, the intended flow is:
 
 1. create a backup from SIT:
 

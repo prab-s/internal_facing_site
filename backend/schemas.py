@@ -5,46 +5,131 @@ from typing import Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
-# --- Fan ---
-class FanBase(BaseModel):
+# --- Product ---
+class ProductTypeParameterPresetResponse(BaseModel):
+    id: int
+    parameter_name: str
+    sort_order: int
+    preferred_unit: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypeParameterGroupPresetResponse(BaseModel):
+    id: int
+    group_name: str
+    sort_order: int
+    parameter_presets: list[ProductTypeParameterPresetResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypeResponse(BaseModel):
+    id: int
+    key: str
+    label: str
+    supports_graph: bool
+    graph_kind: Optional[str] = None
+    supports_graph_overlays: bool = False
+    supports_band_graph_style: bool = False
+    graph_line_value_label: Optional[str] = None
+    graph_line_value_unit: Optional[str] = None
+    graph_x_axis_label: Optional[str] = None
+    graph_x_axis_unit: Optional[str] = None
+    graph_y_axis_label: Optional[str] = None
+    graph_y_axis_unit: Optional[str] = None
+    parameter_group_presets: list[ProductTypeParameterGroupPresetResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductParameterResponse(BaseModel):
+    id: int
+    parameter_name: str
+    sort_order: int
+    value_string: Optional[str] = None
+    value_number: Optional[float] = None
+    unit: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductParameterGroupResponse(BaseModel):
+    id: int
+    group_name: str
+    sort_order: int
+    parameters: list[ProductParameterResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductParameterInput(BaseModel):
+    parameter_name: str
+    sort_order: int = 0
+    value_string: Optional[str] = None
+    value_number: Optional[float] = None
+    unit: Optional[str] = None
+
+
+class ProductParameterGroupInput(BaseModel):
+    group_name: str
+    sort_order: int = 0
+    parameters: list[ProductParameterInput] = Field(default_factory=list)
+
+
+class ProductBase(BaseModel):
     model: str
-    notes: Optional[str] = None
+    product_type_key: Optional[str] = "fan"
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
+    description_html: Optional[str] = None
+    features_html: Optional[str] = None
+    specifications_html: Optional[str] = None
+    comments_html: Optional[str] = None
     show_rpm_band_shading: bool = True
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None
     band_graph_permissible_label_color: Optional[str] = None
-    diameter_mm: Optional[float] = None
-    max_rpm: Optional[float] = None
+    parameter_groups: list[ProductParameterGroupInput] = Field(default_factory=list)
 
 
-class FanCreate(FanBase):
+class ProductCreate(ProductBase):
     pass
 
 
-class FanUpdate(BaseModel):
+class ProductUpdate(BaseModel):
     model: Optional[str] = None
-    notes: Optional[str] = None
+    product_type_key: Optional[str] = None
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
+    description_html: Optional[str] = None
+    features_html: Optional[str] = None
+    specifications_html: Optional[str] = None
+    comments_html: Optional[str] = None
     show_rpm_band_shading: Optional[bool] = None
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None
     band_graph_permissible_label_color: Optional[str] = None
-    diameter_mm: Optional[float] = None
-    max_rpm: Optional[float] = None
 
 
-class FanResponse(FanBase):
+class ProductResponse(ProductBase):
     id: int
+    product_type_label: Optional[str] = None
     graph_image_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
+    parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
     product_images: list["ProductImageResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Compatibility aliases kept temporarily while older imports are phased out.
+FanBase = ProductBase
+FanCreate = ProductCreate
+FanUpdate = ProductUpdate
+FanResponse = ProductResponse
 
 
 # --- RPM lines / points ---
@@ -64,9 +149,12 @@ class RpmLineUpdate(BaseModel):
 
 class RpmLineResponse(RpmLineBase):
     id: int
-    fan_id: int
-
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    product_id: int = Field(
+        ...,
+        validation_alias=AliasChoices("product_id", "fan_id"),
+        serialization_alias="product_id",
+    )
 
 
 class RpmPointBase(BaseModel):
@@ -86,7 +174,11 @@ class RpmPointCreate(RpmPointBase):
 
 class RpmPointResponse(RpmPointBase):
     id: int
-    fan_id: int
+    product_id: int = Field(
+        ...,
+        validation_alias=AliasChoices("product_id", "fan_id"),
+        serialization_alias="product_id",
+    )
     rpm: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -112,19 +204,27 @@ class EfficiencyPointCreate(EfficiencyPointBase):
 
 class EfficiencyPointResponse(EfficiencyPointBase):
     id: int
-    fan_id: int
+    product_id: int = Field(
+        ...,
+        validation_alias=AliasChoices("product_id", "fan_id"),
+        serialization_alias="product_id",
+    )
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ProductImageResponse(BaseModel):
     id: int
-    fan_id: int
+    product_id: int = Field(
+        ...,
+        validation_alias=AliasChoices("product_id", "fan_id"),
+        serialization_alias="product_id",
+    )
     file_name: str
     sort_order: int
     url: str
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ProductImageReorder(BaseModel):
@@ -133,16 +233,8 @@ class ProductImageReorder(BaseModel):
 
 class GraphImageMaintenanceResponse(BaseModel):
     message: str
-    fans_processed: int = 0
+    products_processed: int = 0
     files_deleted: int = 0
-
-
-class DatabaseMirrorStatusResponse(BaseModel):
-    mirror_enabled: bool
-    message: str
-    sqlite_counts: dict[str, int] = Field(default_factory=dict)
-    postgres_counts: dict[str, int] = Field(default_factory=dict)
-    count_differences: dict[str, int] = Field(default_factory=dict)
 
 
 class BandGraphStyleSettings(BaseModel):
@@ -192,18 +284,27 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CmsFanResponse(BaseModel):
+class CmsProductResponse(BaseModel):
     id: int
     model: str
-    notes: Optional[str] = None
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
-    diameter_mm: Optional[float] = None
-    max_rpm: Optional[float] = None
+    description_html: Optional[str] = None
+    features_html: Optional[str] = None
+    specifications_html: Optional[str] = None
+    comments_html: Optional[str] = None
     graph_image_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
+    parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
 
-FanResponse.model_rebuild()
+# Compatibility alias kept temporarily for older CMS integrations.
+CmsFanResponse = CmsProductResponse
+
+
+ProductResponse.model_rebuild()
+ProductParameterGroupResponse.model_rebuild()

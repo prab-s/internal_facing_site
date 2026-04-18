@@ -2,10 +2,11 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import {
-    getFans,
-    getFan,
-    createFan,
-    updateFan,
+    getProducts,
+    getProduct,
+    getProductTypes,
+    createProduct,
+    updateProduct,
     getRpmLines,
     createRpmLine,
     updateRpmLine,
@@ -26,22 +27,24 @@
   import ECharts from '$lib/ECharts.svelte';
   import {
     DISCHARGE_TYPE_OPTIONS,
+    GLOBAL_UNIT_OPTIONS,
     MOUNTING_STYLE_OPTIONS,
-    emptyFanForm,
+    emptyFanForm as emptyProductForm,
     getChartTheme,
     theme
   } from '$lib/config.js';
   import { buildFullChartOption, FULL_CHART_LINE_DEFINITIONS, RPM_BAND_FALLBACK_COLORS } from '$lib/fullChart.js';
 
-  let fans = [];
-  let selectedFanId = null;
-  let currentFan = null;
+  let products = [];
+  let productTypes = [];
+  let selectedProductId = null;
+  let currentProduct = null;
   let rpmLines = [];
   let rpmPoints = [];
   let efficiencyPoints = [];
   let mapChartOption = {};
   let loading = false;
-  let savingFanDetails = false;
+  let savingProductDetails = false;
   let error = '';
   let successMessages = [];
   let successToastKey = 0;
@@ -71,7 +74,7 @@
   
   // Mode: 'select' (initial), 'create', or 'editExisting'
   let mode = 'select';
-  let editingFanId = null;
+  let editingProductId = null;
   function defaultGraphStyleForm() {
     return {
       band_graph_background_color: '#ffffff',
@@ -81,9 +84,10 @@
     };
   }
   let graphStyleForm = defaultGraphStyleForm();
+  let parameterGroups = [];
 
   // Form state: new/edit fan
-  let fanForm = emptyFanForm();
+  let productForm = emptyProductForm();
 
   // Map point form (single)
   let rpmPointForm = {
@@ -105,6 +109,240 @@
 
   function parseOptionalNumber(value) {
     return value === '' || value == null ? null : parseFloat(value);
+  }
+
+  function createParameterDraft(parameter = {}) {
+    return {
+      id: parameter.id ?? null,
+      _pending_delete: parameter._pending_delete ?? false,
+      parameter_name: parameter.parameter_name ?? '',
+      value_type:
+        parameter.value_string != null && parameter.value_string !== ''
+          ? 'string'
+          : parameter.value_number != null
+            ? 'number'
+            : 'string',
+      value_string: parameter.value_string ?? '',
+      value_number: parameter.value_number ?? '',
+      unit: parameter.unit ?? '',
+      custom_unit: parameter.unit && !GLOBAL_UNIT_OPTIONS.includes(parameter.unit) ? parameter.unit : ''
+    };
+  }
+
+  function createGroupDraft(group = {}) {
+    return {
+      id: group.id ?? null,
+      _pending_delete: group._pending_delete ?? false,
+      group_name: group.group_name ?? '',
+      parameters: (group.parameters ?? []).map((parameter) => createParameterDraft(parameter))
+    };
+  }
+
+  function clonePresetGroups(productTypeKey) {
+    const productType = productTypes.find((item) => item.key === productTypeKey);
+    if (!productType) return [];
+    return (productType.parameter_group_presets ?? []).map((group) => ({
+      id: null,
+      group_name: group.group_name,
+      parameters: (group.parameter_presets ?? []).map((parameter) =>
+        createParameterDraft({
+          parameter_name: parameter.parameter_name,
+          unit: parameter.preferred_unit ?? ''
+        })
+      )
+    }));
+  }
+
+  function resetProductEditor(productTypeKey = 'fan') {
+    productForm = { ...emptyProductForm(), product_type_key: productTypeKey };
+    graphStyleForm = defaultGraphStyleForm();
+    parameterGroups = clonePresetGroups(productTypeKey);
+  }
+
+  function getCurrentProductType() {
+    return productTypes.find((item) => item.key === productForm.product_type_key) || null;
+  }
+
+  function productSupportsGraph() {
+    return getCurrentProductType()?.supports_graph ?? true;
+  }
+
+  function productSupportsGraphOverlays() {
+    return getCurrentProductType()?.supports_graph_overlays ?? true;
+  }
+
+  function productSupportsBandGraphStyle() {
+    return getCurrentProductType()?.supports_band_graph_style ?? true;
+  }
+
+  function productGraphKindLabel() {
+    const graphKind = getCurrentProductType()?.graph_kind;
+    if (graphKind === 'silencer_loss') return 'silencer pressure-loss graph';
+    if (graphKind === 'fan_map') return 'fan graph';
+    return 'product graph';
+  }
+
+  function getCurrentGraphConfig() {
+    const productType = getCurrentProductType();
+    return productType
+      ? {
+          graph_kind: productType.graph_kind,
+          supports_graph_overlays: productType.supports_graph_overlays,
+          supports_band_graph_style: productType.supports_band_graph_style,
+          graph_line_value_label: productType.graph_line_value_label,
+          graph_line_value_unit: productType.graph_line_value_unit,
+          graph_x_axis_label: productType.graph_x_axis_label,
+          graph_x_axis_unit: productType.graph_x_axis_unit,
+          graph_y_axis_label: productType.graph_y_axis_label,
+          graph_y_axis_unit: productType.graph_y_axis_unit
+        }
+      : null;
+  }
+
+  function graphLineValueLabel() {
+    return getCurrentProductType()?.graph_line_value_label || 'RPM';
+  }
+
+  function graphLineValueUnit() {
+    return getCurrentProductType()?.graph_line_value_unit || graphLineValueLabel();
+  }
+
+  function graphXAxisLabel() {
+    return getCurrentProductType()?.graph_x_axis_label || 'Airflow';
+  }
+
+  function graphXAxisUnit() {
+    return getCurrentProductType()?.graph_x_axis_unit || 'L/s';
+  }
+
+  function graphYAxisLabel() {
+    return getCurrentProductType()?.graph_y_axis_label || 'Pressure';
+  }
+
+  function graphYAxisUnit() {
+    return getCurrentProductType()?.graph_y_axis_unit || 'Pa';
+  }
+
+  function formatGraphLineValue(value) {
+    const unit = graphLineValueUnit();
+    return unit ? `${value} ${unit}` : `${value}`;
+  }
+
+  function currentOverlayLineDefinitions() {
+    return productSupportsGraphOverlays() ? FULL_CHART_LINE_DEFINITIONS : [];
+  }
+
+  function usePresetGroupsForSelectedType() {
+    parameterGroups = clonePresetGroups(productForm.product_type_key);
+  }
+
+  function changeProductType(nextKey) {
+    productForm = { ...productForm, product_type_key: nextKey };
+    parameterGroups = clonePresetGroups(nextKey);
+  }
+
+  function addParameterGroup() {
+    parameterGroups = [...parameterGroups, createGroupDraft({ group_name: '', parameters: [] })];
+  }
+
+  function removeParameterGroup(groupIndex) {
+    parameterGroups = parameterGroups.map((group, index) =>
+      index === groupIndex
+        ? { ...group, _pending_delete: !group._pending_delete }
+        : group
+    );
+  }
+
+  function moveParameterGroup(groupIndex, direction) {
+    const nextIndex = groupIndex + direction;
+    if (nextIndex < 0 || nextIndex >= parameterGroups.length) return;
+    const reordered = [...parameterGroups];
+    const [moved] = reordered.splice(groupIndex, 1);
+    reordered.splice(nextIndex, 0, moved);
+    parameterGroups = reordered;
+  }
+
+  function addParameter(groupIndex) {
+    parameterGroups = parameterGroups.map((group, index) =>
+      index === groupIndex
+        ? { ...group, parameters: [...group.parameters, createParameterDraft()] }
+        : group
+    );
+  }
+
+  function removeParameter(groupIndex, parameterIndex) {
+    parameterGroups = parameterGroups.map((group, index) =>
+      index === groupIndex
+        ? {
+            ...group,
+            parameters: group.parameters.map((parameter, innerIndex) =>
+              innerIndex === parameterIndex
+                ? { ...parameter, _pending_delete: !parameter._pending_delete }
+                : parameter
+            )
+          }
+        : group
+    );
+  }
+
+  function moveParameter(groupIndex, parameterIndex, direction) {
+    parameterGroups = parameterGroups.map((group, index) => {
+      if (index !== groupIndex) return group;
+      const nextIndex = parameterIndex + direction;
+      if (nextIndex < 0 || nextIndex >= group.parameters.length) return group;
+      const parameters = [...group.parameters];
+      const [moved] = parameters.splice(parameterIndex, 1);
+      parameters.splice(nextIndex, 0, moved);
+      return { ...group, parameters };
+    });
+  }
+
+  function updateParameterValueType(groupIndex, parameterIndex, valueType) {
+    parameterGroups = parameterGroups.map((group, index) => {
+      if (index !== groupIndex) return group;
+      const parameters = group.parameters.map((parameter, innerIndex) => {
+        if (innerIndex !== parameterIndex) return parameter;
+        return {
+          ...parameter,
+          value_type: valueType,
+          value_string: valueType === 'string' ? parameter.value_string : '',
+          value_number: valueType === 'number' ? parameter.value_number : '',
+          unit: valueType === 'number' ? parameter.unit : '',
+          custom_unit: valueType === 'number' ? parameter.custom_unit : ''
+        };
+      });
+      return { ...group, parameters };
+    });
+  }
+
+  function serializeParameterGroups() {
+    return parameterGroups
+      .filter((group) => !group._pending_delete)
+      .map((group, groupIndex) => ({
+        group_name: group.group_name.trim(),
+        sort_order: groupIndex,
+        parameters: group.parameters
+          .filter((parameter) => !parameter._pending_delete)
+          .map((parameter, parameterIndex) => {
+            const unitValue =
+              parameter.value_type === 'number'
+                ? (parameter.unit === '__custom__' ? parameter.custom_unit : parameter.unit) || null
+                : null;
+            return {
+              parameter_name: parameter.parameter_name.trim(),
+              sort_order: parameterIndex,
+              value_string:
+                parameter.value_type === 'string'
+                  ? parameter.value_string.trim() || null
+                  : null,
+              value_number:
+                parameter.value_type === 'number' && parameter.value_number !== '' && parameter.value_number != null
+                  ? Number(parameter.value_number)
+                  : null,
+              unit: unitValue && String(unitValue).trim() ? String(unitValue).trim() : null
+            };
+          })
+      }));
   }
 
   function normalizeOptionalColor(value) {
@@ -309,10 +547,10 @@
 
   function exportRpmPointsCsv() {
     if (!rpmPoints.length) {
-      error = 'No RPM points to export.';
+      error = 'No graph points to export.';
       return;
     }
-    const base = currentFan ? `${currentFan.model}`.replace(/\s+/g, '_') : 'fan';
+    const base = currentProduct ? `${currentProduct.model}`.replace(/\s+/g, '_') : 'product';
     downloadCsv(buildRpmPointsCsv(), `${base}-rpm-points.csv`);
   }
 
@@ -321,14 +559,14 @@
       error = 'No efficiency/permissible points to export.';
       return;
     }
-    const base = currentFan ? `${currentFan.model}`.replace(/\s+/g, '_') : 'fan';
+    const base = currentProduct ? `${currentProduct.model}`.replace(/\s+/g, '_') : 'product';
     downloadCsv(buildEfficiencyPointsCsv(), `${base}-efficiency-points.csv`);
   }
 
   async function importRpmPointsFromCsv() {
     rpmCsvError = '';
-    if (!selectedFanId) {
-      rpmCsvError = 'Select a fan first.';
+    if (!selectedProductId) {
+      rpmCsvError = 'Select a product first.';
       return;
     }
     const rows = parseCsvRows(rpmCsv);
@@ -348,19 +586,19 @@
 
         let line = existingLines.get(rpm);
         if (!line) {
-          line = await createRpmLine(selectedFanId, { rpm });
+          line = await createRpmLine(selectedProductId, { rpm });
           existingLines.set(rpm, line);
         }
 
-        await createRpmPoint(selectedFanId, {
+        await createRpmPoint(selectedProductId, {
           rpm_line_id: line.id,
           airflow,
           pressure
         });
       }
       rpmCsv = '';
-      await loadPoints();
-      addSuccess('RPM CSV imported.');
+      await loadProductData();
+      addSuccess(`${graphLineValueLabel()} CSV imported.`);
     } catch (e) {
       rpmCsvError = e.message;
     }
@@ -368,8 +606,8 @@
 
   async function importEfficiencyPointsFromCsv() {
     efficiencyCsvError = '';
-    if (!selectedFanId) {
-      efficiencyCsvError = 'Select a fan first.';
+    if (!selectedProductId) {
+      efficiencyCsvError = 'Select a product first.';
       return;
     }
     const rows = parseCsvRows(efficiencyCsv);
@@ -383,7 +621,7 @@
         if (row[0]?.toLowerCase() === 'airflow') continue;
         const airflow = parseFloat(row[0]);
         if (isNaN(airflow)) continue;
-        await createEfficiencyPoint(selectedFanId, {
+        await createEfficiencyPoint(selectedProductId, {
           airflow,
           efficiency_centre: parseOptionalNumber(row[1]),
           efficiency_lower_end: parseOptionalNumber(row[2]),
@@ -392,30 +630,43 @@
         });
       }
       efficiencyCsv = '';
-      await loadPoints();
+      await loadProductData();
       addSuccess('Efficiency/permissible CSV imported.');
     } catch (e) {
       efficiencyCsvError = e.message;
     }
   }
 
-  async function loadFans() {
+  async function loadProducts() {
     try {
-      fans = await getFans();
-      if (fans.length && !selectedFanId) selectedFanId = fans[0].id;
+      products = await getProducts();
+      if (products.length && !selectedProductId) selectedProductId = products[0].id;
     } catch (e) {
       error = e.message;
     }
   }
 
-  async function loadPoints() {
-    if (!selectedFanId) return;
+  async function loadProductTypes() {
     try {
-      const [nextRpmLines, nextRpmPoints, nextEfficiencyPoints, nextFan] = await Promise.all([
-        getRpmLines(selectedFanId),
-        getRpmPoints(selectedFanId),
-        getEfficiencyPoints(selectedFanId),
-        getFan(selectedFanId)
+      productTypes = await getProductTypes();
+      if (!productForm.product_type_key && productTypes.length) {
+        resetProductEditor(productTypes[0].key);
+      } else if (!parameterGroups.length && productForm.product_type_key) {
+        parameterGroups = clonePresetGroups(productForm.product_type_key);
+      }
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function loadProductData() {
+    if (!selectedProductId) return;
+    try {
+      const [nextRpmLines, nextRpmPoints, nextEfficiencyPoints, nextProduct] = await Promise.all([
+        getRpmLines(selectedProductId),
+        getRpmPoints(selectedProductId),
+        getEfficiencyPoints(selectedProductId),
+        getProduct(selectedProductId)
       ]);
       rpmLines = nextRpmLines.map((line, index) => ({
         ...line,
@@ -425,23 +676,25 @@
       efficiencyPoints = nextEfficiencyPoints;
       originalRpmPointIds = nextRpmPoints.map((point) => point.id);
       originalEfficiencyPointIds = nextEfficiencyPoints.map((point) => point.id);
-      currentFan = nextFan;
+      currentProduct = nextProduct;
+      const nextProductType = productTypes.find((item) => item.key === (nextProduct?.product_type_key || 'fan')) || null;
+      const overlayDefinitions = nextProductType?.supports_graph_overlays === false ? [] : FULL_CHART_LINE_DEFINITIONS;
       graphStyleForm = {
-        band_graph_background_color: normalizeOptionalColor(nextFan?.band_graph_background_color) || '#ffffff',
-        band_graph_label_text_color: normalizeOptionalColor(nextFan?.band_graph_label_text_color) || '#000000',
+        band_graph_background_color: normalizeOptionalColor(nextProduct?.band_graph_background_color) || '#ffffff',
+        band_graph_label_text_color: normalizeOptionalColor(nextProduct?.band_graph_label_text_color) || '#000000',
         band_graph_faded_opacity:
-          nextFan?.band_graph_faded_opacity != null && !Number.isNaN(Number(nextFan.band_graph_faded_opacity))
-            ? Number(nextFan.band_graph_faded_opacity)
+          nextProduct?.band_graph_faded_opacity != null && !Number.isNaN(Number(nextProduct.band_graph_faded_opacity))
+            ? Number(nextProduct.band_graph_faded_opacity)
             : 0.18,
         band_graph_permissible_label_color:
-          normalizeOptionalColor(nextFan?.band_graph_permissible_label_color) ||
-          normalizeOptionalColor(nextFan?.band_graph_label_text_color) ||
+          normalizeOptionalColor(nextProduct?.band_graph_permissible_label_color) ||
+          normalizeOptionalColor(nextProduct?.band_graph_label_text_color) ||
           '#000000'
       };
-      productImages = currentFan.product_images || [];
+      productImages = currentProduct.product_images || [];
       const validTargets = new Set([
         ...nextRpmLines.map((line) => `rpm:${line.id}`),
-        ...FULL_CHART_LINE_DEFINITIONS.map((definition) => `efficiency:${definition.key}`)
+        ...overlayDefinitions.map((definition) => `efficiency:${definition.key}`)
       ]);
       if (!chartAddTarget || !validTargets.has(chartAddTarget)) {
         chartAddTarget = 'off';
@@ -454,21 +707,26 @@
     }
   }
 
-  $: if (selectedFanId) {
-    loadPoints();
+  $: if (selectedProductId) {
+    loadProductData();
   }
 
-  loadFans();
+  loadProducts();
+  loadProductTypes();
 
-  async function saveFan() {
+  async function saveProduct() {
     error = '';
     clearSuccessToast();
     const body = {
-      model: fanForm.model.trim(),
-      notes: fanForm.notes.trim() || null,
-      mounting_style: fanForm.mounting_style || null,
-      discharge_type: fanForm.discharge_type || null,
-      show_rpm_band_shading: !!fanForm.show_rpm_band_shading,
+      model: productForm.model.trim(),
+      product_type_key: productForm.product_type_key || 'fan',
+      mounting_style: productForm.mounting_style || null,
+      discharge_type: productForm.discharge_type || null,
+      description_html: productForm.description_html.trim() || null,
+      features_html: productForm.features_html.trim() || null,
+      specifications_html: productForm.specifications_html.trim() || null,
+      comments_html: productForm.comments_html.trim() || null,
+      show_rpm_band_shading: !!productForm.show_rpm_band_shading,
       band_graph_background_color: normalizeOptionalColor(graphStyleForm.band_graph_background_color) || null,
       band_graph_label_text_color: normalizeOptionalColor(graphStyleForm.band_graph_label_text_color) || null,
       band_graph_faded_opacity:
@@ -477,94 +735,96 @@
           : Number(graphStyleForm.band_graph_faded_opacity),
       band_graph_permissible_label_color:
         normalizeOptionalColor(graphStyleForm.band_graph_permissible_label_color) || null,
-      diameter_mm: fanForm.diameter_mm ? parseFloat(fanForm.diameter_mm) : null,
-      max_rpm: fanForm.max_rpm ? parseFloat(fanForm.max_rpm) : null
+      parameter_groups: serializeParameterGroups()
     };
     if (!body.model) {
       error = 'Model is required.';
       return;
     }
     loading = true;
-    savingFanDetails = true;
+    savingProductDetails = true;
     try {
-      if (editingFanId) {
-        currentFan = await updateFan(editingFanId, body);
-        addSuccess('Fan updated.');
+      if (editingProductId) {
+        currentProduct = await updateProduct(editingProductId, body);
+        addSuccess('Product updated.');
       } else {
-        const created = await createFan(body);
-        currentFan = created;
-        addSuccess('Fan created. You can now upload product images and add map points.');
-        selectedFanId = created.id;
-        editingFanId = created.id;
+        const created = await createProduct(body);
+        currentProduct = created;
+        addSuccess('Product created. You can now upload product images and add graph data.');
+        selectedProductId = created.id;
+        editingProductId = created.id;
         mode = 'editExisting';
       }
-      fans = await getFans();
-      await loadPoints();
-      if (currentFan) editFan(currentFan);
+      products = await getProducts();
+      await loadProductData();
+      if (currentProduct) editProduct(currentProduct);
     } catch (e) {
       error = e.message;
     } finally {
       loading = false;
-      savingFanDetails = false;
+      savingProductDetails = false;
     }
   }
 
-  function editFan(fan) {
-    editingFanId = fan.id;
-    fanForm = {
-      model: fan.model,
-      notes: fan.notes || '',
-      mounting_style: fan.mounting_style || '',
-      discharge_type: fan.discharge_type || '',
-      show_rpm_band_shading: fan.show_rpm_band_shading ?? true,
-      diameter_mm: fan.diameter_mm ?? '',
-      max_rpm: fan.max_rpm ?? ''
+  function editProduct(product) {
+    editingProductId = product.id;
+    productForm = {
+      model: product.model,
+      product_type_key: product.product_type_key || 'fan',
+      mounting_style: product.mounting_style || '',
+      discharge_type: product.discharge_type || '',
+      description_html: product.description_html || '',
+      features_html: product.features_html || '',
+      specifications_html: product.specifications_html || '',
+      comments_html: product.comments_html || '',
+      show_rpm_band_shading: product.show_rpm_band_shading ?? true
     };
     graphStyleForm = {
-      band_graph_background_color: normalizeOptionalColor(fan.band_graph_background_color) || '#ffffff',
-      band_graph_label_text_color: normalizeOptionalColor(fan.band_graph_label_text_color) || '#000000',
+      band_graph_background_color: normalizeOptionalColor(product.band_graph_background_color) || '#ffffff',
+      band_graph_label_text_color: normalizeOptionalColor(product.band_graph_label_text_color) || '#000000',
       band_graph_faded_opacity:
-        fan.band_graph_faded_opacity != null && !Number.isNaN(Number(fan.band_graph_faded_opacity))
-          ? Number(fan.band_graph_faded_opacity)
+        product.band_graph_faded_opacity != null && !Number.isNaN(Number(product.band_graph_faded_opacity))
+          ? Number(product.band_graph_faded_opacity)
           : 0.18,
       band_graph_permissible_label_color:
-        normalizeOptionalColor(fan.band_graph_permissible_label_color) ||
-        normalizeOptionalColor(fan.band_graph_label_text_color) ||
+        normalizeOptionalColor(product.band_graph_permissible_label_color) ||
+        normalizeOptionalColor(product.band_graph_label_text_color) ||
         '#000000'
     };
+    parameterGroups = (product.parameter_groups ?? []).map((group) => createGroupDraft(group));
   }
 
   async function addRpmLine() {
     const rpm = parseFloat(newRpmLineValue);
-    if (isNaN(rpm) || !selectedFanId) {
-      error = 'Enter a numeric RPM value and select a fan first.';
+    if (isNaN(rpm) || !selectedProductId) {
+      error = `Enter a numeric ${graphLineValueLabel()} value and select a graph-capable product first.`;
       return;
     }
     try {
-      const created = await createRpmLine(selectedFanId, {
+      const created = await createRpmLine(selectedProductId, {
         rpm,
         band_color: normalizeOptionalColor(newRpmLineBandColor) || null
       });
       newRpmLineValue = '';
       newRpmLineBandColor = '';
-      await loadPoints();
+      await loadProductData();
       chartAddTarget = `rpm:${created.id}`;
-      addSuccess('RPM line added.');
+      addSuccess(`${graphLineValueLabel()} line added.`);
     } catch (e) {
       error = e.message;
     }
   }
 
   async function removeRpmLine(line) {
-    const confirmed = window.confirm(`Delete the ${line.rpm} RPM line? This will also remove its map points.`);
+    const confirmed = window.confirm(`Delete the ${formatGraphLineValue(line.rpm)} line? This will also remove its graph points.`);
     if (!confirmed) {
       return;
     }
 
     try {
-      await deleteRpmLine(selectedFanId, line.id);
-      await loadPoints();
-      addSuccess('RPM line deleted.');
+      await deleteRpmLine(selectedProductId, line.id);
+      await loadProductData();
+      addSuccess(`${graphLineValueLabel()} line deleted.`);
     } catch (e) {
       error = e.message;
     }
@@ -572,25 +832,25 @@
 
   async function saveRpmLineStyle(line) {
     try {
-      await updateRpmLine(selectedFanId, line.id, {
+      await updateRpmLine(selectedProductId, line.id, {
         rpm: Number(line.rpm),
         band_color: normalizeOptionalColor(line.band_color) || null
       });
-      await loadPoints();
-      addSuccess(`${line.rpm} RPM styling updated.`);
+      await loadProductData();
+      addSuccess(`${formatGraphLineValue(line.rpm)} styling updated.`);
     } catch (e) {
       error = e.message;
     }
   }
 
   async function saveBandGraphStyle() {
-    if (!selectedFanId) {
-      error = 'Select a fan first.';
+    if (!selectedProductId) {
+      error = 'Select a product first.';
       return;
     }
 
     try {
-      const saved = await updateFan(selectedFanId, {
+      const saved = await updateProduct(selectedProductId, {
         band_graph_background_color: normalizeOptionalColor(graphStyleForm.band_graph_background_color) || null,
         band_graph_label_text_color: normalizeOptionalColor(graphStyleForm.band_graph_label_text_color) || null,
         band_graph_faded_opacity:
@@ -612,9 +872,9 @@
           normalizeOptionalColor(saved?.band_graph_label_text_color) ||
           '#000000'
       };
-      currentFan = saved;
-      fans = await getFans();
-      addSuccess('Band graph style updated for this fan.');
+      currentProduct = saved;
+      products = await getProducts();
+      addSuccess('Band graph style updated for this product.');
     } catch (e) {
       error = e.message;
     }
@@ -624,15 +884,15 @@
     const rpm_line_id = Number(rpmPointForm.rpm_line_id);
     const airflow = parseFloat(rpmPointForm.airflow);
     const pressure = parseFloat(rpmPointForm.pressure);
-    if (!selectedFanId || !rpm_line_id || isNaN(airflow) || isNaN(pressure)) {
-      error = 'Select an RPM line and enter numeric airflow and pressure values.';
+    if (!selectedProductId || !rpm_line_id || isNaN(airflow) || isNaN(pressure)) {
+      error = `Select a ${graphLineValueLabel()} line and enter numeric ${graphXAxisLabel().toLowerCase()} and ${graphYAxisLabel().toLowerCase()} values.`;
       return;
     }
     rpmPoints = applyRpmPointSort([
       ...rpmPoints,
       {
         id: createTempPointId(),
-        fan_id: selectedFanId,
+        product_id: selectedProductId,
         rpm_line_id,
         rpm: rpmLines.find((line) => line.id === rpm_line_id)?.rpm ?? null,
         airflow,
@@ -640,12 +900,12 @@
       }
     ]);
     rpmPointForm = { rpm_line_id: rpmPointForm.rpm_line_id, airflow: '', pressure: '' };
-    addSuccess('RPM point added locally. Save map points to persist it.');
+    addSuccess('Graph point added locally. Save map points to persist it.');
   }
 
   async function addEfficiencyPointFromForm() {
     const airflow = parseFloat(efficiencyPointForm.airflow);
-    if (!selectedFanId || isNaN(airflow)) {
+    if (!selectedProductId || isNaN(airflow)) {
       error = 'Enter a numeric airflow value for the efficiency point.';
       return;
     }
@@ -653,7 +913,7 @@
       ...efficiencyPoints,
       {
         id: createTempPointId(),
-        fan_id: selectedFanId,
+        product_id: selectedProductId,
         airflow,
         efficiency_centre: parseOptionalNumber(efficiencyPointForm.efficiency_centre),
         efficiency_lower_end: parseOptionalNumber(efficiencyPointForm.efficiency_lower_end),
@@ -672,8 +932,8 @@
   }
 
   async function uploadImages() {
-    if (!selectedFanId) {
-      error = 'Save the fan before uploading product images.';
+    if (!selectedProductId) {
+      error = 'Save the product before uploading product images.';
       return;
     }
     if (!pendingImageFiles.length) {
@@ -681,10 +941,10 @@
       return;
     }
     try {
-      productImages = await uploadProductImages(selectedFanId, pendingImageFiles);
+      productImages = await uploadProductImages(selectedProductId, pendingImageFiles);
       pendingImageFiles = [];
-      await loadPoints();
-      fans = await getFans();
+      await loadProductData();
+      products = await getProducts();
       addSuccess('Product images uploaded.');
     } catch (e) {
       error = e.message;
@@ -699,9 +959,9 @@
     reordered.splice(targetIndex, 0, moved);
 
     try {
-      productImages = await reorderProductImages(selectedFanId, reordered.map((image) => image.id));
-      await loadPoints();
-      fans = await getFans();
+      productImages = await reorderProductImages(selectedProductId, reordered.map((image) => image.id));
+      await loadProductData();
+      products = await getProducts();
       addSuccess('Product image order updated.');
     } catch (e) {
       error = e.message;
@@ -710,9 +970,9 @@
 
   async function removeProductImage(image) {
     try {
-      await deleteProductImage(selectedFanId, image.id);
-      await loadPoints();
-      fans = await getFans();
+      await deleteProductImage(selectedProductId, image.id);
+      await loadProductData();
+      products = await getProducts();
       addSuccess('Product image deleted.');
     } catch (e) {
       error = e.message;
@@ -721,14 +981,17 @@
 
   function buildMapChartOption() {
     const chartTheme = getChartTheme($theme);
+    const overlayDefinitions = currentOverlayLineDefinitions();
     mapChartOption = buildFullChartOption({
       rpmLines,
       rpmPoints,
       efficiencyPoints,
       chartTheme,
-      title: 'Map points (drag points to edit)',
+      title: `${graphXAxisLabel()} vs ${graphYAxisLabel()} (drag points to edit)`,
+      graphConfig: getCurrentGraphConfig(),
       includeDragHandles: true,
-      showRpmBandShading: fanForm.show_rpm_band_shading ?? true,
+      showRpmBandShading: productSupportsBandGraphStyle() ? (productForm.show_rpm_band_shading ?? true) : false,
+      showSecondaryAxis: productSupportsGraphOverlays(),
       flowAxisMaxOverride: dragAxisLock?.flowMax ?? null,
       pressureAxisMaxOverride: dragAxisLock?.pressureMax ?? null,
       adaptGraphBackgroundToTheme: true,
@@ -738,13 +1001,13 @@
         formatter: (params) => {
           const rawValue = Array.isArray(params.value) ? params.value : params.value?.value;
           const [airflow, second] = rawValue || [];
-          const matchingDefinition = FULL_CHART_LINE_DEFINITIONS.find((definition) => definition.label === params.seriesName);
+          const matchingDefinition = overlayDefinitions.find((definition) => definition.label === params.seriesName);
 
           if (matchingDefinition) {
-            return `${matchingDefinition.tooltipLabel}: ${second}<br/>airflow: ${airflow}`;
+            return `${matchingDefinition.tooltipLabel}: ${second}<br/>${graphXAxisLabel().toLowerCase()}: ${airflow}`;
           }
 
-          return `${params.seriesName}<br/>airflow: ${airflow}<br/>pressure: ${second}`;
+          return `${params.seriesName}<br/>${graphXAxisLabel().toLowerCase()}: ${airflow}<br/>${graphYAxisLabel().toLowerCase()}: ${second}`;
         }
       }
     });
@@ -764,7 +1027,7 @@
     if (!target) return;
 
     if (data?.pointType === 'efficiency') {
-      const overlayDefinition = FULL_CHART_LINE_DEFINITIONS.find((definition) => definition.label === params.seriesName);
+      const overlayDefinition = currentOverlayLineDefinitions().find((definition) => definition.label === params.seriesName);
       const lineKey = overlayDefinition?.key ?? null;
       const updated = {
         ...target,
@@ -823,7 +1086,7 @@
       }
 
       for (const p of efficiencyPoints) {
-        for (const definition of FULL_CHART_LINE_DEFINITIONS) {
+        for (const definition of currentOverlayLineDefinitions()) {
           if (p[definition.key] == null) continue;
           const overlayPixel = chartInstance.convertToPixel(
             { xAxisIndex: 0, yAxisIndex: 1 },
@@ -873,7 +1136,7 @@
         return;
       }
       const dom = evt.event || evt;
-      if (!selectedFanId) return;
+      if (!selectedProductId) return;
       const { x, y } = getEventXY(evt);
 
       if (!chartAddTarget || chartAddTarget === 'off') return;
@@ -885,7 +1148,7 @@
           ...rpmPoints,
           {
             id: createTempPointId(),
-            fan_id: selectedFanId,
+            product_id: selectedProductId,
             rpm_line_id,
             rpm: rpmLines.find((line) => line.id === rpm_line_id)?.rpm ?? null,
             airflow: Math.round(airflow),
@@ -903,7 +1166,7 @@
           ...efficiencyPoints,
           {
             id: createTempPointId(),
-            fan_id: selectedFanId,
+            product_id: selectedProductId,
             airflow: Math.round(airflow),
             efficiency_centre: lineKey === 'efficiency_centre' ? Math.round(value) : null,
             efficiency_lower_end: lineKey === 'efficiency_lower_end' ? Math.round(value) : null,
@@ -965,7 +1228,7 @@
     rpmLines;
     rpmPoints;
     efficiencyPoints;
-    fanForm;
+    productForm;
     graphStyleForm;
     $theme;
     dragAxisLock;
@@ -974,13 +1237,13 @@
 
   async function updateRpmPointLocal(point) {
     try {
-      await updateRpmPoint(selectedFanId, point.id, {
+      await updateRpmPoint(selectedProductId, point.id, {
         rpm_line_id: Number(point.rpm_line_id),
         airflow: parseFloat(point.airflow),
         pressure: parseFloat(point.pressure)
       });
-      await loadPoints();
-      addSuccess('RPM point updated.');
+      await loadProductData();
+      addSuccess('Graph point updated.');
     } catch (e) {
       error = e.message;
     }
@@ -988,14 +1251,14 @@
 
   async function updateEfficiencyPointLocal(point) {
     try {
-      await updateEfficiencyPoint(selectedFanId, point.id, {
+      await updateEfficiencyPoint(selectedProductId, point.id, {
         airflow: parseFloat(point.airflow),
         efficiency_centre: parseOptionalNumber(point.efficiency_centre),
         efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
         efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
         permissible_use: parseOptionalNumber(point.permissible_use)
       });
-      await loadPoints();
+      await loadProductData();
       addSuccess('Efficiency/permissible point updated.');
     } catch (e) {
       error = e.message;
@@ -1021,16 +1284,16 @@
         1;
 
       const rpmDeleteOperations = rpmDeletes.map((pointId) => ({
-        label: `Deleted RPM point ${pointId}`,
-        run: () => deleteRpmPoint(selectedFanId, pointId, { regenerateGraph: false })
+        label: `Deleted graph point ${pointId}`,
+        run: () => deleteRpmPoint(selectedProductId, pointId, { regenerateGraph: false })
       }));
 
       const rpmSaveOperations = rpmPoints.map((p) => ({
-        label: isPersistedPointId(p.id) ? `Updated RPM point ${p.id}` : 'Created new RPM point',
+        label: isPersistedPointId(p.id) ? `Updated graph point ${p.id}` : 'Created new graph point',
         run: () =>
           isPersistedPointId(p.id)
             ? updateRpmPoint(
-                selectedFanId,
+                selectedProductId,
                 p.id,
                 {
                   rpm_line_id: Number(p.rpm_line_id),
@@ -1040,7 +1303,7 @@
                 { regenerateGraph: false }
               )
             : createRpmPoint(
-                selectedFanId,
+                selectedProductId,
                 {
                   rpm_line_id: Number(p.rpm_line_id),
                   airflow: parseFloat(p.airflow),
@@ -1052,7 +1315,7 @@
 
       const efficiencyDeleteOperations = efficiencyDeletes.map((pointId) => ({
         label: `Deleted efficiency point ${pointId}`,
-        run: () => deleteEfficiencyPoint(selectedFanId, pointId, { regenerateGraph: false })
+        run: () => deleteEfficiencyPoint(selectedProductId, pointId, { regenerateGraph: false })
       }));
 
       const efficiencySaveOperations = efficiencyPoints.map((p) => ({
@@ -1060,7 +1323,7 @@
         run: () =>
           isPersistedPointId(p.id)
             ? updateEfficiencyPoint(
-                selectedFanId,
+                selectedProductId,
                 p.id,
                 {
                   airflow: parseFloat(p.airflow),
@@ -1072,7 +1335,7 @@
                 { regenerateGraph: false }
               )
             : createEfficiencyPoint(
-                selectedFanId,
+                selectedProductId,
                 {
                   airflow: parseFloat(p.airflow),
                   efficiency_centre: parseOptionalNumber(p.efficiency_centre),
@@ -1094,9 +1357,9 @@
 
       await processBatchedOperations(pointOperations);
 
-      await refreshGraphImage(selectedFanId);
+      await refreshGraphImage(selectedProductId);
       await advanceMapPointSave('Regenerated graph image');
-      await loadPoints();
+      await loadProductData();
       addSuccess('All map points saved.');
     } catch (e) {
       error = e.message;
@@ -1107,7 +1370,7 @@
 
   async function deleteRpmPointLocal(point) {
     rpmPoints = rpmPoints.filter((item) => item.id !== point.id);
-    addSuccess('RPM point deleted locally. Save map points to persist it.');
+    addSuccess('Graph point deleted locally. Save map points to persist it.');
   }
 
   async function deleteEfficiencyPointLocal(point) {
@@ -1117,7 +1380,7 @@
 </script>
 
 <svelte:head>
-  <title>Data entry — Fan Graphs</title>
+  <title>Data entry — Internal Facing</title>
 </svelte:head>
 
 {#if successMessages.length}
@@ -1177,7 +1440,7 @@
     <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Create & Maintain</p>
     <h1>Data entry</h1>
     <p class="text-body-secondary">
-      Manage fan records, product images, RPM lines, and all editable map data from a single workspace.
+      Manage product records, product images, graph lines, and all editable graph data from a single workspace.
     </p>
     {#if error}
       <p class="text-danger mb-2">{error}</p>
@@ -1191,11 +1454,11 @@
     <h2 class="h5">Get Started</h2>
     <p>What would you like to do?</p>
     <div class="d-flex flex-wrap gap-2">
-      <button class="btn btn-primary" on:click={() => { mode = 'create'; fanForm = emptyFanForm(); graphStyleForm = defaultGraphStyleForm(); }}>
-        Create New Fan
+      <button class="btn btn-primary" on:click={() => { mode = 'create'; resetProductEditor('fan'); }}>
+        Create New Product
       </button>
       <button class="btn btn-outline-secondary" on:click={() => { mode = 'editExisting'; }}>
-        Edit Existing Fan
+        Edit Existing Product
       </button>
     </div>
     </div>
@@ -1205,7 +1468,7 @@
 {#if mode === 'create'}
   <div class="card shadow-sm col-12 col-xxl-10 mx-auto">
     <div class="card-body">
-    <h2 class="h5">Create New Fan</h2>
+    <h2 class="h5">Create New Product</h2>
     <div class="row g-3">
       <div class="col-12 col-lg-6">
       <div class="card shadow-sm h-100">
@@ -1214,11 +1477,23 @@
         <div class="row g-3">
           <div class="col-12 col-md-6">
             <label class="form-label" for="create-model">Model</label>
-            <input class="form-control" id="create-model" type="text" bind:value={fanForm.model} placeholder="e.g. AF-120" />
+            <input class="form-control" id="create-model" type="text" bind:value={productForm.model} placeholder="e.g. AF-120" />
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="create-product-type">Product type</label>
+            <select class="form-select" id="create-product-type" bind:value={productForm.product_type_key} on:change={(event) => changeProductType(event.currentTarget.value)}>
+              {#each productTypes as productType}
+                <option value={productType.key}>{productType.label}</option>
+              {/each}
+            </select>
           </div>
           <div class="col-12">
-            <label class="form-label" for="create-notes">Notes (optional)</label>
-            <textarea class="form-control" id="create-notes" bind:value={fanForm.notes} rows="2"></textarea>
+            <label class="form-label" for="create-description">Description (HTML)</label>
+            <textarea class="form-control" id="create-description" rows="4" bind:value={productForm.description_html}></textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="create-features">Features (HTML)</label>
+            <textarea class="form-control" id="create-features" rows="4" bind:value={productForm.features_html}></textarea>
           </div>
         </div>
         </div>
@@ -1230,61 +1505,159 @@
         <div class="card-body">
         <h3 class="h6">Product attributes</h3>
         <div class="row g-3">
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="create-mounting-style">Mounting Style (optional)</label>
-            <select class="form-select" id="create-mounting-style" bind:value={fanForm.mounting_style}>
-              <option value="">Any / unset</option>
-              {#each MOUNTING_STYLE_OPTIONS as option}
-                <option value={option}>{option}</option>
-              {/each}
-            </select>
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="create-discharge-type">Discharge Type (optional)</label>
-            <select class="form-select" id="create-discharge-type" bind:value={fanForm.discharge_type}>
-              <option value="">Any / unset</option>
-              {#each DISCHARGE_TYPE_OPTIONS as option}
-                <option value={option}>{option}</option>
-              {/each}
-            </select>
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="create-diameter">Diameter (mm, optional)</label>
-            <input class="form-control" id="create-diameter" type="number" step="any" bind:value={fanForm.diameter_mm} />
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="create-max-rpm">Max RPM (optional)</label>
-            <input class="form-control" id="create-max-rpm" type="number" step="any" bind:value={fanForm.max_rpm} />
+          {#if productForm.product_type_key === 'fan'}
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="create-mounting-style">Mounting Style (optional)</label>
+              <select class="form-select" id="create-mounting-style" bind:value={productForm.mounting_style}>
+                <option value="">Any / unset</option>
+                {#each MOUNTING_STYLE_OPTIONS as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="create-discharge-type">Discharge Type (optional)</label>
+              <select class="form-select" id="create-discharge-type" bind:value={productForm.discharge_type}>
+                <option value="">Any / unset</option>
+                {#each DISCHARGE_TYPE_OPTIONS as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            </div>
+          {/if}
+          {#if productSupportsBandGraphStyle()}
+            <div class="col-12">
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" id="create-show-rpm-band-shading" type="checkbox" bind:checked={productForm.show_rpm_band_shading} />
+                <label class="form-check-label" for="create-show-rpm-band-shading">Show band shading on generated product graphs</label>
+              </div>
+            </div>
+          {/if}
+          <div class="col-12">
+            <label class="form-label" for="create-specifications">Specifications (HTML)</label>
+            <textarea class="form-control" id="create-specifications" rows="4" bind:value={productForm.specifications_html}></textarea>
           </div>
           <div class="col-12">
-            <div class="form-check form-switch mt-2">
-              <input class="form-check-input" id="create-show-rpm-band-shading" type="checkbox" bind:checked={fanForm.show_rpm_band_shading} />
-              <label class="form-check-label" for="create-show-rpm-band-shading">Show RPM band shading on fan maps and graph images</label>
-            </div>
+            <label class="form-label" for="create-comments">Comments (HTML)</label>
+            <textarea class="form-control" id="create-comments" rows="4" bind:value={productForm.comments_html}></textarea>
           </div>
         </div>
       </div>
       </div>
       </div>
     </div>
-    <p class="text-body-secondary mt-3 mb-2">Save the fan first, then you can upload product images and manage the generated graph file.</p>
+    <div class="card shadow-sm mt-3">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div>
+            <h3 class="h6 mb-1">Grouped Specifications</h3>
+            <p class="text-body-secondary mb-0">Organise ordered parameter groups for this product type.</p>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-outline-secondary btn-sm" on:click={usePresetGroupsForSelectedType}>Load Type Presets</button>
+            <button class="btn btn-outline-primary btn-sm" on:click={addParameterGroup}>Add Group</button>
+          </div>
+        </div>
+        {#if parameterGroups.length > 0}
+          <div class="vstack gap-3 mt-3">
+            {#each parameterGroups as group, groupIndex}
+              <div class={`border rounded p-3 ${group._pending_delete ? 'bg-danger-subtle border-danger-subtle opacity-75' : ''}`}>
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                  <input class="form-control" style="max-width: 22rem;" type="text" placeholder="Group name" bind:value={group.group_name} on:input={() => (parameterGroups = [...parameterGroups])} />
+                  <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameterGroup(groupIndex, -1)} disabled={groupIndex === 0}>Up</button>
+                  <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameterGroup(groupIndex, 1)} disabled={groupIndex === parameterGroups.length - 1}>Down</button>
+                  <button class={`btn btn-sm ${group._pending_delete ? 'btn-outline-success' : 'btn-outline-danger'}`} on:click={() => removeParameterGroup(groupIndex)}>
+                    {group._pending_delete ? 'Undo Delete' : 'Delete Group'}
+                  </button>
+                  <button class="btn btn-outline-primary btn-sm" on:click={() => addParameter(groupIndex)} disabled={group._pending_delete}>Add Parameter</button>
+                </div>
+                {#if group._pending_delete}
+                  <p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Product to apply the deletion.</p>
+                {/if}
+                <div class="vstack gap-3">
+                  {#each group.parameters as parameter, parameterIndex}
+                    <div class={`border rounded p-3 bg-body-tertiary ${parameter._pending_delete ? 'border-danger-subtle bg-danger-subtle opacity-75' : ''}`}>
+                      <div class="row g-3 align-items-end">
+                        <div class="col-12 col-lg-3">
+                          <label class="form-label" for={`create-group-${groupIndex}-parameter-${parameterIndex}-name`}>Name</label>
+                          <input class="form-control" id={`create-group-${groupIndex}-parameter-${parameterIndex}-name`} type="text" bind:value={parameter.parameter_name} on:input={() => (parameterGroups = [...parameterGroups])} />
+                        </div>
+                        <div class="col-12 col-lg-2">
+                          <label class="form-label" for={`create-group-${groupIndex}-parameter-${parameterIndex}-value-type`}>Value type</label>
+                          <select class="form-select" id={`create-group-${groupIndex}-parameter-${parameterIndex}-value-type`} bind:value={parameter.value_type} on:change={(event) => updateParameterValueType(groupIndex, parameterIndex, event.currentTarget.value)}>
+                            <option value="string">Text</option>
+                            <option value="number">Number</option>
+                          </select>
+                        </div>
+                        {#if parameter.value_type === 'string'}
+                          <div class="col-12 col-lg-5">
+                            <label class="form-label" for={`create-group-${groupIndex}-parameter-${parameterIndex}-text`}>Text value</label>
+                            <input class="form-control" id={`create-group-${groupIndex}-parameter-${parameterIndex}-text`} type="text" bind:value={parameter.value_string} on:input={() => (parameterGroups = [...parameterGroups])} />
+                          </div>
+                        {:else}
+                          <div class="col-12 col-lg-3">
+                            <label class="form-label" for={`create-group-${groupIndex}-parameter-${parameterIndex}-number`}>Numeric value</label>
+                            <input class="form-control" id={`create-group-${groupIndex}-parameter-${parameterIndex}-number`} type="number" step="any" bind:value={parameter.value_number} on:input={() => (parameterGroups = [...parameterGroups])} />
+                          </div>
+                          <div class="col-12 col-lg-3">
+                            <label class="form-label" for={`create-group-${groupIndex}-parameter-${parameterIndex}-unit`}>Unit</label>
+                            <select class="form-select" id={`create-group-${groupIndex}-parameter-${parameterIndex}-unit`} bind:value={parameter.unit} on:change={() => (parameterGroups = [...parameterGroups])}>
+                              <option value="">No unit</option>
+                              {#each GLOBAL_UNIT_OPTIONS as unitOption}
+                                <option value={unitOption}>{unitOption}</option>
+                              {/each}
+                              <option value="__custom__">Custom…</option>
+                            </select>
+                          </div>
+                          {#if parameter.unit === '__custom__'}
+                            <div class="col-12 col-lg-2">
+                              <label class="form-label" for={`create-group-${groupIndex}-parameter-${parameterIndex}-custom-unit`}>Custom unit</label>
+                              <input class="form-control" id={`create-group-${groupIndex}-parameter-${parameterIndex}-custom-unit`} type="text" bind:value={parameter.custom_unit} on:input={() => (parameterGroups = [...parameterGroups])} />
+                            </div>
+                          {/if}
+                        {/if}
+                        <div class="col-12 col-lg-2">
+                          <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameter(groupIndex, parameterIndex, -1)} disabled={group._pending_delete || parameter._pending_delete || parameterIndex === 0}>Up</button>
+                            <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameter(groupIndex, parameterIndex, 1)} disabled={group._pending_delete || parameter._pending_delete || parameterIndex === group.parameters.length - 1}>Down</button>
+                            <button class={`btn btn-sm ${parameter._pending_delete ? 'btn-outline-success' : 'btn-outline-danger'}`} on:click={() => removeParameter(groupIndex, parameterIndex)} disabled={group._pending_delete}>
+                              {parameter._pending_delete ? 'Undo Delete' : 'Delete'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      {#if parameter._pending_delete}
+                        <p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Product to apply the deletion.</p>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-body-secondary mt-3 mb-0">No parameter groups yet. Load type presets or add a group manually.</p>
+        {/if}
+      </div>
+    </div>
+    <p class="text-body-secondary mt-3 mb-2">Save the product first, then you can upload product images and manage the generated graph file.</p>
     <div class="d-flex flex-wrap gap-2">
-      <button class="btn btn-primary" on:click={saveFan} disabled={loading}>Save Fan</button>
-      <button class="btn btn-outline-secondary" on:click={() => { mode = 'select'; fanForm = emptyFanForm(); graphStyleForm = defaultGraphStyleForm(); }}>Cancel</button>
+      <button class="btn btn-primary" on:click={saveProduct} disabled={loading}>Save Product</button>
+      <button class="btn btn-outline-secondary" on:click={() => { mode = 'select'; resetProductEditor('fan'); productImages = []; pendingImageFiles = []; currentProduct = null; selectedProductId = null; }}>Cancel</button>
     </div>
     </div>
   </div>
 {/if}
 
-{#if mode === 'editExisting' && editingFanId === null}
+{#if mode === 'editExisting' && editingProductId === null}
   <div class="card shadow-sm col-12 col-xl-8 mx-auto">
     <div class="card-body">
-    <h2 class="h5">Select Fan to Edit</h2>
+    <h2 class="h5">Select Product to Edit</h2>
     <div class="mb-3 col-md-6 col-lg-4">
-      <label class="form-label" for="edit-fan-select">Select a fan</label>
-      <select class="form-select" id="edit-fan-select" bind:value={selectedFanId}>
+      <label class="form-label" for="edit-fan-select">Select a product</label>
+      <select class="form-select" id="edit-fan-select" bind:value={selectedProductId}>
         <option value={null}>— Select —</option>
-        {#each fans as fan}
+        {#each products as fan}
           <option value={fan.id}>{fan.model}</option>
         {/each}
       </select>
@@ -1293,73 +1666,184 @@
       <button
         class="btn btn-primary"
         on:click={() => {
-          if (currentFan) {
-            editFan(currentFan);
-            editingFanId = currentFan.id;
+          if (currentProduct) {
+            editProduct(currentProduct);
+            editingProductId = currentProduct.id;
           }
         }}
-        disabled={!selectedFanId}
+        disabled={!selectedProductId}
       >
-        Edit Selected Fan
+        Edit Selected Product
       </button>
-      <button class="btn btn-outline-secondary" on:click={() => { mode = 'select'; selectedFanId = null; graphStyleForm = defaultGraphStyleForm(); }}>Cancel</button>
+      <button class="btn btn-outline-secondary" on:click={() => { mode = 'select'; selectedProductId = null; resetProductEditor('fan'); productImages = []; pendingImageFiles = []; currentProduct = null; }}>Cancel</button>
     </div>
     </div>
   </div>
 {/if}
 
-{#if mode === 'editExisting' && editingFanId !== null}
+{#if mode === 'editExisting' && editingProductId !== null}
   <div class="card shadow-sm">
     <div class="card-body">
-    <h2 class="h5">Edit Fan: {fanForm.model}</h2>
+    <h2 class="h5">Edit Product: {productForm.model}</h2>
     <div class="row g-3">
       <div class="col-12 col-xxl-6">
       <div class="vstack gap-3">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-          <h3 class="h6">Fan details</h3>
+          <h3 class="h6">Product details</h3>
           <div class="row g-3">
             <div class="col-12 col-md-6">
               <label class="form-label" for="edit-model">Model</label>
-              <input class="form-control" id="edit-model" type="text" bind:value={fanForm.model} />
+              <input class="form-control" id="edit-model" type="text" bind:value={productForm.model} />
             </div>
             <div class="col-12 col-md-6">
-              <label class="form-label" for="edit-mounting-style">Mounting Style (optional)</label>
-              <select class="form-select" id="edit-mounting-style" bind:value={fanForm.mounting_style}>
-                <option value="">Any / unset</option>
-                {#each MOUNTING_STYLE_OPTIONS as option}
-                  <option value={option}>{option}</option>
+              <label class="form-label" for="edit-product-type">Product type</label>
+              <select class="form-select" id="edit-product-type" bind:value={productForm.product_type_key} on:change={(event) => changeProductType(event.currentTarget.value)}>
+                {#each productTypes as productType}
+                  <option value={productType.key}>{productType.label}</option>
                 {/each}
               </select>
             </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label" for="edit-discharge-type">Discharge Type (optional)</label>
-              <select class="form-select" id="edit-discharge-type" bind:value={fanForm.discharge_type}>
-                <option value="">Any / unset</option>
-                {#each DISCHARGE_TYPE_OPTIONS as option}
-                  <option value={option}>{option}</option>
-                {/each}
-              </select>
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label" for="edit-diameter">Diameter (mm, optional)</label>
-              <input class="form-control" id="edit-diameter" type="number" step="any" bind:value={fanForm.diameter_mm} />
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label" for="edit-max-rpm">Max RPM (optional)</label>
-              <input class="form-control" id="edit-max-rpm" type="number" step="any" bind:value={fanForm.max_rpm} />
-            </div>
-            <div class="col-12">
-              <div class="form-check form-switch mt-2">
-                <input class="form-check-input" id="edit-show-rpm-band-shading" type="checkbox" bind:checked={fanForm.show_rpm_band_shading} />
-                <label class="form-check-label" for="edit-show-rpm-band-shading">Show RPM band shading on fan maps and graph images</label>
+            {#if productForm.product_type_key === 'fan'}
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="edit-mounting-style">Mounting Style (optional)</label>
+                <select class="form-select" id="edit-mounting-style" bind:value={productForm.mounting_style}>
+                  <option value="">Any / unset</option>
+                  {#each MOUNTING_STYLE_OPTIONS as option}
+                    <option value={option}>{option}</option>
+                  {/each}
+                </select>
               </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="edit-discharge-type">Discharge Type (optional)</label>
+                <select class="form-select" id="edit-discharge-type" bind:value={productForm.discharge_type}>
+                  <option value="">Any / unset</option>
+                  {#each DISCHARGE_TYPE_OPTIONS as option}
+                    <option value={option}>{option}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
+            <div class="col-12">
+              <label class="form-label" for="edit-description">Description (HTML)</label>
+              <textarea class="form-control" id="edit-description" rows="4" bind:value={productForm.description_html}></textarea>
             </div>
             <div class="col-12">
-              <label class="form-label" for="edit-notes">Notes (optional)</label>
-              <textarea class="form-control" id="edit-notes" bind:value={fanForm.notes} rows="2"></textarea>
+              <label class="form-label" for="edit-features">Features (HTML)</label>
+              <textarea class="form-control" id="edit-features" rows="4" bind:value={productForm.features_html}></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="edit-specifications">Specifications (HTML)</label>
+              <textarea class="form-control" id="edit-specifications" rows="4" bind:value={productForm.specifications_html}></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="edit-comments">Comments (HTML)</label>
+              <textarea class="form-control" id="edit-comments" rows="4" bind:value={productForm.comments_html}></textarea>
+            </div>
+            {#if productSupportsBandGraphStyle()}
+              <div class="col-12">
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input" id="edit-show-rpm-band-shading" type="checkbox" bind:checked={productForm.show_rpm_band_shading} />
+                  <label class="form-check-label" for="edit-show-rpm-band-shading">Show band shading on product graphs and generated graph images</label>
+                </div>
+              </div>
+            {/if}
+          </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <h3 class="h6 mb-1">Grouped Specifications</h3>
+              <p class="text-body-secondary mb-0">These are ordered exactly as they will appear elsewhere.</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <button class="btn btn-outline-secondary btn-sm" on:click={usePresetGroupsForSelectedType}>Load Type Presets</button>
+              <button class="btn btn-outline-primary btn-sm" on:click={addParameterGroup}>Add Group</button>
             </div>
           </div>
+          {#if parameterGroups.length > 0}
+            <div class="vstack gap-3 mt-3">
+              {#each parameterGroups as group, groupIndex}
+                <div class={`border rounded p-3 ${group._pending_delete ? 'bg-danger-subtle border-danger-subtle opacity-75' : ''}`}>
+                  <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                    <input class="form-control" style="max-width: 22rem;" type="text" placeholder="Group name" bind:value={group.group_name} on:input={() => (parameterGroups = [...parameterGroups])} />
+                    <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameterGroup(groupIndex, -1)} disabled={groupIndex === 0}>Up</button>
+                    <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameterGroup(groupIndex, 1)} disabled={groupIndex === parameterGroups.length - 1}>Down</button>
+                    <button class={`btn btn-sm ${group._pending_delete ? 'btn-outline-success' : 'btn-outline-danger'}`} on:click={() => removeParameterGroup(groupIndex)}>
+                      {group._pending_delete ? 'Undo Delete' : 'Delete Group'}
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" on:click={() => addParameter(groupIndex)} disabled={group._pending_delete}>Add Parameter</button>
+                  </div>
+                  {#if group._pending_delete}
+                    <p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Product to apply the deletion.</p>
+                  {/if}
+                  <div class="vstack gap-3">
+                    {#each group.parameters as parameter, parameterIndex}
+                      <div class={`border rounded p-3 bg-body-tertiary ${parameter._pending_delete ? 'border-danger-subtle bg-danger-subtle opacity-75' : ''}`}>
+                        <div class="row g-3 align-items-end">
+                          <div class="col-12 col-lg-3">
+                            <label class="form-label" for={`edit-group-${groupIndex}-parameter-${parameterIndex}-name`}>Name</label>
+                            <input class="form-control" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-name`} type="text" bind:value={parameter.parameter_name} on:input={() => (parameterGroups = [...parameterGroups])} />
+                          </div>
+                          <div class="col-12 col-lg-2">
+                            <label class="form-label" for={`edit-group-${groupIndex}-parameter-${parameterIndex}-value-type`}>Value type</label>
+                            <select class="form-select" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-value-type`} bind:value={parameter.value_type} on:change={(event) => updateParameterValueType(groupIndex, parameterIndex, event.currentTarget.value)}>
+                              <option value="string">Text</option>
+                              <option value="number">Number</option>
+                            </select>
+                          </div>
+                          {#if parameter.value_type === 'string'}
+                            <div class="col-12 col-lg-5">
+                              <label class="form-label" for={`edit-group-${groupIndex}-parameter-${parameterIndex}-text`}>Text value</label>
+                              <input class="form-control" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-text`} type="text" bind:value={parameter.value_string} on:input={() => (parameterGroups = [...parameterGroups])} />
+                            </div>
+                          {:else}
+                            <div class="col-12 col-lg-3">
+                              <label class="form-label" for={`edit-group-${groupIndex}-parameter-${parameterIndex}-number`}>Numeric value</label>
+                              <input class="form-control" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-number`} type="number" step="any" bind:value={parameter.value_number} on:input={() => (parameterGroups = [...parameterGroups])} />
+                            </div>
+                            <div class="col-12 col-lg-3">
+                              <label class="form-label" for={`edit-group-${groupIndex}-parameter-${parameterIndex}-unit`}>Unit</label>
+                              <select class="form-select" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-unit`} bind:value={parameter.unit} on:change={() => (parameterGroups = [...parameterGroups])}>
+                                <option value="">No unit</option>
+                                {#each GLOBAL_UNIT_OPTIONS as unitOption}
+                                  <option value={unitOption}>{unitOption}</option>
+                                {/each}
+                                <option value="__custom__">Custom…</option>
+                              </select>
+                            </div>
+                            {#if parameter.unit === '__custom__'}
+                              <div class="col-12 col-lg-2">
+                                <label class="form-label" for={`edit-group-${groupIndex}-parameter-${parameterIndex}-custom-unit`}>Custom unit</label>
+                                <input class="form-control" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-custom-unit`} type="text" bind:value={parameter.custom_unit} on:input={() => (parameterGroups = [...parameterGroups])} />
+                              </div>
+                            {/if}
+                          {/if}
+                          <div class="col-12 col-lg-2">
+                            <div class="d-flex flex-wrap gap-2">
+                              <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameter(groupIndex, parameterIndex, -1)} disabled={group._pending_delete || parameter._pending_delete || parameterIndex === 0}>Up</button>
+                              <button class="btn btn-outline-secondary btn-sm" on:click={() => moveParameter(groupIndex, parameterIndex, 1)} disabled={group._pending_delete || parameter._pending_delete || parameterIndex === group.parameters.length - 1}>Down</button>
+                              <button class={`btn btn-sm ${parameter._pending_delete ? 'btn-outline-success' : 'btn-outline-danger'}`} on:click={() => removeParameter(groupIndex, parameterIndex)} disabled={group._pending_delete}>
+                                {parameter._pending_delete ? 'Undo Delete' : 'Delete'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {#if parameter._pending_delete}
+                          <p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Product to apply the deletion.</p>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p class="text-body-secondary mt-3 mb-0">No parameter groups yet. Load type presets or add a group manually.</p>
+          {/if}
           </div>
         </div>
 
@@ -1380,8 +1864,8 @@
           </div>
           <div class="d-flex flex-wrap gap-2">
             <button class="btn btn-primary" on:click={uploadImages} disabled={pendingImageFiles.length === 0}>Upload Selected Images</button>
-            {#if currentFan?.graph_image_url}
-              <a href={currentFan.graph_image_url} download class="btn btn-outline-secondary">Download Current Graph</a>
+            {#if currentProduct?.graph_image_url}
+              <a href={currentProduct.graph_image_url} download class="btn btn-outline-secondary">Download Current Graph</a>
             {/if}
           </div>
           {#if productImages.length > 0}
@@ -1394,7 +1878,7 @@
                     class="img-fluid rounded border mb-2"
                     style="width: 100%; height: 150px; object-fit: cover;"
                     src={image.url}
-                    alt={`${fanForm.model} product image ${index + 1}`}
+                    alt={`${productForm.model} product image ${index + 1}`}
                   />
                   <p class="text-body-secondary">{index === 0 ? 'Primary image' : `Image ${index + 1}`}</p>
                   <div class="d-flex flex-wrap gap-2">
@@ -1417,13 +1901,14 @@
 
       <div class="col-12 col-xxl-6">
       <div class="vstack gap-3">
+        {#if productSupportsBandGraphStyle()}
         <div class="card shadow-sm h-100">
           <div class="card-body">
           <h3 class="h6">Band graph style</h3>
-          <p class="text-body-secondary">These colours apply to the banded fan-map graph style, including generated graph images.</p>
+          <p class="text-body-secondary">These colours apply to the banded graph style, including generated graph images.</p>
           <div class="row g-3">
             <div class="col-12">
-              <label class="form-label" for="band-graph-label-color">RPM label text colour</label>
+              <label class="form-label" for="band-graph-label-color">{graphLineValueLabel()} label text colour</label>
               <div class="input-group">
                 <input class="form-control form-control-color" id="band-graph-label-color" type="color" bind:value={graphStyleForm.band_graph_label_text_color} on:input={() => (graphStyleForm = { ...graphStyleForm })} />
                 <input class="form-control" type="text" bind:value={graphStyleForm.band_graph_label_text_color} placeholder="#000000" on:input={() => (graphStyleForm = { ...graphStyleForm })} />
@@ -1475,10 +1960,10 @@
 
         <div class="card shadow-sm h-100">
           <div class="card-body">
-          <h3 class="h6">RPM line management</h3>
+          <h3 class="h6">{graphLineValueLabel()} line management</h3>
           <div class="row g-3 align-items-end">
             <div class="col-12 col-md-4">
-              <label class="form-label" for="new-rpm-line">New RPM line</label>
+              <label class="form-label" for="new-rpm-line">New {graphLineValueLabel()} line</label>
               <input class="form-control" id="new-rpm-line" type="number" step="any" bind:value={newRpmLineValue} />
             </div>
             <div class="col-12 col-md-4">
@@ -1490,7 +1975,7 @@
             </div>
             <div class="col-12 col-md-4">
               <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-primary" on:click={addRpmLine}>Add RPM Line</button>
+                <button class="btn btn-primary" on:click={addRpmLine}>Add {graphLineValueLabel()} Line</button>
               </div>
             </div>
           </div>
@@ -1500,7 +1985,7 @@
                 <div class="border rounded p-2">
                   <div class="row g-2 align-items-end">
                     <div class="col-12 col-md-3">
-                      <label class="form-label form-label-sm" for={`rpm-line-value-${line.id}`}>RPM</label>
+                      <label class="form-label form-label-sm" for={`rpm-line-value-${line.id}`}>{graphLineValueLabel()}</label>
                       <input class="form-control form-control-sm" id={`rpm-line-value-${line.id}`} type="number" step="any" bind:value={line.rpm} on:input={() => (rpmLines = [...rpmLines])} />
                     </div>
                     <div class="col-12 col-md-5">
@@ -1521,45 +2006,48 @@
               {/each}
             </div>
           {:else}
-            <p class="text-body-secondary mt-3 mb-0">No RPM lines yet.</p>
+            <p class="text-body-secondary mt-3 mb-0">No {graphLineValueLabel().toLowerCase()} lines yet.</p>
           {/if}
           </div>
         </div>
+        {/if}
 
+        {#if productSupportsGraph()}
         <div class="card shadow-sm h-100">
           <div class="card-body">
-          <h3 class="h6">Map point input</h3>
+          <h3 class="h6">Graph point input</h3>
           <p class="text-body-secondary">Use the forms below for quick manual point entry, or the CSV tools further down for bulk changes.</p>
           <div class="row g-3 align-items-end">
             <div class="col-12 col-md-4">
-              <label class="form-label" for="rpm-point-line">RPM line</label>
+              <label class="form-label" for="rpm-point-line">{graphLineValueLabel()} line</label>
               <select class="form-select" id="rpm-point-line" bind:value={rpmPointForm.rpm_line_id}>
-                <option value="">Select RPM line</option>
+                <option value="">Select {graphLineValueLabel()} line</option>
                 {#each rpmLines as line}
-                  <option value={line.id}>{line.rpm} RPM</option>
+                  <option value={line.id}>{formatGraphLineValue(line.rpm)}</option>
                 {/each}
               </select>
             </div>
             <div class="col-12 col-md-3">
-              <label class="form-label" for="rpm-point-airflow">Airflow</label>
+              <label class="form-label" for="rpm-point-airflow">{graphXAxisLabel()}</label>
               <input class="form-control" id="rpm-point-airflow" type="number" step="any" bind:value={rpmPointForm.airflow} />
             </div>
             <div class="col-12 col-md-3">
-              <label class="form-label" for="rpm-point-pressure">Pressure</label>
+              <label class="form-label" for="rpm-point-pressure">{graphYAxisLabel()}</label>
               <input class="form-control" id="rpm-point-pressure" type="number" step="any" bind:value={rpmPointForm.pressure} />
             </div>
             <div class="col-12 col-md-2">
               <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-primary" on:click={addRpmPointFromForm} disabled={rpmLines.length === 0}>Add RPM Point</button>
+                <button class="btn btn-primary" on:click={addRpmPointFromForm} disabled={rpmLines.length === 0}>Add Graph Point</button>
               </div>
             </div>
           </div>
 
+          {#if productSupportsGraphOverlays()}
           <hr class="my-4" />
 
           <div class="row g-3 align-items-end mt-1">
             <div class="col-12 col-md-4">
-              <label class="form-label" for="efficiency-point-airflow">Airflow</label>
+              <label class="form-label" for="efficiency-point-airflow">{graphXAxisLabel()}</label>
               <input class="form-control" id="efficiency-point-airflow" type="number" step="any" bind:value={efficiencyPointForm.airflow} />
             </div>
             <div class="col-12 col-md-4">
@@ -1584,25 +2072,29 @@
               </div>
             </div>
           </div>
+          {/if}
           </div>
         </div>
+        {/if}
       </div>
       </div>
     </div>
 
+    {#if productSupportsGraph()}
     <div class="row g-3 mt-1">
+      {#if productSupportsGraphOverlays()}
       <div class="col-12 col-xl-6">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-        <h3 class="h6">RPM CSV</h3>
-    <p class="text-body-secondary">CSV format: rpm, airflow, pressure</p>
+        <h3 class="h6">{graphLineValueLabel()} CSV</h3>
+    <p class="text-body-secondary">CSV format: {graphLineValueLabel().toLowerCase()}, airflow, pressure</p>
     <textarea class="form-control" bind:value={rpmCsv} placeholder="e.g.&#10;1000, 0.5, 120&#10;1500, 0.8, 180" rows="4" style="font-family:monospace"></textarea>
     {#if rpmCsvError}
       <p class="text-danger mb-0">{rpmCsvError}</p>
     {/if}
     <div class="d-flex flex-wrap gap-2 mt-2">
-      <button class="btn btn-primary" on:click={importRpmPointsFromCsv}>Import RPM CSV</button>
-      <button class="btn btn-outline-secondary" on:click={exportRpmPointsCsv} disabled={rpmPoints.length === 0}>Export RPM CSV</button>
+      <button class="btn btn-primary" on:click={importRpmPointsFromCsv}>Import {graphLineValueLabel()} CSV</button>
+      <button class="btn btn-outline-secondary" on:click={exportRpmPointsCsv} disabled={rpmPoints.length === 0}>Export {graphLineValueLabel()} CSV</button>
     </div>
         </div>
       </div>
@@ -1624,22 +2116,25 @@
       </div>
       </div>
       </div>
+      {/if}
     </div>
+    {/if}
 
-    <h3 class="h6 mt-3">RPM Points</h3>
+    {#if productSupportsGraph()}
+    <h3 class="h6 mt-3">{graphLineValueLabel()} Points</h3>
     <div class="table-responsive">
     <table class="table table-sm align-middle editable-table mb-0">
       <thead>
         <tr>
-          <th>RPM</th>
+          <th>{graphLineValueLabel()}</th>
           <th>
             <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => toggleRpmPointSort('airflow')}>
-              Airflow ({sortIndicator('airflow')})
+              {graphXAxisLabel()} ({sortIndicator('airflow')})
             </button>
           </th>
           <th>
             <button type="button" class="btn btn-outline-secondary btn-sm" on:click={() => toggleRpmPointSort('pressure')}>
-              Pressure ({sortIndicator('pressure')})
+              {graphYAxisLabel()} ({sortIndicator('pressure')})
             </button>
           </th>
           <th>Actions</th>
@@ -1648,7 +2143,7 @@
       <tbody>
         {#each rpmPoints as p}
           <tr>
-            <td>{p.rpm}</td>
+            <td>{formatGraphLineValue(p.rpm)}</td>
             <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.airflow} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
             <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.pressure} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
             <td><button class="btn btn-danger btn-sm" on:click={() => deleteRpmPointLocal(p)}>Delete</button></td>
@@ -1658,15 +2153,16 @@
     </table>
     </div>
     {#if rpmPoints.length === 0}
-      <p class="text-body-secondary">No RPM points yet.</p>
+      <p class="text-body-secondary">No graph points yet.</p>
     {/if}
 
+    {#if productSupportsGraphOverlays()}
     <h3 class="h6 mt-3">Efficiency / Permissible Points</h3>
     <div class="table-responsive">
     <table class="table table-sm align-middle editable-table mb-0">
       <thead>
         <tr>
-          <th>Airflow</th>
+          <th>{graphXAxisLabel()}</th>
           <th>Efficiency Centre</th>
           <th>Efficiency Lower End</th>
           <th>Efficiency Higher End</th>
@@ -1691,6 +2187,7 @@
     {#if efficiencyPoints.length === 0}
       <p class="text-body-secondary">No efficiency/permissible points yet.</p>
     {/if}
+    {/if}
 
     {#if rpmPoints.length > 0 || efficiencyPoints.length > 0}
       <div class="card shadow-sm p-3">
@@ -1701,9 +2198,9 @@
             <select class="form-select" id="chart-add-target" bind:value={chartAddTarget}>
               <option value="off">-Off-</option>
               {#each rpmLines as line}
-                <option value={`rpm:${line.id}`}>{line.rpm} RPM line</option>
+                <option value={`rpm:${line.id}`}>{formatGraphLineValue(line.rpm)} line</option>
               {/each}
-              {#each FULL_CHART_LINE_DEFINITIONS as definition}
+              {#each currentOverlayLineDefinitions() as definition}
                 <option value={`efficiency:${definition.key}`}>{definition.label}</option>
               {/each}
             </select>
@@ -1718,10 +2215,11 @@
         />
       </div>
     {/if}
+    {/if}
 
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
-      <button class="btn btn-primary" on:click={saveFan} disabled={loading || savingFanDetails || savingMapPoints}>
-        {savingFanDetails ? 'Saving Fan Details...' : 'Save Fan Details'}
+      <button class="btn btn-primary" on:click={saveProduct} disabled={loading || savingProductDetails || savingMapPoints}>
+        {savingProductDetails ? 'Saving Product Details...' : 'Save Product Details'}
       </button>
       {#if rpmPoints.length > 0 || efficiencyPoints.length > 0}
         <button class="btn btn-primary" on:click={saveMapPoints} disabled={savingMapPoints}>
@@ -1730,15 +2228,15 @@
       {/if}
       <button
         class="btn btn-outline-secondary"
-        disabled={savingMapPoints || savingFanDetails}
-        on:click={() => { mode = 'select'; editingFanId = null; selectedFanId = null; fanForm = emptyFanForm(); graphStyleForm = defaultGraphStyleForm(); productImages = []; pendingImageFiles = []; currentFan = null; }}
+        disabled={savingMapPoints || savingProductDetails}
+        on:click={() => { mode = 'select'; editingProductId = null; selectedProductId = null; resetProductEditor('fan'); productImages = []; pendingImageFiles = []; currentProduct = null; }}
       >
         Done
       </button>
       {#if savingMapPoints}
         <span class="text-body-secondary">{mapPointSaveProgressMessage}</span>
-      {:else if savingFanDetails}
-        <span class="text-body-secondary">Saving fan details...</span>
+      {:else if savingProductDetails}
+        <span class="text-body-secondary">Saving product details...</span>
       {/if}
     </div>
     </div>

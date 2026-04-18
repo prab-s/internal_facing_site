@@ -1,7 +1,7 @@
 import { s as store_get, h as head, d as ensure_array_like, e as escape_html, a as attr, b as attr_class, u as unsubscribe_stores } from "../../../chunks/index2.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
-import { j as getUsers, k as getDatabaseMirrorStatus } from "../../../chunks/api.js";
+import { k as getUsers } from "../../../chunks/api.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
@@ -18,12 +18,7 @@ function _page($$renderer, $$props) {
     let newPassword = "";
     let newIsAdmin = false;
     let maintenanceLoading = false;
-    let maintenanceError = "";
-    let mirrorStatus = null;
     let successMessages = [];
-    function clearSuccessToast() {
-      successMessages = [];
-    }
     onDestroy(() => {
     });
     async function loadUsers() {
@@ -38,23 +33,8 @@ function _page($$renderer, $$props) {
         loadingUsers = false;
       }
     }
-    async function loadMirrorStatus() {
-      maintenanceLoading = true;
-      maintenanceError = "";
-      clearSuccessToast();
-      try {
-        mirrorStatus = await getDatabaseMirrorStatus();
-      } catch (error) {
-        maintenanceError = error?.message || "Unable to load maintenance status.";
-      } finally {
-        maintenanceLoading = false;
-      }
-    }
     if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && !usersLoaded && !loadingUsers) {
       loadUsers();
-    }
-    if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && store_get($$store_subs ??= {}, "$auth", auth).is_admin && mirrorStatus == null && !maintenanceLoading) {
-      loadMirrorStatus();
     }
     filteredUsers = users.filter((user) => {
       const needle = userFilter.trim().toLowerCase();
@@ -63,7 +43,7 @@ function _page($$renderer, $$props) {
     });
     head("g40i6i", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
-        $$renderer4.push(`<title>Setup - Fan Graphs</title>`);
+        $$renderer4.push(`<title>Setup - Internal Facing</title>`);
       });
     });
     if (successMessages.length) {
@@ -124,25 +104,11 @@ function _page($$renderer, $$props) {
     if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="row g-3 mt-1"><div class="col-12 col-xl-5"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p> <h2 class="h4">User Accounts</h2> <p class="text-body-secondary">Create and manage accounts for internal users.</p> <form class="vstack gap-3"><div><label class="form-label" for="new-user-username">Username</label> <input id="new-user-username" class="form-control"${attr("value", newUsername)}/></div> <div><label class="form-label" for="new-user-password">Password</label> <input id="new-user-password" class="form-control" type="password"${attr("value", newPassword)}/></div> <div class="form-check"><input id="new-user-admin" class="form-check-input" type="checkbox"${attr("checked", newIsAdmin, true)}/> <label class="form-check-label" for="new-user-admin">Admin access</label></div> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !newUsername, true)}>${escape_html("Create User")}</button></form></div></div></div> <div class="col-12 col-xl-7"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p> <h2 class="h4">Operational Tools</h2> <p class="text-body-secondary">Run special admin-only tasks that are otherwise only exposed through the API.</p> `);
-      if (maintenanceError) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="alert alert-danger py-2">${escape_html(maintenanceError)}</div>`);
-      } else {
+      {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Postgres Mirror</h3> <p class="mb-2 text-body-secondary">The Postgres mirror is the PostgreSQL copy of the fan data. It is mainly there for the deployed
-                    environment, backups, and future migration away from the original source database. Refresh Status
-                    checks whether the mirror is enabled and compares record counts. Resync Postgres Mirror copies the
-                    current source data back into PostgreSQL.</p> `);
-      if (mirrorStatus) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<p class="mb-1 text-body-secondary">${escape_html(mirrorStatus.message)}</p> <p class="mb-0 small text-body-secondary">Mirror enabled: ${escape_html(mirrorStatus.mirror_enabled ? "Yes" : "No")}</p>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-        $$renderer2.push(`<p class="mb-0 text-body-secondary">${escape_html(maintenanceLoading ? "Loading status..." : "Status not loaded yet.")}</p>`);
-      }
-      $$renderer2.push(`<!--]--></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>${escape_html(maintenanceLoading ? "Loading..." : "Refresh Status")}</button> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Resync Postgres Mirror</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backups</h3> <p class="mb-2 text-body-secondary">Download a full backup ZIP of the deployed data, or restore one here. The backup bundle includes
-                    the app database and media, plus the WordPress database and \`wp-content\`.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Backup ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="backup-restore-file">Restore Backup ZIP</label> <input id="backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading || true, true)}>Restore Backup ZIP</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Graph Images</h3> <p class="mb-0 text-body-secondary">Rebuild all generated graph images, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Graph Images</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div></div></div></div></div></div></div>`);
+      $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backups</h3> <p class="mb-2 text-body-secondary">Download a full backup ZIP of the deployed data, or restore one here. The backup bundle includes
+                    the app database and media, plus the WordPress database and \`wp-content\`.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Backup ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="backup-restore-file">Restore Backup ZIP</label> <input id="backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore Backup ZIP</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Graph Images</h3> <p class="mb-0 text-body-secondary">Rebuild all generated graph images, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Graph Images</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div></div></div></div></div></div></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }

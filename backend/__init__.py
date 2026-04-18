@@ -1,1 +1,1 @@
-# Backend package for Fan Graphs API
+# Backend package for Internal Facing API

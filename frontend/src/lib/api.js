@@ -57,19 +57,24 @@ export async function changePassword(currentPassword, newPassword) {
   return r.json();
 }
 
-export async function getFans(params = {}) {
+export async function getProducts(params = {}) {
   const sp = new URLSearchParams(params).toString();
-  const r = await apiFetch('/fans' + (sp ? '?' + sp : ''));
+  const r = await apiFetch('/products' + (sp ? '?' + sp : ''));
   return r.json();
 }
 
-export async function getFan(id) {
-  const r = await apiFetch(`/fans/${id}`);
+export async function getProductTypes() {
+  const r = await apiFetch('/product-types');
   return r.json();
 }
 
-export async function createFan(body) {
-  const r = await apiFetch('/fans', {
+export async function getProduct(id) {
+  const r = await apiFetch(`/products/${id}`);
+  return r.json();
+}
+
+export async function createProduct(body) {
+  const r = await apiFetch('/products', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -77,8 +82,8 @@ export async function createFan(body) {
   return r.json();
 }
 
-export async function updateFan(id, body) {
-  const r = await apiFetch(`/fans/${id}`, {
+export async function updateProduct(id, body) {
+  const r = await apiFetch(`/products/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -86,18 +91,18 @@ export async function updateFan(id, body) {
   return r.json();
 }
 
-export async function deleteFan(id) {
-  const r = await apiFetch(`/fans/${id}`, { method: 'DELETE' });
+export async function deleteProduct(id) {
+  const r = await apiFetch(`/products/${id}`, { method: 'DELETE' });
   return r.json();
 }
 
-export async function getRpmLines(fanId) {
-  const r = await apiFetch(`/fans/${fanId}/rpm-lines`);
+export async function getRpmLines(productId) {
+  const r = await apiFetch(`/products/${productId}/rpm-lines`);
   return r.json();
 }
 
-export async function createRpmLine(fanId, body) {
-  const r = await apiFetch(`/fans/${fanId}/rpm-lines`, {
+export async function createRpmLine(productId, body) {
+  const r = await apiFetch(`/products/${productId}/rpm-lines`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -105,8 +110,8 @@ export async function createRpmLine(fanId, body) {
   return r.json();
 }
 
-export async function updateRpmLine(fanId, lineId, body) {
-  const r = await apiFetch(`/fans/${fanId}/rpm-lines/${lineId}`, {
+export async function updateRpmLine(productId, lineId, body) {
+  const r = await apiFetch(`/products/${productId}/rpm-lines/${lineId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -114,20 +119,20 @@ export async function updateRpmLine(fanId, lineId, body) {
   return r.json();
 }
 
-export async function deleteRpmLine(fanId, lineId) {
-  const r = await apiFetch(`/fans/${fanId}/rpm-lines/${lineId}`, { method: 'DELETE' });
+export async function deleteRpmLine(productId, lineId) {
+  const r = await apiFetch(`/products/${productId}/rpm-lines/${lineId}`, { method: 'DELETE' });
   return r.json();
 }
 
-export async function getRpmPoints(fanId) {
-  const r = await apiFetch(`/fans/${fanId}/rpm-points`);
+export async function getRpmPoints(productId) {
+  const r = await apiFetch(`/products/${productId}/rpm-points`);
   return r.json();
 }
 
-export async function createRpmPoint(fanId, body, options = {}) {
+export async function createRpmPoint(productId, body, options = {}) {
   const sp = new URLSearchParams();
   if (options.regenerateGraph === false) sp.set('regenerate_graph', 'false');
-  const r = await apiFetch(`/fans/${fanId}/rpm-points${sp.toString() ? `?${sp}` : ''}`, {
+  const r = await apiFetch(`/products/${productId}/rpm-points${sp.toString() ? `?${sp}` : ''}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -135,10 +140,10 @@ export async function createRpmPoint(fanId, body, options = {}) {
   return r.json();
 }
 
-export async function updateRpmPoint(fanId, pointId, body, options = {}) {
+export async function updateRpmPoint(productId, pointId, body, options = {}) {
   const sp = new URLSearchParams();
   if (options.regenerateGraph === false) sp.set('regenerate_graph', 'false');
-  const r = await apiFetch(`/fans/${fanId}/rpm-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, {
+  const r = await apiFetch(`/products/${productId}/rpm-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -146,22 +151,22 @@ export async function updateRpmPoint(fanId, pointId, body, options = {}) {
   return r.json();
 }
 
-export async function deleteRpmPoint(fanId, pointId, options = {}) {
+export async function deleteRpmPoint(productId, pointId, options = {}) {
   const sp = new URLSearchParams();
   if (options.regenerateGraph === false) sp.set('regenerate_graph', 'false');
-  const r = await apiFetch(`/fans/${fanId}/rpm-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, { method: 'DELETE' });
+  const r = await apiFetch(`/products/${productId}/rpm-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, { method: 'DELETE' });
   return r.json();
 }
 
-export async function getEfficiencyPoints(fanId) {
-  const r = await apiFetch(`/fans/${fanId}/efficiency-points`);
+export async function getEfficiencyPoints(productId) {
+  const r = await apiFetch(`/products/${productId}/efficiency-points`);
   return r.json();
 }
 
-export async function createEfficiencyPoint(fanId, body, options = {}) {
+export async function createEfficiencyPoint(productId, body, options = {}) {
   const sp = new URLSearchParams();
   if (options.regenerateGraph === false) sp.set('regenerate_graph', 'false');
-  const r = await apiFetch(`/fans/${fanId}/efficiency-points${sp.toString() ? `?${sp}` : ''}`, {
+  const r = await apiFetch(`/products/${productId}/efficiency-points${sp.toString() ? `?${sp}` : ''}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -169,10 +174,10 @@ export async function createEfficiencyPoint(fanId, body, options = {}) {
   return r.json();
 }
 
-export async function updateEfficiencyPoint(fanId, pointId, body, options = {}) {
+export async function updateEfficiencyPoint(productId, pointId, body, options = {}) {
   const sp = new URLSearchParams();
   if (options.regenerateGraph === false) sp.set('regenerate_graph', 'false');
-  const r = await apiFetch(`/fans/${fanId}/efficiency-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, {
+  const r = await apiFetch(`/products/${productId}/efficiency-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -180,31 +185,31 @@ export async function updateEfficiencyPoint(fanId, pointId, body, options = {}) 
   return r.json();
 }
 
-export async function deleteEfficiencyPoint(fanId, pointId, options = {}) {
+export async function deleteEfficiencyPoint(productId, pointId, options = {}) {
   const sp = new URLSearchParams();
   if (options.regenerateGraph === false) sp.set('regenerate_graph', 'false');
-  const r = await apiFetch(`/fans/${fanId}/efficiency-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, { method: 'DELETE' });
+  const r = await apiFetch(`/products/${productId}/efficiency-points/${pointId}${sp.toString() ? `?${sp}` : ''}`, { method: 'DELETE' });
   return r.json();
 }
 
-export async function refreshGraphImage(fanId) {
-  const r = await apiFetch(`/fans/${fanId}/graph-image/refresh`, {
+export async function refreshGraphImage(productId) {
+  const r = await apiFetch(`/products/${productId}/graph-image/refresh`, {
     method: 'POST'
   });
   return r.json();
 }
 
-export async function getFanChartData(fanId) {
+export async function getProductChartData(productId) {
   const [rpmLines, rpmPoints, efficiencyPoints] = await Promise.all([
-    getRpmLines(fanId),
-    getRpmPoints(fanId),
-    getEfficiencyPoints(fanId)
+    getRpmLines(productId),
+    getRpmPoints(productId),
+    getEfficiencyPoints(productId)
   ]);
   return { rpmLines, rpmPoints, efficiencyPoints };
 }
 
-export async function getEfficiencyCurvePoints(fanId) {
-  const points = await getEfficiencyPoints(fanId);
+export async function getProductEfficiencyCurvePoints(productId) {
+  const points = await getEfficiencyPoints(productId);
   return points.filter((point) => point.efficiency_centre != null);
 }
 
@@ -216,9 +221,37 @@ export async function importMapPointsCsv() {
   throw new Error('CSV import has not been migrated to the split point model yet.');
 }
 
-export async function getMapPoints(fanId) {
-  const { rpmPoints, efficiencyPoints } = await getFanChartData(fanId);
+export async function getMapPoints(productId) {
+  const { rpmPoints, efficiencyPoints } = await getProductChartData(productId);
   return [...rpmPoints, ...efficiencyPoints];
+}
+
+export async function getFans(params = {}) {
+  return getProducts(params);
+}
+
+export async function getFan(id) {
+  return getProduct(id);
+}
+
+export async function createFan(body) {
+  return createProduct(body);
+}
+
+export async function updateFan(id, body) {
+  return updateProduct(id, body);
+}
+
+export async function deleteFan(id) {
+  return deleteProduct(id);
+}
+
+export async function getFanChartData(productId) {
+  return getProductChartData(productId);
+}
+
+export async function getEfficiencyCurvePoints(productId) {
+  return getProductEfficiencyCurvePoints(productId);
 }
 
 export async function createMapPoint() {
@@ -233,29 +266,24 @@ export async function deleteMapPoint() {
   throw new Error('Use deleteRpmPoint or deleteEfficiencyPoint with the split point model.');
 }
 
-export async function importRpmPointsCsv(fanId, csvText) {
-  const r = await apiFetch(`/fans/${fanId}/map-points/import-csv`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ csv: csvText })
-  });
-  return r.json();
+export async function importRpmPointsCsv() {
+  throw new Error('CSV import has not been migrated to the split point model yet.');
 }
 
-export async function uploadProductImages(fanId, files) {
+export async function uploadProductImages(productId, files) {
   const formData = new FormData();
   for (const file of files) {
     formData.append('files', file);
   }
-  const r = await apiFetch(`/fans/${fanId}/product-images`, {
+  const r = await apiFetch(`/products/${productId}/product-images`, {
     method: 'POST',
     body: formData
   });
   return r.json();
 }
 
-export async function reorderProductImages(fanId, imageIds) {
-  const r = await apiFetch(`/fans/${fanId}/product-images/reorder`, {
+export async function reorderProductImages(productId, imageIds) {
+  const r = await apiFetch(`/products/${productId}/product-images/reorder`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_ids: imageIds })
@@ -263,21 +291,9 @@ export async function reorderProductImages(fanId, imageIds) {
   return r.json();
 }
 
-export async function deleteProductImage(fanId, imageId) {
-  const r = await apiFetch(`/fans/${fanId}/product-images/${imageId}`, {
+export async function deleteProductImage(productId, imageId) {
+  const r = await apiFetch(`/products/${productId}/product-images/${imageId}`, {
     method: 'DELETE'
-  });
-  return r.json();
-}
-
-export async function getDatabaseMirrorStatus() {
-  const r = await apiFetch('/maintenance/databases/mirror-status');
-  return r.json();
-}
-
-export async function resyncPostgresMirror() {
-  const r = await apiFetch('/maintenance/databases/resync-postgres', {
-    method: 'POST'
   });
   return r.json();
 }
@@ -303,7 +319,7 @@ export async function downloadBackupBundle() {
   const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
   return {
     blob,
-    filename: filenameMatch?.[1] || 'fan_graphs_backup.zip'
+    filename: filenameMatch?.[1] || 'internal_facing_backup.zip'
   };
 }
 

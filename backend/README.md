@@ -1,20 +1,16 @@
-# Fan Graphs API (Backend)
+# Internal Facing API (Backend)
 
-FastAPI backend for the fan graphs application. During the database transition,
-the app can run either:
-
-- Postgres as the primary database
-- SQLite as the primary database with Postgres mirroring writes
+FastAPI backend for the internal-facing product application.
 
 ## Run order (local dev)
 
-1. Start the **backend** first (this folder): create venv, install deps, run uvicorn.
-2. Start the **frontend** (see `frontend/README.md`): install deps, run dev server.
-3. Open http://localhost:5173 in the browser; the frontend calls the API at http://localhost:8000.
+1. Start the backend first from the project root.
+2. Start the frontend dev server from [frontend](/home/user1/Documents/fan_graphs_website/frontend).
+3. Open `http://localhost:8001` for live frontend work.
 
 ## Set up (Windows)
 
-From the **project root** (parent of `backend/`):
+From the project root:
 
 ```powershell
 python -m venv .venv
@@ -24,80 +20,26 @@ pip install -r backend/requirements.txt
 
 ## Run API
 
-From the **project root** (so that `backend` is the package):
+From the project root:
 
 ```powershell
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API base URL: http://localhost:8000  
-Docs: http://localhost:8000/docs
+API base URL: `http://localhost:8000`  
+Docs: `http://localhost:8000/docs`
 
 ## Database
 
-Primary database selection is controlled by `DATABASE_URL`.
+The app is PostgreSQL-primary.
 
-Examples:
-
-```bash
-# Postgres primary
-DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
-
-# SQLite primary
-DATABASE_URL=sqlite:////full/path/to/data/fans.db
-```
-
-## Dual database mode
-
-For the current transition period, SQLite can remain the primary database while
-Postgres mirrors writes.
-
-Set:
-
-```bash
-DATABASE_URL=sqlite:////full/path/to/data/fans.db
-POSTGRES_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
-```
-
-Behavior:
-
-- `DATABASE_URL` remains the primary read/write database for the API
-- when `POSTGRES_DATABASE_URL` is set, backend startup creates the Postgres schema
-  and backfills the current SQLite data into Postgres
-- subsequent writes are mirrored into Postgres by ID so both databases stay aligned
-
-Useful maintenance endpoints while testing:
-
-- `GET /api/maintenance/databases/mirror-status`
-- `POST /api/maintenance/databases/resync-postgres`
-
-## Recommended local/dev workflow
-
-Use env files in the project root instead of exporting variables every time:
-
-- `./run_sit.sh` loads `.env.sit` if present
-- `./redeploy.sh` loads `.env.deploy` if present and starts the Podman Compose deployment stack
-
-Example setup:
-
-```bash
-cp .env.sit.example .env.sit
-cp .env.deploy.example .env.deploy
-```
-
-For a Postgres-primary setup, set:
+Set `DATABASE_URL`, for example:
 
 ```bash
 DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
-POSTGRES_DATABASE_URL=
-BOOTSTRAP_ADMIN_USERNAME=admin
-BOOTSTRAP_ADMIN_PASSWORD=A_STRONG_ADMIN_PASSWORD
-SESSION_SECRET=A_LONG_RANDOM_SECRET
-AUTH_COOKIE_SECURE=false   # true behind HTTPS
 ```
 
-For the deployed Podman stack, `.env.deploy` should point the app at the
-Compose Postgres service name:
+For the deployed Podman stack, `.env.deploy` should point at the compose service name:
 
 ```bash
 POSTGRES_DB=fan_graphs
@@ -106,16 +48,50 @@ POSTGRES_PASSWORD=change_me
 DATABASE_URL=postgresql+psycopg://fan_graphs_user:change_me@postgres:5432/fan_graphs
 ```
 
+SIT should use a different database name on the same Postgres server, for example:
+
+```bash
+DATABASE_URL=postgresql+psycopg://fan_graphs_user:change_me@127.0.0.1:5432/internal_facing_sit
+BOOTSTRAP_ADMIN_USERNAME=admin
+BOOTSTRAP_ADMIN_PASSWORD=A_STRONG_ADMIN_PASSWORD
+SESSION_SECRET=A_LONG_RANDOM_SECRET
+AUTH_COOKIE_SECURE=false
+```
+
+## Migrations
+
+Alembic is included for schema preparation and future DB migrations.
+
+Current workflow:
+
+- brand-new databases are created and upgraded to `head`
+- existing legacy databases with app tables but no `alembic_version` table are stamped at `head`
+- runtime `init_db()` still acts as a temporary compatibility backstop for older databases
+
+Useful commands:
+
+```bash
+./migrate_db.sh --sit
+./migrate_db.sh --deploy
+python3 -m backend.db_management prepare-configured-databases
+```
+
 ## Seed sample data (optional)
 
-From project root, with venv active:
+From the project root, with the venv active:
 
 ```powershell
 python -m backend.seed_once
 ```
 
-This creates one fan "Example Fan-1" and imports points from `data/curve_points_example.csv` and `data/map_points_example.csv`. Skip if you already have data.
+This creates two sample fan products with basic RPM and efficiency graph data using the current product model.
 
-## Deploy (Linux later)
+## Deploy
 
-Use the same commands; ensure Python 3.10+ and run uvicorn with a production ASGI server (e.g. `uvicorn backend.main:app --host 0.0.0.0 --port 8000`). Point frontend config to the deployed API URL.
+Use the project scripts for normal operation:
+
+```bash
+./redeploy.sh
+./backup_bundle.sh --deploy
+./restore_bundle.sh backups/your_backup_file.zip --deploy
+```

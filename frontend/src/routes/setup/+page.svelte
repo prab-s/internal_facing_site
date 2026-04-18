@@ -7,11 +7,9 @@
     createUser,
     deleteAllGraphImages,
     downloadBackupBundle,
-    getDatabaseMirrorStatus,
     getUsers,
     regenerateAllGraphImages,
     restoreBackupBundle,
-    resyncPostgresMirror,
     updateUser,
     updateUserPassword
   } from '$lib/api.js';
@@ -34,7 +32,6 @@
   let newIsAdmin = false;
   let maintenanceLoading = false;
   let maintenanceError = '';
-  let mirrorStatus = null;
   let backupFile = null;
   let successMessages = [];
   let successToastKey = 0;
@@ -66,9 +63,6 @@
     const session = get(auth);
     if (session.authenticated) {
       loadUsers();
-      if (session.is_admin) {
-        loadMirrorStatus();
-      }
     }
   });
 
@@ -80,10 +74,6 @@
 
   $: if ($auth.authenticated && !usersLoaded && !loadingUsers) {
     loadUsers();
-  }
-
-  $: if ($auth.authenticated && $auth.is_admin && mirrorStatus == null && !maintenanceLoading) {
-    loadMirrorStatus();
   }
 
   async function loadUsers() {
@@ -191,19 +181,6 @@
     }
   }
 
-  async function loadMirrorStatus() {
-    maintenanceLoading = true;
-    maintenanceError = '';
-    clearSuccessToast();
-    try {
-      mirrorStatus = await getDatabaseMirrorStatus();
-    } catch (error) {
-      maintenanceError = error?.message || 'Unable to load maintenance status.';
-    } finally {
-      maintenanceLoading = false;
-    }
-  }
-
   async function runMaintenance(action, options = {}) {
     if (options.confirmMessage && !window.confirm(options.confirmMessage)) {
       return;
@@ -214,11 +191,6 @@
     clearSuccessToast();
     try {
       const result = await action();
-      if (result?.mirror_enabled !== undefined) {
-        mirrorStatus = result;
-      } else {
-        await loadMirrorStatus();
-      }
       addSuccess(result?.message || options.successMessage || 'Maintenance task completed.');
     } catch (error) {
       maintenanceError = error?.message || options.errorMessage || 'Unable to run maintenance task.';
@@ -277,7 +249,6 @@
       if (input) {
         input.value = '';
       }
-      await loadMirrorStatus();
       addSuccess(result?.message || 'Backup bundle restored successfully.');
     } catch (error) {
       maintenanceError = error?.message || 'Unable to restore backup bundle.';
@@ -294,7 +265,7 @@
 </script>
 
 <svelte:head>
-  <title>Setup - Fan Graphs</title>
+  <title>Setup - Internal Facing</title>
 </svelte:head>
 
 {#if successMessages.length}
@@ -476,45 +447,6 @@
           {#if maintenanceError}
             <div class="alert alert-danger py-2">{maintenanceError}</div>
           {/if}
-          <div class="card border mb-3">
-            <div class="card-body">
-              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-                <div>
-                  <h3 class="h6 mb-1">Postgres Mirror</h3>
-                  <p class="mb-2 text-body-secondary">
-                    The Postgres mirror is the PostgreSQL copy of the fan data. It is mainly there for the deployed
-                    environment, backups, and future migration away from the original source database. Refresh Status
-                    checks whether the mirror is enabled and compares record counts. Resync Postgres Mirror copies the
-                    current source data back into PostgreSQL.
-                  </p>
-                  {#if mirrorStatus}
-                    <p class="mb-1 text-body-secondary">{mirrorStatus.message}</p>
-                    <p class="mb-0 small text-body-secondary">
-                      Mirror enabled: {mirrorStatus.mirror_enabled ? 'Yes' : 'No'}
-                    </p>
-                  {:else}
-                    <p class="mb-0 text-body-secondary">
-                      {maintenanceLoading ? 'Loading status...' : 'Status not loaded yet.'}
-                    </p>
-                  {/if}
-                </div>
-                <div class="d-flex gap-2 flex-wrap">
-                  <button class="btn btn-outline-secondary btn-sm" type="button" on:click={loadMirrorStatus} disabled={maintenanceLoading}>
-                    {maintenanceLoading ? 'Loading...' : 'Refresh Status'}
-                  </button>
-                  <button
-                    class="btn btn-primary btn-sm"
-                    type="button"
-                    on:click={() => runMaintenance(resyncPostgresMirror, { successMessage: 'Postgres mirror resynced.' })}
-                    disabled={maintenanceLoading}
-                  >
-                    Resync Postgres Mirror
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div class="card border mb-3">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">

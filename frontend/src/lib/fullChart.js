@@ -37,6 +37,17 @@ export const AXIS_NAME_FONT_SIZE = 18;
 export const AXIS_NAME_FONT_WEIGHT = '600';
 export const AXIS_LABEL_FONT_SIZE = 15;
 export const AXIS_LABEL_FONT_WEIGHT = '500';
+const DEFAULT_GRAPH_CONFIG = {
+  graph_kind: 'fan_map',
+  supports_graph_overlays: true,
+  supports_band_graph_style: true,
+  graph_line_value_label: 'RPM',
+  graph_line_value_unit: 'RPM',
+  graph_x_axis_label: 'Airflow',
+  graph_x_axis_unit: 'L/s',
+  graph_y_axis_label: 'Pressure',
+  graph_y_axis_unit: 'Pa'
+};
 
 // ---------------------------------------------------------------------------
 // General helpers
@@ -98,6 +109,23 @@ function normalizeOpacity(value, fallback = RPM_BAND_FADED_OPACITY) {
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return fallback;
   return clamp(numeric, 0, 1);
+}
+
+function formatAxisLabel(label, unit) {
+  return unit ? `${label} (${unit})` : label;
+}
+
+function resolveGraphConfig(graphConfig = null) {
+  return {
+    ...DEFAULT_GRAPH_CONFIG,
+    ...(graphConfig ?? {})
+  };
+}
+
+function formatGraphLineValue(value, graphConfig) {
+  const numericText = formatNumericValue(value);
+  const unit = String(graphConfig?.graph_line_value_unit ?? '').trim();
+  return unit ? `${numericText} ${unit}` : numericText;
 }
 
 function resolveBandColor(line, index) {
@@ -231,12 +259,18 @@ function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
   return smoothed;
 }
 
-function buildFullChartTooltipFormatter() {
+function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
+  const xAxisName = graphConfig?.graph_x_axis_label ?? DEFAULT_GRAPH_CONFIG.graph_x_axis_label;
+  const yAxisName = graphConfig?.graph_y_axis_label ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_label;
+  const tooltipLabelBySeriesName = Object.fromEntries(
+    (lineDefinitions ?? []).map((definition) => [definition.label, definition.tooltipLabel])
+  );
+
   return (params) => {
     const items = Array.isArray(params) ? params : [params];
     const visibleItems = items.filter((item) => {
       const name = String(item.seriesName ?? '');
-      return !name.endsWith(' rpm band') && !name.endsWith(' rpm area');
+      return !name.endsWith(' band') && !name.endsWith(' band faded') && !name.endsWith(' area');
     });
     if (!visibleItems.length) return '';
 
@@ -244,14 +278,15 @@ function buildFullChartTooltipFormatter() {
       visibleItems.find((item) => Array.isArray(item.value))?.value?.[0] ??
       visibleItems[0]?.axisValue;
 
-    const lines = [`Airflow: ${formatNumericValue(flowValue)}`];
+    const lines = [`${xAxisName}: ${formatNumericValue(flowValue)}`];
 
     for (const item of visibleItems) {
       const name = String(item.seriesName ?? '');
       const marker = item.marker ?? '';
       const pointValue = Array.isArray(item.value) ? item.value[1] : item.value;
+      const overlayLabel = tooltipLabelBySeriesName[name];
 
-      lines.push(`Pressure: ${formatNumericValue(pointValue)}`);
+      lines.push(`${overlayLabel ?? yAxisName}: ${formatNumericValue(pointValue)}`);
       lines.push(`${marker}${name}`);
 
     }
@@ -799,7 +834,8 @@ function buildRpmBandPolygonSeries(
   clipRpmAreaToPermissibleUse,
   maximumVisibleFlow = null,
   pressureAxisMax = null,
-  fadedBandOpacity = RPM_BAND_FADED_OPACITY
+  fadedBandOpacity = RPM_BAND_FADED_OPACITY,
+  graphConfig = DEFAULT_GRAPH_CONFIG
 ) {
   if (!rpmCurveEntries.length) return [];
 
@@ -877,7 +913,7 @@ function buildRpmBandPolygonSeries(
 
     if (clipRpmAreaToPermissibleUse && permissibleBoundaryData.length && fullPolygons.length && pressureAxisMax != null) {
       series.push({
-        name: `${rpm} rpm band faded`,
+        name: `${formatGraphLineValue(rpm, graphConfig)} band faded`,
         type: 'custom',
         coordinateSystem: 'cartesian2d',
         renderItem(params, api) {
@@ -927,7 +963,7 @@ function buildRpmBandPolygonSeries(
     }
 
     series.push({
-      name: `${rpm} rpm band`,
+      name: `${formatGraphLineValue(rpm, graphConfig)} band`,
       type: 'custom',
       coordinateSystem: 'cartesian2d',
       renderItem(params, api) {
@@ -1004,7 +1040,8 @@ function buildRpmSeries(
   maximumVisibleFlow = null,
   pressureAxisMax = null,
   rpmBandLabelColor = null,
-  fadedBandOpacity = RPM_BAND_FADED_OPACITY
+  fadedBandOpacity = RPM_BAND_FADED_OPACITY,
+  graphConfig = DEFAULT_GRAPH_CONFIG
 ) {
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
@@ -1066,7 +1103,7 @@ function buildRpmSeries(
     rpmCurveEntries.push([rpm, displayLineData]);
 
     series.push({
-      name: `${rpm} rpm`,
+      name: formatGraphLineValue(rpm, graphConfig),
       type: 'line',
       smooth: false,
       data: displayLineData,
@@ -1092,7 +1129,7 @@ function buildRpmSeries(
         : displayLineData.slice().reverse();
 
       series.push({
-        name: `${rpm} rpm label`,
+        name: `${formatGraphLineValue(rpm, graphConfig)} label`,
         type: 'line',
         smooth: false,
         data: labelAnchorData,
@@ -1102,7 +1139,7 @@ function buildRpmSeries(
         lineStyle: { width: 0, opacity: 0 },
         endLabel: {
           show: true,
-          formatter: () => `${rpm} rpm`,
+          formatter: () => formatGraphLineValue(rpm, graphConfig),
           color: labelAtLineEnd ? (rpmBandLabelColor ?? chartTheme.text) : chartTheme.text,
           fontFamily: chartFontFamily,
           distance: 6,
@@ -1125,7 +1162,7 @@ function buildRpmSeries(
       hasMultiplePoints
     ) {
       series.push({
-        name: `${rpm} rpm area`,
+        name: `${formatGraphLineValue(rpm, graphConfig)} area`,
         type: 'line',
         smooth: false,
         data: displayLineData,
@@ -1141,7 +1178,7 @@ function buildRpmSeries(
     if (!includeDragHandles) continue;
 
     series.push({
-      name: `${rpm} rpm`,
+      name: formatGraphLineValue(rpm, graphConfig),
       type: 'scatter',
       data: pointsAtRpm.map((point) => ({
         value: [point.value[0], point.value[1]],
@@ -1174,7 +1211,8 @@ function buildRpmSeries(
         clipRpmAreaToPermissibleUse,
         maximumVisibleFlow,
         pressureAxisMax,
-        fadedBandOpacity
+        fadedBandOpacity,
+        graphConfig
       )
     );
   }
@@ -1198,11 +1236,12 @@ function buildEfficiencyAndPermissibleSeries(
   points,
   chartTheme,
   includeDragHandles,
+  lineDefinitions,
   { permissibleLabelColor = null } = {}
 ) {
   const series = [];
 
-  for (const definition of FULL_CHART_LINE_DEFINITIONS) {
+  for (const definition of lineDefinitions) {
     const lineData = points
       .filter((point) => point[definition.key] != null)
       .map((point) => [point.airflow ?? 0, point[definition.key] ?? 0])
@@ -1349,6 +1388,7 @@ export function buildFullChartOption({
   efficiencyPoints,
   chartTheme,
   title,
+  graphConfig = null,
   includeDragHandles = false,
   clipRpmAreaToPermissibleUse = false,
   showRpmBandShading = true,
@@ -1359,6 +1399,17 @@ export function buildFullChartOption({
   graphStyle = null,
   adaptGraphBackgroundToTheme = false
 }) {
+  const resolvedGraphConfig = resolveGraphConfig(graphConfig);
+  const lineDefinitions = resolvedGraphConfig.supports_graph_overlays ? FULL_CHART_LINE_DEFINITIONS : [];
+  const xAxisName = formatAxisLabel(
+    resolvedGraphConfig.graph_x_axis_label,
+    resolvedGraphConfig.graph_x_axis_unit
+  );
+  const yAxisName = formatAxisLabel(
+    resolvedGraphConfig.graph_y_axis_label,
+    resolvedGraphConfig.graph_y_axis_unit
+  );
+  const showOverlayAxis = false;
   const flowValues = [
     ...rpmPoints.map((point) => Number(point.airflow)),
     ...efficiencyPoints.map((point) => Number(point.airflow))
@@ -1382,17 +1433,23 @@ export function buildFullChartOption({
     .filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1]))
     .sort((a, b) => a[0] - b[0]);
   const bandGraphBackgroundColor =
-    showRpmBandShading ? normalizeOptionalColor(graphStyle?.band_graph_background_color) : null;
+    showRpmBandShading && resolvedGraphConfig.supports_band_graph_style
+      ? normalizeOptionalColor(graphStyle?.band_graph_background_color)
+      : null;
   const resolvedBandGraphBackgroundColor =
     adaptGraphBackgroundToTheme && bandGraphBackgroundColor && isDarkColor(chartTheme.background)
       ? invertHexColor(bandGraphBackgroundColor)
       : bandGraphBackgroundColor;
   const bandGraphLabelTextColor =
-    showRpmBandShading ? normalizeOptionalColor(graphStyle?.band_graph_label_text_color) : null;
+    showRpmBandShading && resolvedGraphConfig.supports_band_graph_style
+      ? normalizeOptionalColor(graphStyle?.band_graph_label_text_color)
+      : null;
   const bandGraphFadedOpacity =
-    showRpmBandShading ? normalizeOpacity(graphStyle?.band_graph_faded_opacity) : RPM_BAND_FADED_OPACITY;
+    showRpmBandShading && resolvedGraphConfig.supports_band_graph_style
+      ? normalizeOpacity(graphStyle?.band_graph_faded_opacity)
+      : RPM_BAND_FADED_OPACITY;
   const permissibleLabelColor =
-    showRpmBandShading
+    resolvedGraphConfig.supports_band_graph_style
       ? normalizeOptionalColor(graphStyle?.band_graph_permissible_label_color) ??
         bandGraphLabelTextColor ??
         chartTheme.text
@@ -1404,11 +1461,12 @@ export function buildFullChartOption({
     includeDragHandles,
     permissibleBoundaryData,
     clipRpmAreaToPermissibleUse,
-    showRpmBandShading,
+    showRpmBandShading && resolvedGraphConfig.supports_band_graph_style,
     rawRpmFlowMax || rawFlowMax,
     pressureAxisMax,
     bandGraphLabelTextColor,
-    bandGraphFadedOpacity
+    bandGraphFadedOpacity,
+    resolvedGraphConfig
   );
   const chartFontFamily = chartTheme.fontFamily ?? 'sans-serif';
 
@@ -1423,11 +1481,11 @@ export function buildFullChartOption({
       left: 'center',
       textStyle: { color: chartTheme.text, fontFamily: chartFontFamily }
     },
-    tooltip: tooltip ?? { trigger: 'axis', formatter: buildFullChartTooltipFormatter() },
+    tooltip: tooltip ?? { trigger: 'axis', formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions) },
     grid: { left: '9%', right: '5%', top: '12%', bottom: '12%' },
     xAxis: {
       type: 'value',
-      name: 'Airflow (L/s)',
+      name: xAxisName,
       nameLocation: 'middle',
       nameGap: 32,
       nameTextStyle: {
@@ -1450,7 +1508,7 @@ export function buildFullChartOption({
     yAxis: [
       {
         type: 'value',
-        name: 'Pressure (Pa)',
+        name: yAxisName,
         nameTextStyle: {
           color: chartTheme.text,
           fontFamily: chartFontFamily,
@@ -1470,8 +1528,8 @@ export function buildFullChartOption({
       },
       {
         type: 'value',
-        show: showSecondaryAxis,
-        name: showSecondaryAxis ? 'Efficiency Lines (%)' : '',
+        show: false,
+        name: '',
         nameTextStyle: {
           color: chartTheme.text,
           fontFamily: chartFontFamily,
@@ -1483,10 +1541,10 @@ export function buildFullChartOption({
           fontFamily: chartFontFamily,
           fontSize: AXIS_LABEL_FONT_SIZE,
           fontWeight: AXIS_LABEL_FONT_WEIGHT,
-          show: showSecondaryAxis
+          show: false
         },
-        axisLine: { show: showSecondaryAxis },
-        axisTick: { show: showSecondaryAxis },
+        axisLine: { show: false },
+        axisTick: { show: false },
         splitLine: { show: false },
         min: 0,
         max: 100
@@ -1494,7 +1552,7 @@ export function buildFullChartOption({
     ],
     series: [
       ...rpmSeriesBundle.series,
-      ...buildEfficiencyAndPermissibleSeries(efficiencyPoints, chartTheme, includeDragHandles, {
+      ...buildEfficiencyAndPermissibleSeries(efficiencyPoints, chartTheme, includeDragHandles, lineDefinitions, {
         permissibleLabelColor
       })
     ]

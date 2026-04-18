@@ -185,6 +185,9 @@
       "_index2.js",
       "_api.js",
       "_ECharts.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.N3Ikfny1.css"
     ]
   },
   "src/routes/entry/+page.svelte": {

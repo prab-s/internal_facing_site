@@ -32,6 +32,9 @@ COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend/ /app/backend/
+COPY alembic.ini /app/alembic.ini
+COPY alembic/ /app/alembic/
+COPY start_app.sh /app/start_app.sh
 RUN mkdir -p /app/data
 RUN mkdir -p /app/frontend/src/lib /app/frontend/scripts
 COPY frontend/package*.json /app/frontend/
@@ -43,4 +46,6 @@ COPY --from=frontend-builder /app/frontend/build /app/frontend/build
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN chmod +x /app/start_app.sh
+
+CMD ["/app/start_app.sh"]

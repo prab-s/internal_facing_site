@@ -34,7 +34,7 @@
       <div class="d-flex justify-content-center">
         <div class="card shadow-sm" style="max-width: 420px; width: 100%;">
           <div class="card-body p-4 text-center">
-            <h1 class="h4 mb-2">Fan Graphs</h1>
+            <h1 class="h4 mb-2">Internal Facing</h1>
             <p class="text-body-secondary mb-0">Checking your session...</p>
           </div>
         </div>
@@ -46,7 +46,7 @@
         <div class="card shadow-sm" style="max-width: 420px; width: 100%;">
           <div class="card-body p-4">
             <div class="text-center mb-4">
-              <h1 class="h4 mb-2">Fan Graphs</h1>
+              <h1 class="h4 mb-2">Internal Facing</h1>
               <p class="text-body-secondary mb-0">Enter the application password to continue.</p>
             </div>
 
@@ -95,16 +95,16 @@
       <div class="container-fluid app-frame px-0 d-flex align-items-center gap-3 flex-wrap justify-content-center">
         <div class="topbar-brand navbar-brand mb-0 text-center text-lg-start">
           <div>
-            <p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Fan Graphs</strong></p>
+            <p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p>
           </div>
-          <span class="small text-body-secondary">{#if isActive('/entry')}Data Entry{:else if isActive('/catalogue')}Catalogue{:else if isActive('/map')}Fan Map{:else if isActive('/setup')}Setup{:else}Overview{/if}</span>
+          <span class="small text-body-secondary">{#if isActive('/entry')}Data Entry{:else if isActive('/catalogue')}Catalogue{:else if isActive('/map')}Graph View{:else if isActive('/setup')}Setup{:else}Overview{/if}</span>
         </div>
 
         <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary">
           <a class={`nav-link ${isActive('/') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/">Home</a>
           <a class={`nav-link ${isActive('/entry') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/entry">Data Entry</a>
           <a class={`nav-link ${isActive('/catalogue') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/catalogue">Catalogue</a>
-          <a class={`nav-link ${isActive('/map') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/map">Fan Map</a>
+          <a class={`nav-link ${isActive('/map') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/map">Graph View</a>
           <a class={`nav-link ${isActive('/setup') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/setup">Setup</a>
         </nav>
 

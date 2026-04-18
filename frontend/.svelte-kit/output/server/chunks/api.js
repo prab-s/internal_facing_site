@@ -1,5 +1,18 @@
 import { w as writable } from "./index.js";
 const API_BASE = "/api";
+const GLOBAL_UNIT_OPTIONS = [
+  "A",
+  "Hz",
+  "kg",
+  "kW",
+  "L/s",
+  "m3/h",
+  "mm",
+  "Pa",
+  "RPM",
+  "V",
+  "°C"
+];
 const MOUNTING_STYLE_OPTIONS = [
   "roof mounted",
   "inline"
@@ -11,14 +24,16 @@ const DISCHARGE_TYPE_OPTIONS = [
 function emptyFanForm() {
   return {
     model: "",
-    notes: "",
+    product_type_key: "fan",
     mounting_style: "",
     discharge_type: "",
+    description_html: "",
+    features_html: "",
+    specifications_html: "",
+    comments_html: "",
     show_rpm_band_shading: true,
     band_graph_background_color: "#ffffff",
-    band_graph_label_text_color: "#000000",
-    diameter_mm: "",
-    max_rpm: ""
+    band_graph_label_text_color: "#000000"
   };
 }
 const theme = writable("light");
@@ -77,42 +92,42 @@ async function logout() {
   });
   return r.json();
 }
-async function getFans(params = {}) {
+async function getProducts(params = {}) {
   const sp = new URLSearchParams(params).toString();
-  const r = await apiFetch("/fans" + (sp ? "?" + sp : ""));
+  const r = await apiFetch("/products" + (sp ? "?" + sp : ""));
   return r.json();
 }
-async function getFan(id) {
-  const r = await apiFetch(`/fans/${id}`);
+async function getProductTypes() {
+  const r = await apiFetch("/product-types");
   return r.json();
 }
-async function getRpmLines(fanId) {
-  const r = await apiFetch(`/fans/${fanId}/rpm-lines`);
+async function getProduct(id) {
+  const r = await apiFetch(`/products/${id}`);
   return r.json();
 }
-async function getRpmPoints(fanId) {
-  const r = await apiFetch(`/fans/${fanId}/rpm-points`);
+async function getRpmLines(productId) {
+  const r = await apiFetch(`/products/${productId}/rpm-lines`);
   return r.json();
 }
-async function getEfficiencyPoints(fanId) {
-  const r = await apiFetch(`/fans/${fanId}/efficiency-points`);
+async function getRpmPoints(productId) {
+  const r = await apiFetch(`/products/${productId}/rpm-points`);
   return r.json();
 }
-async function getFanChartData(fanId) {
+async function getEfficiencyPoints(productId) {
+  const r = await apiFetch(`/products/${productId}/efficiency-points`);
+  return r.json();
+}
+async function getProductChartData(productId) {
   const [rpmLines, rpmPoints, efficiencyPoints] = await Promise.all([
-    getRpmLines(fanId),
-    getRpmPoints(fanId),
-    getEfficiencyPoints(fanId)
+    getRpmLines(productId),
+    getRpmPoints(productId),
+    getEfficiencyPoints(productId)
   ]);
   return { rpmLines, rpmPoints, efficiencyPoints };
 }
-async function getEfficiencyCurvePoints(fanId) {
-  const points = await getEfficiencyPoints(fanId);
+async function getProductEfficiencyCurvePoints(productId) {
+  const points = await getEfficiencyPoints(productId);
   return points.filter((point) => point.efficiency_centre != null);
-}
-async function getDatabaseMirrorStatus() {
-  const r = await apiFetch("/maintenance/databases/mirror-status");
-  return r.json();
 }
 async function getUsers() {
   const r = await apiFetch("/users");
@@ -120,18 +135,19 @@ async function getUsers() {
 }
 export {
   DISCHARGE_TYPE_OPTIONS as D,
+  GLOBAL_UNIT_OPTIONS as G,
   MOUNTING_STYLE_OPTIONS as M,
-  getFanChartData as a,
-  getEfficiencyCurvePoints as b,
-  getChartTheme as c,
-  getRpmLines as d,
-  getRpmPoints as e,
-  getEfficiencyPoints as f,
-  getFans as g,
-  getFan as h,
-  emptyFanForm as i,
-  getUsers as j,
-  getDatabaseMirrorStatus as k,
+  getProductTypes as a,
+  getProductChartData as b,
+  getProductEfficiencyCurvePoints as c,
+  getChartTheme as d,
+  emptyFanForm as e,
+  getRpmLines as f,
+  getProducts as g,
+  getRpmPoints as h,
+  getEfficiencyPoints as i,
+  getProduct as j,
+  getUsers as k,
   logout as l,
   login as m,
   getAuthSession as n,

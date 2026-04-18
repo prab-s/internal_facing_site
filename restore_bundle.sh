@@ -21,6 +21,8 @@ COMPOSE_FILE="${COMPOSE_FILE:-deploy-compose.yml}"
 COMPOSE_BIN="${COMPOSE_BIN:-podman compose}"
 PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-docker.io/library/postgres:16}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
+MIGRATE_DB_SCRIPT="${MIGRATE_DB_SCRIPT:-./migrate_db.sh}"
+PG_TOOL_DATABASE_URL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -115,13 +117,25 @@ restore_postgres_via_url() {
     exit 1
   fi
 
+  PG_TOOL_DATABASE_URL="$(python3 - <<'PY' "${DATABASE_URL}"
+from sqlalchemy.engine import make_url
+import sys
+url = make_url(sys.argv[1])
+drivername = url.drivername
+if "+" in drivername:
+    drivername = drivername.split("+", 1)[0]
+url = url.set(drivername=drivername)
+print(url.render_as_string(hide_password=False))
+PY
+)"
+
   podman run --rm --network host \
-    -e DATABASE_URL="${DATABASE_URL}" \
+    -e DATABASE_URL="${PG_TOOL_DATABASE_URL}" \
     "${PG_CLIENT_IMAGE}" \
     sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"'
 
   podman run --rm --network host -i \
-    -e DATABASE_URL="${DATABASE_URL}" \
+    -e DATABASE_URL="${PG_TOOL_DATABASE_URL}" \
     "${PG_CLIENT_IMAGE}" \
     sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1' < "${DB_DUMP_PATH}"
 }
@@ -168,6 +182,15 @@ case "$RESTORE_MODE" in
     ;;
 esac
 
+run_post_restore_migrations() {
+  if [[ ! -x "${MIGRATE_DB_SCRIPT}" ]]; then
+    echo "Migration script not found or not executable: ${MIGRATE_DB_SCRIPT}"
+    exit 1
+  fi
+
+  "${MIGRATE_DB_SCRIPT}" --env-file "${ENV_FILE}"
+}
+
 mkdir -p data
 for media_dir in product_images product_graphs product_pdfs; do
   target_dir="data/${media_dir}"
@@ -178,6 +201,8 @@ for media_dir in product_images product_graphs product_pdfs; do
     cp -a "${source_dir}/." "${target_dir}/"
   fi
 done
+
+run_post_restore_migrations
 
 echo
 echo "Restore complete from:"
