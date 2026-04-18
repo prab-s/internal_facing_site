@@ -1,13 +1,74 @@
 <?php
 /**
  * Plugin Name: Internal Facing API
- * Description: Elementor-friendly shortcodes for customer-facing product content sourced from the Internal Facing FastAPI CMS endpoints.
+ * Description: Elementor-friendly shortcodes for customer-facing product content sourced from the Internal Facing FastAPI customer CMS endpoints. Uses /api/cms/products, /api/cms/products/{product_id}, and proxied /api/cms/media/... files for product images and graph downloads.
  * Version: 0.1.0
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
+
+/*
+|--------------------------------------------------------------------------
+| Plugin overview
+|--------------------------------------------------------------------------
+|
+| This plugin connects WordPress to the Internal Facing FastAPI backend.
+|
+| Backend endpoints used by this plugin:
+| - GET /api/cms/products
+|   Used by the list shortcode to fetch customer-facing product cards.
+| - GET /api/cms/products/{product_id}
+|   Used by the single-product shortcode to fetch one detailed product.
+| - GET /api/cms/media/product_images/{file_name}
+| - GET /api/cms/media/product_graphs/{file_name}
+|   These are fetched server-side by WordPress and re-served through
+|   ?fan_graphs_media=... so the browser never needs the internal app URL.
+|
+| Required configuration:
+| - FAN_GRAPHS_INTERNAL_API_BASE_URL
+|   Internal backend base URL visible from the WordPress container,
+|   for example: http://app:8000
+| - FAN_GRAPHS_API_TOKEN
+|   CMS bearer token accepted by /api/cms/products...
+|
+| Shortcodes:
+|
+| 1. Product list
+|    [fan_graphs_fans]
+|
+|    Supported attributes:
+|    - limit="12"
+|    - search="text"
+|    - product_type="fan"
+|    - parameter_filters='[...]'  JSON string passed straight through
+|    - parameter_string_filters="Group|Parameter|Value;Group|Parameter|Value"
+|    - parameter_number_filters="Group|Parameter|Min|Max;Group|Parameter|Min|Max"
+|
+|    Examples:
+|    [fan_graphs_fans]
+|    [fan_graphs_fans limit="6" product_type="fan"]
+|    [fan_graphs_fans search="AFD" product_type="silencer"]
+|    [fan_graphs_fans parameter_string_filters="Motor|Type|TEFC"]
+|    [fan_graphs_fans parameter_number_filters="Motor|Power|2|5"]
+|    [fan_graphs_fans parameter_string_filters="Impeller|Type|Axial Aerofoil" parameter_number_filters="Motor|Power|2|5"]
+|
+| 2. Single product
+|    [fan_graphs_fan id="123"]
+|
+|    Example:
+|    [fan_graphs_fan id="1"]
+|
+| Output structure:
+| - Product image
+| - Product title / type
+| - Basic meta fields
+| - Graph download link when available
+| - On single-product render: Description, Features, Specifications,
+|   grouped parameter sections, and Comments
+|
+*/
 
 function fan_graphs_api_base_url() {
     if (defined('FAN_GRAPHS_INTERNAL_API_BASE_URL')) {
