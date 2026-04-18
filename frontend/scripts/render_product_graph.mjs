@@ -49,6 +49,7 @@ async function main() {
   });
 
   option.animation = false;
+  const outputBackground = option.backgroundColor || LIGHT_CHART_THEME.background;
 
   const width = 1600;
   const height = 960;
@@ -65,6 +66,7 @@ async function main() {
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await sharp(Buffer.from(svg))
+    .flatten({ background: outputBackground })
     .png()
     .toFile(outputPath);
 }

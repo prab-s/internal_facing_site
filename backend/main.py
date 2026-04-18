@@ -189,6 +189,8 @@ def sync_graph_image(fan: Fan, rpm_lines: list[RpmLine], efficiency_points: list
         "graphStyle": {
             "band_graph_background_color": fan.band_graph_background_color,
             "band_graph_label_text_color": fan.band_graph_label_text_color,
+            "band_graph_faded_opacity": fan.band_graph_faded_opacity,
+            "band_graph_permissible_label_color": fan.band_graph_permissible_label_color,
         },
         "rpmLines": [
             {
@@ -279,6 +281,8 @@ def _copy_fan_fields(source: Fan, target: Fan):
     target.show_rpm_band_shading = source.show_rpm_band_shading
     target.band_graph_background_color = source.band_graph_background_color
     target.band_graph_label_text_color = source.band_graph_label_text_color
+    target.band_graph_faded_opacity = source.band_graph_faded_opacity
+    target.band_graph_permissible_label_color = source.band_graph_permissible_label_color
     target.diameter_mm = source.diameter_mm
     target.max_rpm = source.max_rpm
 
@@ -1047,6 +1051,7 @@ def create_fan(body: FanCreate, db: Session = Depends(get_db)):
     fan_data = body.model_dump()
     fan_data["band_graph_background_color"] = normalize_color_value(fan_data.get("band_graph_background_color"))
     fan_data["band_graph_label_text_color"] = normalize_color_value(fan_data.get("band_graph_label_text_color"))
+    fan_data["band_graph_permissible_label_color"] = normalize_color_value(fan_data.get("band_graph_permissible_label_color"))
     fan = Fan(**fan_data)
     db.add(fan)
     db.commit()
@@ -1070,8 +1075,10 @@ def get_fan(fan_id: int, db: Session = Depends(get_db)):
 def update_fan(fan_id: int, body: FanUpdate, db: Session = Depends(get_db)):
     fan = require_fan(db, fan_id)
     for k, v in body.model_dump(exclude_unset=True).items():
-        if k in {"band_graph_background_color", "band_graph_label_text_color"}:
+        if k in {"band_graph_background_color", "band_graph_label_text_color", "band_graph_permissible_label_color"}:
             setattr(fan, k, normalize_color_value(v))
+        elif k == "band_graph_faded_opacity":
+            setattr(fan, k, None if v is None else max(0, min(1, float(v))))
         else:
             setattr(fan, k, v)
     sync_product_image_files(fan)

@@ -30,6 +30,8 @@ class Fan(Base):
     show_rpm_band_shading = Column(Boolean, nullable=False, default=True)
     band_graph_background_color = Column(String(32), nullable=True)
     band_graph_label_text_color = Column(String(32), nullable=True)
+    band_graph_faded_opacity = Column(Float, nullable=True)
+    band_graph_permissible_label_color = Column(String(32), nullable=True)
     # Optional numeric fields for filtering (MVP: optional, can be null)
     diameter_mm = Column(Float, nullable=True)
     max_rpm = Column(Float, nullable=True)

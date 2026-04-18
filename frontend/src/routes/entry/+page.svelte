@@ -1,5 +1,5 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import {
     getFans,
@@ -43,7 +43,8 @@
   let loading = false;
   let savingFanDetails = false;
   let error = '';
-  let success = '';
+  let successMessages = [];
+  let successToastKey = 0;
   let productImages = [];
   let pendingImageFiles = [];
   let rpmPointSort = { column: null, direction: 'asc' };
@@ -62,6 +63,7 @@
   let mapPointSaveCompleted = 0;
   let mapPointSaveProgressMessage = '';
   let mapPointSaveRenderChain = Promise.resolve();
+  let successDismissTimeout = null;
 
   let chartInstance = null;
   let draggingPoint = null;
@@ -73,7 +75,9 @@
   function defaultGraphStyleForm() {
     return {
       band_graph_background_color: '#ffffff',
-      band_graph_label_text_color: '#000000'
+      band_graph_label_text_color: '#000000',
+      band_graph_faded_opacity: 0.18,
+      band_graph_permissible_label_color: '#000000'
     };
   }
   let graphStyleForm = defaultGraphStyleForm();
@@ -106,6 +110,28 @@
   function normalizeOptionalColor(value) {
     const normalized = String(value ?? '').trim();
     return normalized || '';
+  }
+
+  function clearSuccessToast() {
+    successMessages = [];
+    successToastKey += 1;
+    if (successDismissTimeout) {
+      clearTimeout(successDismissTimeout);
+      successDismissTimeout = null;
+    }
+  }
+
+  function addSuccess(message) {
+    if (!message) return;
+    successMessages = [...successMessages, message];
+    successToastKey += 1;
+    if (successDismissTimeout) {
+      clearTimeout(successDismissTimeout);
+    }
+    successDismissTimeout = setTimeout(() => {
+      successMessages = [];
+      successDismissTimeout = null;
+    }, 3000);
   }
 
   function createTempPointId() {
@@ -269,6 +295,12 @@
     };
   });
 
+  onDestroy(() => {
+    if (successDismissTimeout) {
+      clearTimeout(successDismissTimeout);
+    }
+  });
+
   beforeNavigate((navigation) => {
     if (!savingMapPoints) return;
     navigation.cancel();
@@ -328,7 +360,7 @@
       }
       rpmCsv = '';
       await loadPoints();
-      success = 'RPM CSV imported.';
+      addSuccess('RPM CSV imported.');
     } catch (e) {
       rpmCsvError = e.message;
     }
@@ -361,7 +393,7 @@
       }
       efficiencyCsv = '';
       await loadPoints();
-      success = 'Efficiency/permissible CSV imported.';
+      addSuccess('Efficiency/permissible CSV imported.');
     } catch (e) {
       efficiencyCsvError = e.message;
     }
@@ -396,7 +428,15 @@
       currentFan = nextFan;
       graphStyleForm = {
         band_graph_background_color: normalizeOptionalColor(nextFan?.band_graph_background_color) || '#ffffff',
-        band_graph_label_text_color: normalizeOptionalColor(nextFan?.band_graph_label_text_color) || '#000000'
+        band_graph_label_text_color: normalizeOptionalColor(nextFan?.band_graph_label_text_color) || '#000000',
+        band_graph_faded_opacity:
+          nextFan?.band_graph_faded_opacity != null && !Number.isNaN(Number(nextFan.band_graph_faded_opacity))
+            ? Number(nextFan.band_graph_faded_opacity)
+            : 0.18,
+        band_graph_permissible_label_color:
+          normalizeOptionalColor(nextFan?.band_graph_permissible_label_color) ||
+          normalizeOptionalColor(nextFan?.band_graph_label_text_color) ||
+          '#000000'
       };
       productImages = currentFan.product_images || [];
       const validTargets = new Set([
@@ -422,7 +462,7 @@
 
   async function saveFan() {
     error = '';
-    success = '';
+    clearSuccessToast();
     const body = {
       model: fanForm.model.trim(),
       notes: fanForm.notes.trim() || null,
@@ -431,6 +471,12 @@
       show_rpm_band_shading: !!fanForm.show_rpm_band_shading,
       band_graph_background_color: normalizeOptionalColor(graphStyleForm.band_graph_background_color) || null,
       band_graph_label_text_color: normalizeOptionalColor(graphStyleForm.band_graph_label_text_color) || null,
+      band_graph_faded_opacity:
+        graphStyleForm.band_graph_faded_opacity === '' || graphStyleForm.band_graph_faded_opacity == null
+          ? null
+          : Number(graphStyleForm.band_graph_faded_opacity),
+      band_graph_permissible_label_color:
+        normalizeOptionalColor(graphStyleForm.band_graph_permissible_label_color) || null,
       diameter_mm: fanForm.diameter_mm ? parseFloat(fanForm.diameter_mm) : null,
       max_rpm: fanForm.max_rpm ? parseFloat(fanForm.max_rpm) : null
     };
@@ -443,11 +489,11 @@
     try {
       if (editingFanId) {
         currentFan = await updateFan(editingFanId, body);
-        success = 'Fan updated.';
+        addSuccess('Fan updated.');
       } else {
         const created = await createFan(body);
         currentFan = created;
-        success = 'Fan created. You can now upload product images and add map points.';
+        addSuccess('Fan created. You can now upload product images and add map points.');
         selectedFanId = created.id;
         editingFanId = created.id;
         mode = 'editExisting';
@@ -476,7 +522,15 @@
     };
     graphStyleForm = {
       band_graph_background_color: normalizeOptionalColor(fan.band_graph_background_color) || '#ffffff',
-      band_graph_label_text_color: normalizeOptionalColor(fan.band_graph_label_text_color) || '#000000'
+      band_graph_label_text_color: normalizeOptionalColor(fan.band_graph_label_text_color) || '#000000',
+      band_graph_faded_opacity:
+        fan.band_graph_faded_opacity != null && !Number.isNaN(Number(fan.band_graph_faded_opacity))
+          ? Number(fan.band_graph_faded_opacity)
+          : 0.18,
+      band_graph_permissible_label_color:
+        normalizeOptionalColor(fan.band_graph_permissible_label_color) ||
+        normalizeOptionalColor(fan.band_graph_label_text_color) ||
+        '#000000'
     };
   }
 
@@ -495,7 +549,7 @@
       newRpmLineBandColor = '';
       await loadPoints();
       chartAddTarget = `rpm:${created.id}`;
-      success = 'RPM line added.';
+      addSuccess('RPM line added.');
     } catch (e) {
       error = e.message;
     }
@@ -510,7 +564,7 @@
     try {
       await deleteRpmLine(selectedFanId, line.id);
       await loadPoints();
-      success = 'RPM line deleted.';
+      addSuccess('RPM line deleted.');
     } catch (e) {
       error = e.message;
     }
@@ -523,7 +577,7 @@
         band_color: normalizeOptionalColor(line.band_color) || null
       });
       await loadPoints();
-      success = `${line.rpm} RPM styling updated.`;
+      addSuccess(`${line.rpm} RPM styling updated.`);
     } catch (e) {
       error = e.message;
     }
@@ -538,15 +592,29 @@
     try {
       const saved = await updateFan(selectedFanId, {
         band_graph_background_color: normalizeOptionalColor(graphStyleForm.band_graph_background_color) || null,
-        band_graph_label_text_color: normalizeOptionalColor(graphStyleForm.band_graph_label_text_color) || null
+        band_graph_label_text_color: normalizeOptionalColor(graphStyleForm.band_graph_label_text_color) || null,
+        band_graph_faded_opacity:
+          graphStyleForm.band_graph_faded_opacity === '' || graphStyleForm.band_graph_faded_opacity == null
+            ? null
+            : Number(graphStyleForm.band_graph_faded_opacity),
+        band_graph_permissible_label_color:
+          normalizeOptionalColor(graphStyleForm.band_graph_permissible_label_color) || null
       });
       graphStyleForm = {
         band_graph_background_color: normalizeOptionalColor(saved?.band_graph_background_color),
-        band_graph_label_text_color: normalizeOptionalColor(saved?.band_graph_label_text_color)
+        band_graph_label_text_color: normalizeOptionalColor(saved?.band_graph_label_text_color),
+        band_graph_faded_opacity:
+          saved?.band_graph_faded_opacity != null && !Number.isNaN(Number(saved.band_graph_faded_opacity))
+            ? Number(saved.band_graph_faded_opacity)
+            : 0.18,
+        band_graph_permissible_label_color:
+          normalizeOptionalColor(saved?.band_graph_permissible_label_color) ||
+          normalizeOptionalColor(saved?.band_graph_label_text_color) ||
+          '#000000'
       };
       currentFan = saved;
       fans = await getFans();
-      success = 'Band graph style updated for this fan.';
+      addSuccess('Band graph style updated for this fan.');
     } catch (e) {
       error = e.message;
     }
@@ -572,7 +640,7 @@
       }
     ]);
     rpmPointForm = { rpm_line_id: rpmPointForm.rpm_line_id, airflow: '', pressure: '' };
-    success = 'RPM point added locally. Save map points to persist it.';
+    addSuccess('RPM point added locally. Save map points to persist it.');
   }
 
   async function addEfficiencyPointFromForm() {
@@ -600,7 +668,7 @@
       efficiency_higher_end: '',
       permissible_use: ''
     };
-    success = 'Efficiency/permissible point added locally. Save map points to persist it.';
+    addSuccess('Efficiency/permissible point added locally. Save map points to persist it.');
   }
 
   async function uploadImages() {
@@ -617,7 +685,7 @@
       pendingImageFiles = [];
       await loadPoints();
       fans = await getFans();
-      success = 'Product images uploaded.';
+      addSuccess('Product images uploaded.');
     } catch (e) {
       error = e.message;
     }
@@ -634,7 +702,7 @@
       productImages = await reorderProductImages(selectedFanId, reordered.map((image) => image.id));
       await loadPoints();
       fans = await getFans();
-      success = 'Product image order updated.';
+      addSuccess('Product image order updated.');
     } catch (e) {
       error = e.message;
     }
@@ -645,7 +713,7 @@
       await deleteProductImage(selectedFanId, image.id);
       await loadPoints();
       fans = await getFans();
-      success = 'Product image deleted.';
+      addSuccess('Product image deleted.');
     } catch (e) {
       error = e.message;
     }
@@ -663,6 +731,7 @@
       showRpmBandShading: fanForm.show_rpm_band_shading ?? true,
       flowAxisMaxOverride: dragAxisLock?.flowMax ?? null,
       pressureAxisMaxOverride: dragAxisLock?.pressureMax ?? null,
+      adaptGraphBackgroundToTheme: true,
       graphStyle: graphStyleForm,
       tooltip: {
         trigger: 'item',
@@ -823,7 +892,7 @@
             pressure: Math.round(pressure)
           }
         ]);
-        success = 'Point added locally from chart. Save map points to persist it.';
+        addSuccess('Point added locally from chart. Save map points to persist it.');
         return;
       }
 
@@ -842,7 +911,7 @@
             permissible_use: lineKey === 'permissible_use' ? Math.round(value) : null
           }
         ];
-        success = 'Point added locally from chart. Save map points to persist it.';
+        addSuccess('Point added locally from chart. Save map points to persist it.');
       }
     }
 
@@ -864,7 +933,7 @@
         suppressNextClick = true;
         dragMoved = false;
         draggingPoint = null;
-        success = 'Point deleted locally from chart. Save map points to persist it.';
+        addSuccess('Point deleted locally from chart. Save map points to persist it.');
         return;
       }
 
@@ -911,7 +980,7 @@
         pressure: parseFloat(point.pressure)
       });
       await loadPoints();
-      success = 'RPM point updated.';
+      addSuccess('RPM point updated.');
     } catch (e) {
       error = e.message;
     }
@@ -927,7 +996,7 @@
         permissible_use: parseOptionalNumber(point.permissible_use)
       });
       await loadPoints();
-      success = 'Efficiency/permissible point updated.';
+      addSuccess('Efficiency/permissible point updated.');
     } catch (e) {
       error = e.message;
     }
@@ -935,7 +1004,7 @@
 
   async function saveMapPoints() {
     error = '';
-    success = '';
+    clearSuccessToast();
     if (savingMapPoints) return;
     try {
       const currentRpmIds = new Set(rpmPoints.filter((point) => isPersistedPointId(point.id)).map((point) => point.id));
@@ -1028,7 +1097,7 @@
       await refreshGraphImage(selectedFanId);
       await advanceMapPointSave('Regenerated graph image');
       await loadPoints();
-      success = 'All map points saved.';
+      addSuccess('All map points saved.');
     } catch (e) {
       error = e.message;
     } finally {
@@ -1038,18 +1107,70 @@
 
   async function deleteRpmPointLocal(point) {
     rpmPoints = rpmPoints.filter((item) => item.id !== point.id);
-    success = 'RPM point deleted locally. Save map points to persist it.';
+    addSuccess('RPM point deleted locally. Save map points to persist it.');
   }
 
   async function deleteEfficiencyPointLocal(point) {
     efficiencyPoints = efficiencyPoints.filter((item) => item.id !== point.id);
-    success = 'Efficiency/permissible point deleted locally. Save map points to persist it.';
+    addSuccess('Efficiency/permissible point deleted locally. Save map points to persist it.');
   }
 </script>
 
 <svelte:head>
   <title>Data entry — Fan Graphs</title>
 </svelte:head>
+
+{#if successMessages.length}
+  <div class="success-toast shadow-lg" role="status" aria-live="polite" aria-atomic="true">
+    <div class="alert alert-success mb-0 success-toast-alert">
+      {#each successMessages as message}
+        <div>{message}</div>
+      {/each}
+      {#key successToastKey}
+        <div class="success-toast-progress"></div>
+      {/key}
+    </div>
+  </div>
+{/if}
+
+<style>
+  .success-toast {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(42rem, calc(100vw - 2rem));
+    z-index: 1080;
+    pointer-events: none;
+  }
+
+  .success-toast-alert {
+    position: relative;
+    overflow: hidden;
+    padding-bottom: 1rem;
+  }
+
+  .success-toast-progress {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 0.25rem;
+    background: rgba(25, 135, 84, 0.55);
+    transform-origin: left center;
+    animation: success-toast-countdown 3s linear forwards;
+  }
+
+  @keyframes success-toast-countdown {
+    from {
+      transform: scaleX(1);
+    }
+
+    to {
+      transform: scaleX(0);
+    }
+  }
+</style>
 
 <div class="mb-3">
   <div class="col-12 col-xxl-8">
@@ -1060,9 +1181,6 @@
     </p>
     {#if error}
       <p class="text-danger mb-2">{error}</p>
-    {/if}
-    {#if success}
-      <p class="text-success mb-0">{success}</p>
     {/if}
   </div>
 </div>
@@ -1316,6 +1434,36 @@
               <div class="input-group">
                 <input class="form-control form-control-color" id="band-graph-background-color" type="color" bind:value={graphStyleForm.band_graph_background_color} on:input={() => (graphStyleForm = { ...graphStyleForm })} />
                 <input class="form-control" type="text" bind:value={graphStyleForm.band_graph_background_color} placeholder="#ffffff" on:input={() => (graphStyleForm = { ...graphStyleForm })} />
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="band-graph-faded-opacity">Faded area opacity</label>
+              <div class="input-group">
+                <input
+                  class="form-range"
+                  id="band-graph-faded-opacity"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  bind:value={graphStyleForm.band_graph_faded_opacity}
+                />
+                <input
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  bind:value={graphStyleForm.band_graph_faded_opacity}
+                  on:input={() => (graphStyleForm = { ...graphStyleForm })}
+                />
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="band-graph-permissible-label-color">Permissible use label colour</label>
+              <div class="input-group">
+                <input class="form-control form-control-color" id="band-graph-permissible-label-color" type="color" bind:value={graphStyleForm.band_graph_permissible_label_color} on:input={() => (graphStyleForm = { ...graphStyleForm })} />
+                <input class="form-control" type="text" bind:value={graphStyleForm.band_graph_permissible_label_color} placeholder="#000000" on:input={() => (graphStyleForm = { ...graphStyleForm })} />
               </div>
             </div>
           </div>

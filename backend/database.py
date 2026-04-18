@@ -95,6 +95,8 @@ def _ensure_fan_columns(target_engine):
         "show_rpm_band_shading": f"BOOLEAN NOT NULL DEFAULT {boolean_true_sql}",
         "band_graph_background_color": "VARCHAR(32)",
         "band_graph_label_text_color": "VARCHAR(32)",
+        "band_graph_faded_opacity": "FLOAT",
+        "band_graph_permissible_label_color": "VARCHAR(32)",
     }
 
     with target_engine.begin() as connection:
@@ -178,6 +180,8 @@ def _remove_deprecated_fan_manufacturer_column(target_engine):
                     show_rpm_band_shading BOOLEAN NOT NULL DEFAULT 1,
                     band_graph_background_color VARCHAR(32),
                     band_graph_label_text_color VARCHAR(32),
+                    band_graph_faded_opacity FLOAT,
+                    band_graph_permissible_label_color VARCHAR(32),
                     diameter_mm FLOAT,
                     max_rpm FLOAT
                 )
@@ -197,6 +201,8 @@ def _remove_deprecated_fan_manufacturer_column(target_engine):
                     show_rpm_band_shading,
                     band_graph_background_color,
                     band_graph_label_text_color,
+                    band_graph_faded_opacity,
+                    band_graph_permissible_label_color,
                     diameter_mm,
                     max_rpm
                 )
@@ -210,6 +216,8 @@ def _remove_deprecated_fan_manufacturer_column(target_engine):
                     show_rpm_band_shading,
                     NULL AS band_graph_background_color,
                     NULL AS band_graph_label_text_color,
+                    NULL AS band_graph_faded_opacity,
+                    NULL AS band_graph_permissible_label_color,
                     diameter_mm,
                     max_rpm
                 FROM fans

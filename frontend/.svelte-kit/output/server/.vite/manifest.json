@@ -14,7 +14,8 @@
     "file": "chunks/ECharts.js",
     "name": "ECharts",
     "imports": [
-      "_index2.js"
+      "_index2.js",
+      "_index-server.js"
     ]
   },
   "_api.js": {
@@ -47,6 +48,13 @@
   "_fullChart.js": {
     "file": "chunks/fullChart.js",
     "name": "fullChart"
+  },
+  "_index-server.js": {
+    "file": "chunks/index-server.js",
+    "name": "index-server",
+    "imports": [
+      "_index2.js"
+    ]
   },
   "_index.js": {
     "file": "chunks/index.js",
@@ -186,12 +194,16 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
+      "_index-server.js",
       "_exports.js",
       "_utils.js",
       "_root.js",
       "_state.svelte.js",
       "_api.js",
       "_fullChart.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.DXixTBjR.css"
     ]
   },
   "src/routes/map/+page.svelte": {
@@ -213,8 +225,12 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
+      "_index-server.js",
       "_auth.js",
       "_api.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.CXoniXGh.css"
     ]
   }
 }

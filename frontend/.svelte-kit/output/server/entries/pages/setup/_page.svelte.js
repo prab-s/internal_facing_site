@@ -1,4 +1,5 @@
-import { s as store_get, h as head, e as escape_html, a as attr, d as ensure_array_like, b as attr_class, u as unsubscribe_stores } from "../../../chunks/index2.js";
+import { s as store_get, h as head, d as ensure_array_like, e as escape_html, a as attr, b as attr_class, u as unsubscribe_stores } from "../../../chunks/index2.js";
+import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { j as getUsers, k as getDatabaseMirrorStatus } from "../../../chunks/api.js";
 function _page($$renderer, $$props) {
@@ -19,6 +20,12 @@ function _page($$renderer, $$props) {
     let maintenanceLoading = false;
     let maintenanceError = "";
     let mirrorStatus = null;
+    let successMessages = [];
+    function clearSuccessToast() {
+      successMessages = [];
+    }
+    onDestroy(() => {
+    });
     async function loadUsers() {
       loadingUsers = true;
       userError = "";
@@ -34,6 +41,7 @@ function _page($$renderer, $$props) {
     async function loadMirrorStatus() {
       maintenanceLoading = true;
       maintenanceError = "";
+      clearSuccessToast();
       try {
         mirrorStatus = await getDatabaseMirrorStatus();
       } catch (error) {
@@ -58,11 +66,23 @@ function _page($$renderer, $$props) {
         $$renderer4.push(`<title>Setup - Fan Graphs</title>`);
       });
     });
-    $$renderer2.push(`<div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Setup</p> <h1 class="h2 mb-2">Account and application setup.</h1> <p class="text-body-secondary">Manage your own password here. Admins can also create and manage internal user accounts.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-5"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p> <h2 class="h4">Change Password</h2> <p class="text-body-secondary">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}.</p> <form class="vstack gap-3"><div><label class="form-label" for="current-password">Current Password</label> <input id="current-password" class="form-control" type="password"${attr("value", currentPassword)}/></div> <div><label class="form-label" for="new-own-password">New Password</label> <input id="new-own-password" class="form-control" type="password"${attr("value", newOwnPassword)}/></div> `);
-    {
+    if (successMessages.length) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="success-toast shadow-lg svelte-g40i6i" role="status" aria-live="polite" aria-atomic="true"><div class="alert alert-success mb-0 success-toast-alert svelte-g40i6i"><!--[-->`);
+      const each_array = ensure_array_like(successMessages);
+      for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+        let message = each_array[$$index];
+        $$renderer2.push(`<div>${escape_html(message)}</div>`);
+      }
+      $$renderer2.push(`<!--]--> <!---->`);
+      {
+        $$renderer2.push(`<div class="success-toast-progress svelte-g40i6i"></div>`);
+      }
+      $$renderer2.push(`<!----></div></div>`);
+    } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> `);
+    $$renderer2.push(`<!--]--> <div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Setup</p> <h1 class="h2 mb-2">Account and application setup.</h1> <p class="text-body-secondary">Manage your own password here. Admins can also create and manage internal user accounts.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-5"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p> <h2 class="h4">Change Password</h2> <p class="text-body-secondary">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}.</p> <form class="vstack gap-3"><div><label class="form-label" for="current-password">Current Password</label> <input id="current-password" class="form-control" type="password"${attr("value", currentPassword)}/></div> <div><label class="form-label" for="new-own-password">New Password</label> <input id="new-own-password" class="form-control" type="password"${attr("value", newOwnPassword)}/></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }
@@ -73,14 +93,10 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> `);
-    {
-      $$renderer2.push("<!--[-1-->");
-    }
     $$renderer2.push(`<!--]--> <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Username</th><th>Role</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody><!--[-->`);
-    const each_array = ensure_array_like(filteredUsers);
-    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
-      let user = each_array[$$index];
+    const each_array_1 = ensure_array_like(filteredUsers);
+    for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
+      let user = each_array_1[$$index_1];
       $$renderer2.push(`<tr><td><div class="d-flex align-items-center gap-2 justify-content-start"><span>${escape_html(user.username)}</span> `);
       if (user.username === store_get($$store_subs ??= {}, "$auth", auth).username) {
         $$renderer2.push("<!--[0-->");
@@ -88,7 +104,7 @@ function _page($$renderer, $$props) {
       } else {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--></div></td><td><span${attr_class(`badge ${user.is_admin ? "text-bg-dark" : "text-bg-secondary"}`)}>${escape_html(user.is_admin ? "Admin" : "User")}</span></td><td><span${attr_class(`badge ${user.is_active ? "text-bg-success" : "text-bg-warning"}`)}>${escape_html(user.is_active ? "Active" : "Disabled")}</span></td><td class="text-end"><div class="d-flex justify-content-end gap-2 flex-wrap">`);
+      $$renderer2.push(`<!--]--></div></td><td><span${attr_class(`badge ${user.is_admin ? "text-bg-dark" : "text-bg-secondary"}`, "svelte-g40i6i")}>${escape_html(user.is_admin ? "Admin" : "User")}</span></td><td><span${attr_class(`badge ${user.is_active ? "text-bg-success" : "text-bg-warning"}`, "svelte-g40i6i")}>${escape_html(user.is_active ? "Active" : "Disabled")}</span></td><td class="text-end"><div class="d-flex justify-content-end gap-2 flex-wrap">`);
       if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", user.username === store_get($$store_subs ??= {}, "$auth", auth).username, true)}>${escape_html(user.is_admin ? "Remove Admin" : "Make Admin")}</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", user.username === store_get($$store_subs ??= {}, "$auth", auth).username, true)}>${escape_html(user.is_active ? "Disable" : "Enable")}</button> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", savingUser, true)}>Reset Password</button>`);
@@ -112,10 +128,6 @@ function _page($$renderer, $$props) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<div class="alert alert-danger py-2">${escape_html(maintenanceError)}</div>`);
       } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> `);
-      {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Postgres Mirror</h3> <p class="mb-2 text-body-secondary">The Postgres mirror is the PostgreSQL copy of the fan data. It is mainly there for the deployed

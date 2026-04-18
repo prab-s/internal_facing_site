@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { auth } from '$lib/auth.js';
   import {
@@ -21,14 +21,12 @@
   let filteredUsers = [];
   let userFilter = '';
   let userError = '';
-  let userSuccess = '';
   let loadingUsers = false;
   let savingUser = false;
 
   let currentPassword = '';
   let newOwnPassword = '';
   let ownPasswordError = '';
-  let ownPasswordSuccess = '';
   let savingOwnPassword = false;
 
   let newUsername = '';
@@ -36,9 +34,33 @@
   let newIsAdmin = false;
   let maintenanceLoading = false;
   let maintenanceError = '';
-  let maintenanceSuccess = '';
   let mirrorStatus = null;
   let backupFile = null;
+  let successMessages = [];
+  let successToastKey = 0;
+  let successDismissTimeout = null;
+
+  function clearSuccessToast() {
+    successMessages = [];
+    successToastKey += 1;
+    if (successDismissTimeout) {
+      clearTimeout(successDismissTimeout);
+      successDismissTimeout = null;
+    }
+  }
+
+  function addSuccess(message) {
+    if (!message) return;
+    successMessages = [...successMessages, message];
+    successToastKey += 1;
+    if (successDismissTimeout) {
+      clearTimeout(successDismissTimeout);
+    }
+    successDismissTimeout = setTimeout(() => {
+      successMessages = [];
+      successDismissTimeout = null;
+    }, 3000);
+  }
 
   onMount(() => {
     const session = get(auth);
@@ -47,6 +69,12 @@
       if (session.is_admin) {
         loadMirrorStatus();
       }
+    }
+  });
+
+  onDestroy(() => {
+    if (successDismissTimeout) {
+      clearTimeout(successDismissTimeout);
     }
   });
 
@@ -74,7 +102,7 @@
   async function submitNewUser() {
     savingUser = true;
     userError = '';
-    userSuccess = '';
+    clearSuccessToast();
     try {
       await createUser({
         username: newUsername,
@@ -84,7 +112,7 @@
       newUsername = '';
       newPassword = '';
       newIsAdmin = false;
-      userSuccess = 'User created.';
+      addSuccess('User created.');
       await loadUsers();
     } catch (error) {
       userError = error?.message || 'Unable to create user.';
@@ -100,10 +128,10 @@
     }
     savingUser = true;
     userError = '';
-    userSuccess = '';
+    clearSuccessToast();
     try {
       await updateUser(user.id, { is_active: !user.is_active });
-      userSuccess = 'User updated.';
+      addSuccess('User updated.');
       await loadUsers();
     } catch (error) {
       userError = error?.message || 'Unable to update user.';
@@ -119,10 +147,10 @@
     }
     savingUser = true;
     userError = '';
-    userSuccess = '';
+    clearSuccessToast();
     try {
       await updateUser(user.id, { is_admin: !user.is_admin });
-      userSuccess = 'User updated.';
+      addSuccess('User updated.');
       await loadUsers();
     } catch (error) {
       userError = error?.message || 'Unable to update user.';
@@ -136,10 +164,10 @@
     if (!password) return;
     savingUser = true;
     userError = '';
-    userSuccess = '';
+    clearSuccessToast();
     try {
       await updateUserPassword(user.id, password);
-      userSuccess = `Password updated for ${user.username}.`;
+      addSuccess(`Password updated for ${user.username}.`);
     } catch (error) {
       userError = error?.message || 'Unable to update password.';
     } finally {
@@ -150,12 +178,12 @@
   async function submitOwnPasswordChange() {
     savingOwnPassword = true;
     ownPasswordError = '';
-    ownPasswordSuccess = '';
+    clearSuccessToast();
     try {
       await changePassword(currentPassword, newOwnPassword);
       currentPassword = '';
       newOwnPassword = '';
-      ownPasswordSuccess = 'Password updated.';
+      addSuccess('Password updated.');
     } catch (error) {
       ownPasswordError = error?.message || 'Unable to update password.';
     } finally {
@@ -166,6 +194,7 @@
   async function loadMirrorStatus() {
     maintenanceLoading = true;
     maintenanceError = '';
+    clearSuccessToast();
     try {
       mirrorStatus = await getDatabaseMirrorStatus();
     } catch (error) {
@@ -182,7 +211,7 @@
 
     maintenanceLoading = true;
     maintenanceError = '';
-    maintenanceSuccess = '';
+    clearSuccessToast();
     try {
       const result = await action();
       if (result?.mirror_enabled !== undefined) {
@@ -190,7 +219,7 @@
       } else {
         await loadMirrorStatus();
       }
-      maintenanceSuccess = result?.message || options.successMessage || 'Maintenance task completed.';
+      addSuccess(result?.message || options.successMessage || 'Maintenance task completed.');
     } catch (error) {
       maintenanceError = error?.message || options.errorMessage || 'Unable to run maintenance task.';
     } finally {
@@ -201,7 +230,7 @@
   async function handleBackupDownload() {
     maintenanceLoading = true;
     maintenanceError = '';
-    maintenanceSuccess = '';
+    clearSuccessToast();
     try {
       const { blob, filename } = await downloadBackupBundle();
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -212,7 +241,7 @@
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
-      maintenanceSuccess = `Backup bundle downloaded as ${filename}.`;
+      addSuccess(`Backup bundle downloaded as ${filename}.`);
     } catch (error) {
       maintenanceError = error?.message || 'Unable to download backup bundle.';
     } finally {
@@ -227,7 +256,7 @@
   async function handleBackupRestore() {
     if (!backupFile) {
       maintenanceError = 'Choose a backup ZIP file first.';
-      maintenanceSuccess = '';
+      clearSuccessToast();
       return;
     }
 
@@ -240,7 +269,7 @@
 
     maintenanceLoading = true;
     maintenanceError = '';
-    maintenanceSuccess = '';
+    clearSuccessToast();
     try {
       const result = await restoreBackupBundle(backupFile);
       backupFile = null;
@@ -249,7 +278,7 @@
         input.value = '';
       }
       await loadMirrorStatus();
-      maintenanceSuccess = result?.message || 'Backup bundle restored successfully.';
+      addSuccess(result?.message || 'Backup bundle restored successfully.');
     } catch (error) {
       maintenanceError = error?.message || 'Unable to restore backup bundle.';
     } finally {
@@ -267,6 +296,19 @@
 <svelte:head>
   <title>Setup - Fan Graphs</title>
 </svelte:head>
+
+{#if successMessages.length}
+  <div class="success-toast shadow-lg" role="status" aria-live="polite" aria-atomic="true">
+    <div class="alert alert-success mb-0 success-toast-alert">
+      {#each successMessages as message}
+        <div>{message}</div>
+      {/each}
+      {#key successToastKey}
+        <div class="success-toast-progress"></div>
+      {/key}
+    </div>
+  </div>
+{/if}
 
 <div class="mb-3">
   <div class="col-12 col-xxl-8">
@@ -297,9 +339,6 @@
           </div>
           {#if ownPasswordError}
             <div class="alert alert-danger py-2 mb-0">{ownPasswordError}</div>
-          {/if}
-          {#if ownPasswordSuccess}
-            <div class="alert alert-success py-2 mb-0">{ownPasswordSuccess}</div>
           {/if}
           <button class="btn btn-primary align-self-start" type="submit" disabled={savingOwnPassword || !currentPassword || !newOwnPassword}>
             {savingOwnPassword ? 'Saving...' : 'Update Password'}
@@ -334,10 +373,6 @@
         {#if userError}
           <div class="alert alert-danger py-2">{userError}</div>
         {/if}
-        {#if userSuccess}
-          <div class="alert alert-success py-2">{userSuccess}</div>
-        {/if}
-
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
             <thead>
@@ -441,10 +476,6 @@
           {#if maintenanceError}
             <div class="alert alert-danger py-2">{maintenanceError}</div>
           {/if}
-          {#if maintenanceSuccess}
-            <div class="alert alert-success py-2">{maintenanceSuccess}</div>
-          {/if}
-
           <div class="card border mb-3">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
@@ -571,3 +602,42 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .success-toast {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(42rem, calc(100vw - 2rem));
+    z-index: 1080;
+    pointer-events: none;
+  }
+
+  .success-toast-alert {
+    position: relative;
+    overflow: hidden;
+    padding-bottom: 1rem;
+  }
+
+  .success-toast-progress {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 0.25rem;
+    background: rgba(25, 135, 84, 0.55);
+    transform-origin: left center;
+    animation: success-toast-countdown 3s linear forwards;
+  }
+
+  @keyframes success-toast-countdown {
+    from {
+      transform: scaleX(1);
+    }
+
+    to {
+      transform: scaleX(0);
+    }
+  }
+</style>

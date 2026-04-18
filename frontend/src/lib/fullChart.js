@@ -33,6 +33,10 @@ export const RPM_BAND_FALLBACK_COLORS = ['#60a5fa', '#34d399', '#f59e0b', '#f472
 const RPM_LINE_COLOR = '#0000ff';
 const RPM_BAND_FADED_OPACITY = 0.18;
 const FLOW_EPSILON = 1e-6;
+export const AXIS_NAME_FONT_SIZE = 18;
+export const AXIS_NAME_FONT_WEIGHT = '600';
+export const AXIS_LABEL_FONT_SIZE = 15;
+export const AXIS_LABEL_FONT_WEIGHT = '500';
 
 // ---------------------------------------------------------------------------
 // General helpers
@@ -51,6 +55,49 @@ function formatNumericValue(value) {
 function normalizeOptionalColor(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
+}
+
+function hexToRgb(color) {
+  const normalized = normalizeOptionalColor(color);
+  if (!normalized || !normalized.startsWith('#')) return null;
+  const hex = normalized.slice(1);
+  if (hex.length !== 3 && hex.length !== 6) return null;
+  const expanded = hex.length === 3 ? hex.split('').map((char) => char + char).join('') : hex;
+  const numeric = Number.parseInt(expanded, 16);
+  if (Number.isNaN(numeric)) return null;
+  return {
+    r: (numeric >> 16) & 255,
+    g: (numeric >> 8) & 255,
+    b: numeric & 255
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  const toHex = (value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function invertHexColor(color) {
+  const rgb = hexToRgb(color);
+  if (!rgb) return color;
+  return rgbToHex({
+    r: 255 - rgb.r,
+    g: 255 - rgb.g,
+    b: 255 - rgb.b
+  });
+}
+
+function isDarkColor(color) {
+  const rgb = hexToRgb(color);
+  if (!rgb) return false;
+  const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+  return luminance < 0.5;
+}
+
+function normalizeOpacity(value, fallback = RPM_BAND_FADED_OPACITY) {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return fallback;
+  return clamp(numeric, 0, 1);
 }
 
 function resolveBandColor(line, index) {
@@ -751,7 +798,8 @@ function buildRpmBandPolygonSeries(
   permissibleBoundaryData,
   clipRpmAreaToPermissibleUse,
   maximumVisibleFlow = null,
-  pressureAxisMax = null
+  pressureAxisMax = null,
+  fadedBandOpacity = RPM_BAND_FADED_OPACITY
 ) {
   if (!rpmCurveEntries.length) return [];
 
@@ -863,7 +911,7 @@ function buildRpmBandPolygonSeries(
             },
             style: api.style({
               fill: bandColor,
-              opacity: RPM_BAND_FADED_OPACITY,
+              opacity: fadedBandOpacity,
               stroke: bandColor,
               lineWidth: 3
             }),
@@ -955,7 +1003,8 @@ function buildRpmSeries(
   showRpmBandShading,
   maximumVisibleFlow = null,
   pressureAxisMax = null,
-  rpmBandLabelColor = null
+  rpmBandLabelColor = null,
+  fadedBandOpacity = RPM_BAND_FADED_OPACITY
 ) {
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
@@ -1057,7 +1106,11 @@ function buildRpmSeries(
           color: labelAtLineEnd ? (rpmBandLabelColor ?? chartTheme.text) : chartTheme.text,
           fontFamily: chartFontFamily,
           distance: 6,
-          offset: labelAtLineEnd ? [-84, 8] : [5, -10],
+          // ECharts offset format is [x, y].
+          // x: negative = left, positive = right
+          // y: negative = up, positive = down
+          // Banded graph labels use the first pair; non-banded labels use the second.
+          offset: labelAtLineEnd ? [-88, 8] : [5, -10],
           fontSize: 16,
           fontWeight: 'normal'
         },
@@ -1120,7 +1173,8 @@ function buildRpmSeries(
         permissibleBoundaryData,
         clipRpmAreaToPermissibleUse,
         maximumVisibleFlow,
-        pressureAxisMax
+        pressureAxisMax,
+        fadedBandOpacity
       )
     );
   }
@@ -1216,9 +1270,14 @@ function buildEfficiencyAndPermissibleSeries(
           const dx = segmentEnd[0] - segmentStart[0];
           const dy = segmentEnd[1] - segmentStart[1];
           const length = Math.hypot(dx, dy) || 1;
+          // Unit direction vector along the permissible-use line.
           const tangent = [dx / length, dy / length];
+          // Pixel offsets after anchoring the label:
+          // rightOffsetPixels: negative = left, positive = right
+          // verticalOffsetPixels: negative = up, positive = down
           const rightOffsetPixels = -20;
-          const verticalOffsetPixels = 60;
+          const verticalOffsetPixels = 65;
+          // Rotation is in radians. This one flips the label to match the line direction.
           const rotation = -Math.atan2(dy, dx);
 
           return {
@@ -1297,7 +1356,8 @@ export function buildFullChartOption({
   flowAxisMaxOverride = null,
   pressureAxisMaxOverride = null,
   tooltip = null,
-  graphStyle = null
+  graphStyle = null,
+  adaptGraphBackgroundToTheme = false
 }) {
   const flowValues = [
     ...rpmPoints.map((point) => Number(point.airflow)),
@@ -1323,8 +1383,20 @@ export function buildFullChartOption({
     .sort((a, b) => a[0] - b[0]);
   const bandGraphBackgroundColor =
     showRpmBandShading ? normalizeOptionalColor(graphStyle?.band_graph_background_color) : null;
+  const resolvedBandGraphBackgroundColor =
+    adaptGraphBackgroundToTheme && bandGraphBackgroundColor && isDarkColor(chartTheme.background)
+      ? invertHexColor(bandGraphBackgroundColor)
+      : bandGraphBackgroundColor;
   const bandGraphLabelTextColor =
     showRpmBandShading ? normalizeOptionalColor(graphStyle?.band_graph_label_text_color) : null;
+  const bandGraphFadedOpacity =
+    showRpmBandShading ? normalizeOpacity(graphStyle?.band_graph_faded_opacity) : RPM_BAND_FADED_OPACITY;
+  const permissibleLabelColor =
+    showRpmBandShading
+      ? normalizeOptionalColor(graphStyle?.band_graph_permissible_label_color) ??
+        bandGraphLabelTextColor ??
+        chartTheme.text
+      : chartTheme.text;
   const rpmSeriesBundle = buildRpmSeries(
     rpmLines,
     rpmPoints,
@@ -1335,12 +1407,13 @@ export function buildFullChartOption({
     showRpmBandShading,
     rawRpmFlowMax || rawFlowMax,
     pressureAxisMax,
-    bandGraphLabelTextColor
+    bandGraphLabelTextColor,
+    bandGraphFadedOpacity
   );
   const chartFontFamily = chartTheme.fontFamily ?? 'sans-serif';
 
   return {
-    backgroundColor: bandGraphBackgroundColor ?? chartTheme.background,
+    backgroundColor: resolvedBandGraphBackgroundColor ?? chartTheme.background,
     textStyle: {
       color: chartTheme.text,
       fontFamily: chartFontFamily
@@ -1357,8 +1430,19 @@ export function buildFullChartOption({
       name: 'Airflow (L/s)',
       nameLocation: 'middle',
       nameGap: 32,
-      nameTextStyle: { color: chartTheme.text, fontFamily: chartFontFamily },
-      axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily, show: true },
+      nameTextStyle: {
+        color: chartTheme.text,
+        fontFamily: chartFontFamily,
+        fontSize: AXIS_NAME_FONT_SIZE,
+        fontWeight: AXIS_NAME_FONT_WEIGHT
+      },
+      axisLabel: {
+        color: chartTheme.text,
+        fontFamily: chartFontFamily,
+        fontSize: AXIS_LABEL_FONT_SIZE,
+        fontWeight: AXIS_LABEL_FONT_WEIGHT,
+        show: true
+      },
       min: 0,
       max: flowAxisMax,
       splitLine: { lineStyle: { color: chartTheme.grid } }
@@ -1367,8 +1451,19 @@ export function buildFullChartOption({
       {
         type: 'value',
         name: 'Pressure (Pa)',
-        nameTextStyle: { color: chartTheme.text, fontFamily: chartFontFamily },
-        axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily, show: true },
+        nameTextStyle: {
+          color: chartTheme.text,
+          fontFamily: chartFontFamily,
+          fontSize: AXIS_NAME_FONT_SIZE,
+          fontWeight: AXIS_NAME_FONT_WEIGHT
+        },
+        axisLabel: {
+          color: chartTheme.text,
+          fontFamily: chartFontFamily,
+          fontSize: AXIS_LABEL_FONT_SIZE,
+          fontWeight: AXIS_LABEL_FONT_WEIGHT,
+          show: true
+        },
         min: 0,
         max: pressureAxisMax,
         splitLine: { lineStyle: { color: chartTheme.grid } }
@@ -1377,8 +1472,19 @@ export function buildFullChartOption({
         type: 'value',
         show: showSecondaryAxis,
         name: showSecondaryAxis ? 'Efficiency Lines (%)' : '',
-        nameTextStyle: { color: chartTheme.text, fontFamily: chartFontFamily },
-        axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily, show: showSecondaryAxis },
+        nameTextStyle: {
+          color: chartTheme.text,
+          fontFamily: chartFontFamily,
+          fontSize: AXIS_NAME_FONT_SIZE,
+          fontWeight: AXIS_NAME_FONT_WEIGHT
+        },
+        axisLabel: {
+          color: chartTheme.text,
+          fontFamily: chartFontFamily,
+          fontSize: AXIS_LABEL_FONT_SIZE,
+          fontWeight: AXIS_LABEL_FONT_WEIGHT,
+          show: showSecondaryAxis
+        },
         axisLine: { show: showSecondaryAxis },
         axisTick: { show: showSecondaryAxis },
         splitLine: { show: false },
@@ -1389,7 +1495,7 @@ export function buildFullChartOption({
     series: [
       ...rpmSeriesBundle.series,
       ...buildEfficiencyAndPermissibleSeries(efficiencyPoints, chartTheme, includeDragHandles, {
-        permissibleLabelColor: bandGraphLabelTextColor ?? chartTheme.text
+        permissibleLabelColor
       })
     ]
   };

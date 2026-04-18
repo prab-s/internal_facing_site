@@ -48,9 +48,12 @@ function _page($$renderer, $$props) {
         clipRpmAreaToPermissibleUse: true,
         showRpmBandShading: currentFan?.show_rpm_band_shading ?? true,
         showSecondaryAxis: false,
+        adaptGraphBackgroundToTheme: true,
         graphStyle: currentFan ? {
           band_graph_background_color: currentFan.band_graph_background_color,
-          band_graph_label_text_color: currentFan.band_graph_label_text_color
+          band_graph_label_text_color: currentFan.band_graph_label_text_color,
+          band_graph_faded_opacity: currentFan.band_graph_faded_opacity,
+          band_graph_permissible_label_color: currentFan.band_graph_permissible_label_color
         } : null
       });
     }

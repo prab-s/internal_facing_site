@@ -1,4 +1,5 @@
-import { s as store_get, h as head, u as unsubscribe_stores, e as escape_html } from "../../../chunks/index2.js";
+import { s as store_get, h as head, d as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
+import { o as onDestroy } from "../../../chunks/index-server.js";
 import "@sveltejs/kit/internal";
 import "../../../chunks/exports.js";
 import "../../../chunks/utils.js";
@@ -18,6 +19,7 @@ function _page($$renderer, $$props) {
     let rpmPoints = [];
     let efficiencyPoints = [];
     let error = "";
+    let successMessages = [];
     let productImages = [];
     let chartAddTarget = "";
     let originalRpmPointIds = [];
@@ -26,7 +28,9 @@ function _page($$renderer, $$props) {
     function defaultGraphStyleForm() {
       return {
         band_graph_background_color: "#ffffff",
-        band_graph_label_text_color: "#000000"
+        band_graph_label_text_color: "#000000",
+        band_graph_faded_opacity: 0.18,
+        band_graph_permissible_label_color: "#000000"
       };
     }
     let graphStyleForm = defaultGraphStyleForm();
@@ -39,6 +43,8 @@ function _page($$renderer, $$props) {
     function applyRpmPointSort(points) {
       return points;
     }
+    onDestroy(() => {
+    });
     async function loadFans() {
       try {
         fans = await getFans();
@@ -67,7 +73,9 @@ function _page($$renderer, $$props) {
         currentFan = nextFan;
         graphStyleForm = {
           band_graph_background_color: normalizeOptionalColor(nextFan?.band_graph_background_color) || "#ffffff",
-          band_graph_label_text_color: normalizeOptionalColor(nextFan?.band_graph_label_text_color) || "#000000"
+          band_graph_label_text_color: normalizeOptionalColor(nextFan?.band_graph_label_text_color) || "#000000",
+          band_graph_faded_opacity: nextFan?.band_graph_faded_opacity != null && !Number.isNaN(Number(nextFan.band_graph_faded_opacity)) ? Number(nextFan.band_graph_faded_opacity) : 0.18,
+          band_graph_permissible_label_color: normalizeOptionalColor(nextFan?.band_graph_permissible_label_color) || normalizeOptionalColor(nextFan?.band_graph_label_text_color) || "#000000"
         };
         productImages = currentFan.product_images || [];
         const validTargets = /* @__PURE__ */ new Set([
@@ -97,6 +105,7 @@ function _page($$renderer, $$props) {
         showRpmBandShading: fanForm.show_rpm_band_shading,
         flowAxisMaxOverride: null,
         pressureAxisMaxOverride: null,
+        adaptGraphBackgroundToTheme: true,
         graphStyle: graphStyleForm,
         tooltip: {
           trigger: "item",
@@ -124,15 +133,27 @@ function _page($$renderer, $$props) {
         $$renderer4.push(`<title>Data entry — Fan Graphs</title>`);
       });
     });
-    $$renderer2.push(`<div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Create &amp; Maintain</p> <h1>Data entry</h1> <p class="text-body-secondary">Manage fan records, product images, RPM lines, and all editable map data from a single workspace.</p> `);
+    if (successMessages.length) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="success-toast shadow-lg svelte-13q5ji3" role="status" aria-live="polite" aria-atomic="true"><div class="alert alert-success mb-0 success-toast-alert svelte-13q5ji3"><!--[-->`);
+      const each_array = ensure_array_like(successMessages);
+      for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+        let message = each_array[$$index];
+        $$renderer2.push(`<div>${escape_html(message)}</div>`);
+      }
+      $$renderer2.push(`<!--]--> <!---->`);
+      {
+        $$renderer2.push(`<div class="success-toast-progress svelte-13q5ji3"></div>`);
+      }
+      $$renderer2.push(`<!----></div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Create &amp; Maintain</p> <h1>Data entry</h1> <p class="text-body-secondary">Manage fan records, product images, RPM lines, and all editable map data from a single workspace.</p> `);
     if (error) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<p class="text-danger mb-2">${escape_html(error)}</p>`);
     } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> `);
-    {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--></div></div> `);

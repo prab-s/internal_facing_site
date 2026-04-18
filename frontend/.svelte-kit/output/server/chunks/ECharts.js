@@ -1,10 +1,6 @@
-import { a9 as ssr_context, aa as fallback, ab as attr_style, ac as bind_props, ad as stringify } from "./index2.js";
-import "clsx";
+import { a9 as fallback, aa as attr_style, ab as bind_props, ac as stringify } from "./index2.js";
+import { o as onDestroy } from "./index-server.js";
 import "echarts";
-function onDestroy(fn) {
-  /** @type {SSRContext} */
-  ssr_context.r.on_destroy(fn);
-}
 function ECharts($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let option = fallback($$props["option"], () => ({}), true);

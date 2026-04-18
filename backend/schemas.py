@@ -14,6 +14,8 @@ class FanBase(BaseModel):
     show_rpm_band_shading: bool = True
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
+    band_graph_faded_opacity: Optional[float] = None
+    band_graph_permissible_label_color: Optional[str] = None
     diameter_mm: Optional[float] = None
     max_rpm: Optional[float] = None
 
@@ -30,6 +32,8 @@ class FanUpdate(BaseModel):
     show_rpm_band_shading: Optional[bool] = None
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
+    band_graph_faded_opacity: Optional[float] = None
+    band_graph_permissible_label_color: Optional[str] = None
     diameter_mm: Optional[float] = None
     max_rpm: Optional[float] = None
 
