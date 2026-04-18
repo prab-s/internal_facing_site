@@ -120,9 +120,9 @@ class Product(Base):
             version = None
         file_name = os.path.basename(file_path)
         return (
-            f"/api/media/product_graphs/{file_name}?v={version}"
+            f"/api/cms/media/product_graphs/{file_name}?v={version}"
             if version is not None
-            else f"/api/media/product_graphs/{file_name}"
+            else f"/api/cms/media/product_graphs/{file_name}"
         )
 
     @property
@@ -317,7 +317,7 @@ class ProductImage(Base):
         except OSError:
             version = None
         return (
-            f"/api/media/product_images/{self.file_name}?v={version}"
+            f"/api/cms/media/product_images/{self.file_name}?v={version}"
             if version is not None
-            else f"/api/media/product_images/{self.file_name}"
+            else f"/api/cms/media/product_images/{self.file_name}"
         )

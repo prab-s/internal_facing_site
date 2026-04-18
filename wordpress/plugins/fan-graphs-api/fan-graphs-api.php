@@ -23,6 +23,98 @@ function fan_graphs_api_token() {
     return '';
 }
 
+function fan_graphs_resolve_media_url($path) {
+    $path = trim((string) $path);
+    if ($path === '') {
+        return '';
+    }
+
+    if (preg_match('#^/api/cms/media/(product_images|product_graphs)/([^?]+)(\\?.*)?$#', $path, $matches)) {
+        $kind = $matches[1];
+        $file_name = $matches[2];
+        $query_args = array(
+            'fan_graphs_media' => $kind . '/' . $file_name,
+        );
+        if (!empty($matches[3])) {
+            parse_str(ltrim($matches[3], '?'), $extra_query_args);
+            if (is_array($extra_query_args)) {
+                $query_args = array_merge($query_args, $extra_query_args);
+            }
+        }
+        return add_query_arg($query_args, home_url('/'));
+    }
+
+    if (preg_match('#^https?://#i', $path)) {
+        return $path;
+    }
+
+    $base_url = fan_graphs_api_base_url();
+    if ($base_url === '') {
+        return $path;
+    }
+
+    if ($path[0] !== '/') {
+        $path = '/' . $path;
+    }
+
+    return $base_url . $path;
+}
+
+function fan_graphs_maybe_proxy_media() {
+    $media = isset($_GET['fan_graphs_media']) ? wp_unslash($_GET['fan_graphs_media']) : '';
+    if ($media === '') {
+        return;
+    }
+
+    $media = trim((string) $media, '/');
+    if (!preg_match('#^(product_images|product_graphs)/([^/]+)$#', $media, $matches)) {
+        status_header(404);
+        exit;
+    }
+
+    $kind = $matches[1];
+    $file_name = sanitize_file_name($matches[2]);
+    if ($file_name === '') {
+        status_header(404);
+        exit;
+    }
+
+    $url = fan_graphs_api_base_url() . '/api/cms/media/' . rawurlencode($kind) . '/' . rawurlencode($file_name);
+    $query_params = $_GET;
+    unset($query_params['fan_graphs_media']);
+    if (!empty($query_params)) {
+        $url = add_query_arg($query_params, $url);
+    }
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 20,
+        'redirection' => 3,
+    ));
+
+    if (is_wp_error($response)) {
+        status_header(502);
+        echo esc_html($response->get_error_message());
+        exit;
+    }
+
+    $status_code = wp_remote_retrieve_response_code($response);
+    $body = wp_remote_retrieve_body($response);
+    $content_type = wp_remote_retrieve_header($response, 'content-type');
+    $cache_control = wp_remote_retrieve_header($response, 'cache-control');
+
+    status_header($status_code);
+    if ($content_type) {
+        header('Content-Type: ' . $content_type);
+    }
+    if ($cache_control) {
+        header('Cache-Control: ' . $cache_control);
+    }
+
+    echo $body;
+    exit;
+}
+add_action('template_redirect', 'fan_graphs_maybe_proxy_media', 0);
+
 function fan_graphs_api_request($path, $query = array()) {
     $base_url = fan_graphs_api_base_url();
     $token = fan_graphs_api_token();
@@ -174,10 +266,8 @@ function fan_graphs_render_card($fan, $detailed = false) {
     $product_type = esc_html($fan['product_type_label'] ?? $fan['product_type_key'] ?? '');
     $mounting_style = esc_html($fan['mounting_style'] ?? '');
     $discharge_type = esc_html($fan['discharge_type'] ?? '');
-    $diameter_mm = isset($fan['diameter_mm']) && $fan['diameter_mm'] !== null ? esc_html($fan['diameter_mm']) : '';
-    $max_rpm = isset($fan['max_rpm']) && $fan['max_rpm'] !== null ? esc_html($fan['max_rpm']) : '';
-    $graph_image_url = isset($fan['graph_image_url']) ? esc_url($fan['graph_image_url']) : '';
-    $primary_product_image_url = isset($fan['primary_product_image_url']) ? esc_url($fan['primary_product_image_url']) : '';
+    $graph_image_url = esc_url(fan_graphs_resolve_media_url($fan['graph_image_url'] ?? ''));
+    $primary_product_image_url = esc_url(fan_graphs_resolve_media_url($fan['primary_product_image_url'] ?? ''));
 
     ob_start();
     ?>
@@ -195,12 +285,6 @@ function fan_graphs_render_card($fan, $detailed = false) {
         <?php endif; ?>
         <?php if ($discharge_type !== '') : ?>
           <div><dt>Discharge</dt><dd><?php echo $discharge_type; ?></dd></div>
-        <?php endif; ?>
-        <?php if ($diameter_mm !== '') : ?>
-          <div><dt>Diameter</dt><dd><?php echo $diameter_mm; ?> mm</dd></div>
-        <?php endif; ?>
-        <?php if ($max_rpm !== '') : ?>
-          <div><dt>Max RPM</dt><dd><?php echo $max_rpm; ?></dd></div>
         <?php endif; ?>
       </dl>
       <?php if ($graph_image_url !== '') : ?>

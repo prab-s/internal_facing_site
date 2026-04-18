@@ -748,7 +748,7 @@ def restore_backup_bundle(archive_bytes: bytes):
 OPENAPI_TAGS = [
     {
         "name": "Public",
-        "description": "Endpoints that do not require the staff session cookie.",
+        "description": "Unauthenticated health and authentication bootstrap endpoints.",
     },
     {
         "name": "Authentication",
@@ -759,8 +759,12 @@ OPENAPI_TAGS = [
         "description": "Staff user administration endpoints.",
     },
     {
-        "name": "CMS",
-        "description": "Read-only customer-facing CMS endpoints secured by the CMS bearer token.",
+        "name": "Customer CMS",
+        "description": "Read-only product data endpoints used by the WordPress customer-facing site via the CMS bearer token.",
+    },
+    {
+        "name": "Customer Media",
+        "description": "Public customer-facing product image and graph file endpoints intended for rendered website pages.",
     },
     {
         "name": "Products",
@@ -788,7 +792,7 @@ OPENAPI_TAGS = [
     },
     {
         "name": "Media",
-        "description": "Protected media file serving endpoints.",
+        "description": "Protected internal media endpoints for staff-only direct access.",
     },
     {
         "name": "Maintenance",
@@ -799,9 +803,11 @@ OPENAPI_TAGS = [
 app = FastAPI(
     title="Internal Facing API",
     description=(
-        "Internal API for the Internal Facing application.\n\n"
-        "Endpoints tagged `Public` do not require the staff session cookie.\n"
-        "Endpoints tagged `CMS` do not use the staff session cookie either; they require the CMS bearer token instead."
+        "Product platform API for the Internal Facing application.\n\n"
+        "Use `/api/products...` for the internal staff application.\n"
+        "Use `/api/cms/products...` for the customer-facing WordPress integration.\n"
+        "Use `/api/cms/media/...` for public customer-facing product images and graph files.\n"
+        "Legacy `/api/fans...` and `/api/cms/fans...` aliases still work, but they are intentionally hidden from the schema."
     ),
     openapi_tags=OPENAPI_TAGS,
     docs_url=None,
@@ -983,8 +989,8 @@ def update_band_graph_style_settings(body: BandGraphStyleSettings, db: Session =
     return settings
 
 
-@app.get("/api/cms/fans", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["CMS"])
-@app.get("/api/cms/products", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["CMS"])
+@app.get("/api/cms/fans", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], include_in_schema=False)
+@app.get("/api/cms/products", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing products", description="Read-only product catalogue feed for the WordPress customer-facing site. Supports search, product type, and grouped-parameter filtering.")
 def list_cms_products(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
@@ -1006,18 +1012,18 @@ def list_cms_products(
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
 
-@app.get("/api/cms/fans/{fan_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["CMS"])
-@app.get("/api/cms/products/{fan_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["CMS"])
-def get_cms_product(fan_id: int, db: Session = Depends(get_db)):
-    product = db.get(Product, fan_id)
+@app.get("/api/cms/fans/{product_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], include_in_schema=False)
+@app.get("/api/cms/products/{product_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="Get one customer-facing product", description="Returns a single product record, including grouped specifications and media URLs, for the WordPress customer-facing site.")
+def get_cms_product(product_id: int, db: Session = Depends(get_db)):
+    product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
 
 
 # --- Products CRUD ---
-@app.get("/api/fans", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"])
-@app.get("/api/products", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.get("/api/fans", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
+@app.get("/api/products", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"], summary="List internal products", description="Primary internal catalogue endpoint used by the Svelte staff application.")
 def list_products(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None, description="Search model"),
@@ -1048,8 +1054,8 @@ def list_products(
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
 
-@app.post("/api/fans", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
-@app.post("/api/products", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
+@app.post("/api/fans", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
+@app.post("/api/products", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Create a product")
 def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     product_data = body.model_dump()
     product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
@@ -1071,19 +1077,19 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     return product
 
 
-@app.get("/api/fans/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
-@app.get("/api/products/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
-def get_product(fan_id: int, db: Session = Depends(get_db)):
-    product = db.get(Product, fan_id)
+@app.get("/api/fans/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
+@app.get("/api/products/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Get one product")
+def get_product(product_id: int, db: Session = Depends(get_db)):
+    product = db.get(Product, product_id)
     if not product:
         raise HTTPException(404, "Product not found")
     return product
 
 
-@app.put("/api/fans/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
-@app.put("/api/products/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
-def update_product(fan_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.put("/api/fans/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
+@app.put("/api/products/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Replace a product")
+def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     updates = body.model_dump(exclude_unset=True)
     if "product_type_key" in updates:
         product_type = get_product_type_by_key(db, updates.pop("product_type_key"))
@@ -1105,38 +1111,38 @@ def update_product(fan_id: int, body: ProductUpdate, db: Session = Depends(get_d
     return product
 
 
-@app.patch("/api/fans/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
-@app.patch("/api/products/{fan_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"])
-def patch_product(fan_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
-    return update_product(fan_id, body, db)
+@app.patch("/api/fans/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
+@app.patch("/api/products/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Partially update a product")
+def patch_product(product_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
+    return update_product(product_id, body, db)
 
 
-@app.delete("/api/fans/{fan_id}", dependencies=[Depends(get_current_user)], tags=["Products"])
-@app.delete("/api/products/{fan_id}", dependencies=[Depends(get_current_user)], tags=["Products"])
-def delete_product(fan_id: int, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.delete("/api/fans/{product_id}", dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
+@app.delete("/api/products/{product_id}", dependencies=[Depends(get_current_user)], tags=["Products"], summary="Delete a product")
+def delete_product(product_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     delete_product_assets(product)
     db.delete(product)
     db.commit()
-    return {"deleted": fan_id}
+    return {"deleted": product_id}
 
 
 # --- RPM lines / points ---
-@app.get("/api/fans/{fan_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-@app.get("/api/products/{fan_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-def get_rpm_lines(fan_id: int, db: Session = Depends(get_db)):
-    require_product(db, fan_id)
-    return db.query(RpmLine).filter(RpmLine.product_id == fan_id).order_by(RpmLine.rpm).all()
+@app.get("/api/fans/{product_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"], include_in_schema=False)
+@app.get("/api/products/{product_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+def get_rpm_lines(product_id: int, db: Session = Depends(get_db)):
+    require_product(db, product_id)
+    return db.query(RpmLine).filter(RpmLine.product_id == product_id).order_by(RpmLine.rpm).all()
 
 
-@app.post("/api/fans/{fan_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-@app.post("/api/products/{fan_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-def create_rpm_line(fan_id: int, body: RpmLineCreate, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
-    existing = db.query(RpmLine).filter(RpmLine.product_id == fan_id, RpmLine.rpm == body.rpm).first()
+@app.post("/api/fans/{product_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"], include_in_schema=False)
+@app.post("/api/products/{product_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+def create_rpm_line(product_id: int, body: RpmLineCreate, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
+    existing = db.query(RpmLine).filter(RpmLine.product_id == product_id, RpmLine.rpm == body.rpm).first()
     if existing:
         raise HTTPException(400, "RPM line already exists")
-    line = RpmLine(product_id=fan_id, rpm=body.rpm, band_color=normalize_color_value(body.band_color))
+    line = RpmLine(product_id=product_id, rpm=body.rpm, band_color=normalize_color_value(body.band_color))
     db.add(line)
     db.commit()
     refresh_graph_for_product(db, product)
@@ -1145,19 +1151,19 @@ def create_rpm_line(fan_id: int, body: RpmLineCreate, db: Session = Depends(get_
     return line
 
 
-@app.put("/api/fans/{fan_id}/rpm-lines/{line_id}", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-@app.put("/api/products/{fan_id}/rpm-lines/{line_id}", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-def update_rpm_line(fan_id: int, line_id: int, body: RpmLineUpdate, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.put("/api/fans/{product_id}/rpm-lines/{line_id}", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"], include_in_schema=False)
+@app.put("/api/products/{product_id}/rpm-lines/{line_id}", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+def update_rpm_line(product_id: int, line_id: int, body: RpmLineUpdate, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     line = db.get(RpmLine, line_id)
-    if not line or line.product_id != fan_id:
+    if not line or line.product_id != product_id:
         raise HTTPException(404, "RPM line not found")
 
     updates = body.model_dump(exclude_unset=True)
     if "rpm" in updates and updates["rpm"] is not None:
         existing = (
             db.query(RpmLine)
-            .filter(RpmLine.product_id == fan_id, RpmLine.rpm == updates["rpm"], RpmLine.id != line_id)
+            .filter(RpmLine.product_id == product_id, RpmLine.rpm == updates["rpm"], RpmLine.id != line_id)
             .first()
         )
         if existing:
@@ -1173,12 +1179,12 @@ def update_rpm_line(fan_id: int, line_id: int, body: RpmLineUpdate, db: Session 
     return line
 
 
-@app.delete("/api/fans/{fan_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-@app.delete("/api/products/{fan_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
-def delete_rpm_line(fan_id: int, line_id: int, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.delete("/api/fans/{product_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)], tags=["RPM Lines"], include_in_schema=False)
+@app.delete("/api/products/{product_id}/rpm-lines/{line_id}", dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
+def delete_rpm_line(product_id: int, line_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     line = db.get(RpmLine, line_id)
-    if not line or line.product_id != fan_id:
+    if not line or line.product_id != product_id:
         raise HTTPException(404, "RPM line not found")
     db.delete(line)
     db.commit()
@@ -1187,32 +1193,32 @@ def delete_rpm_line(fan_id: int, line_id: int, db: Session = Depends(get_db)):
     return {"deleted": line_id}
 
 
-@app.get("/api/fans/{fan_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)], tags=["RPM Points"])
-@app.get("/api/products/{fan_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)], tags=["RPM Points"])
-def get_rpm_points(fan_id: int, db: Session = Depends(get_db)):
-    require_product(db, fan_id)
+@app.get("/api/fans/{product_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)], tags=["RPM Points"], include_in_schema=False)
+@app.get("/api/products/{product_id}/rpm-points", response_model=list[RpmPointResponse], dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+def get_rpm_points(product_id: int, db: Session = Depends(get_db)):
+    require_product(db, product_id)
     return (
         db.query(RpmPoint)
         .join(RpmLine, RpmPoint.rpm_line_id == RpmLine.id)
-        .filter(RpmPoint.product_id == fan_id)
+        .filter(RpmPoint.product_id == product_id)
         .order_by(RpmLine.rpm, RpmPoint.airflow)
         .all()
     )
 
 
-@app.post("/api/fans/{fan_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
-@app.post("/api/products/{fan_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+@app.post("/api/fans/{product_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"], include_in_schema=False)
+@app.post("/api/products/{product_id}/rpm-points", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def create_rpm_point(
-    fan_id: int,
+    product_id: int,
     body: RpmPointCreate,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    product = require_product(db, fan_id)
+    product = require_product(db, product_id)
     line = db.get(RpmLine, body.rpm_line_id)
-    if not line or line.product_id != fan_id:
+    if not line or line.product_id != product_id:
         raise HTTPException(404, "RPM line not found")
-    point = RpmPoint(product_id=fan_id, **body.model_dump())
+    point = RpmPoint(product_id=product_id, **body.model_dump())
     db.add(point)
     db.commit()
     if regenerate_graph:
@@ -1222,21 +1228,21 @@ def create_rpm_point(
     return point
 
 
-@app.put("/api/fans/{fan_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
-@app.put("/api/products/{fan_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+@app.put("/api/fans/{product_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"], include_in_schema=False)
+@app.put("/api/products/{product_id}/rpm-points/{point_id}", response_model=RpmPointResponse, dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def update_rpm_point(
-    fan_id: int,
+    product_id: int,
     point_id: int,
     body: RpmPointCreate,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    product = require_product(db, fan_id)
+    product = require_product(db, product_id)
     line = db.get(RpmLine, body.rpm_line_id)
-    if not line or line.product_id != fan_id:
+    if not line or line.product_id != product_id:
         raise HTTPException(404, "RPM line not found")
     point = db.get(RpmPoint, point_id)
-    if not point or point.product_id != fan_id:
+    if not point or point.product_id != product_id:
         raise HTTPException(404, "RPM point not found")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(point, key, value)
@@ -1248,17 +1254,17 @@ def update_rpm_point(
     return point
 
 
-@app.delete("/api/fans/{fan_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["RPM Points"])
-@app.delete("/api/products/{fan_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["RPM Points"])
+@app.delete("/api/fans/{product_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["RPM Points"], include_in_schema=False)
+@app.delete("/api/products/{product_id}/rpm-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["RPM Points"])
 def delete_rpm_point(
-    fan_id: int,
+    product_id: int,
     point_id: int,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    product = require_product(db, fan_id)
+    product = require_product(db, product_id)
     point = db.get(RpmPoint, point_id)
-    if not point or point.product_id != fan_id:
+    if not point or point.product_id != product_id:
         raise HTTPException(404, "RPM point not found")
     db.delete(point)
     db.commit()
@@ -1268,28 +1274,28 @@ def delete_rpm_point(
     return {"deleted": point_id}
 
 
-@app.get("/api/fans/{fan_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
-@app.get("/api/products/{fan_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
-def get_efficiency_points(fan_id: int, db: Session = Depends(get_db)):
-    require_product(db, fan_id)
+@app.get("/api/fans/{product_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)], tags=["Efficiency Points"], include_in_schema=False)
+@app.get("/api/products/{product_id}/efficiency-points", response_model=list[EfficiencyPointResponse], dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+def get_efficiency_points(product_id: int, db: Session = Depends(get_db)):
+    require_product(db, product_id)
     return (
         db.query(EfficiencyPoint)
-        .filter(EfficiencyPoint.product_id == fan_id)
+        .filter(EfficiencyPoint.product_id == product_id)
         .order_by(EfficiencyPoint.airflow)
         .all()
     )
 
 
-@app.post("/api/fans/{fan_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
-@app.post("/api/products/{fan_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+@app.post("/api/fans/{product_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"], include_in_schema=False)
+@app.post("/api/products/{product_id}/efficiency-points", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def create_efficiency_point(
-    fan_id: int,
+    product_id: int,
     body: EfficiencyPointCreate,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    product = require_product(db, fan_id)
-    point = EfficiencyPoint(product_id=fan_id, **body.model_dump())
+    product = require_product(db, product_id)
+    point = EfficiencyPoint(product_id=product_id, **body.model_dump())
     db.add(point)
     db.commit()
     if regenerate_graph:
@@ -1299,18 +1305,18 @@ def create_efficiency_point(
     return point
 
 
-@app.put("/api/fans/{fan_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
-@app.put("/api/products/{fan_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+@app.put("/api/fans/{product_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"], include_in_schema=False)
+@app.put("/api/products/{product_id}/efficiency-points/{point_id}", response_model=EfficiencyPointResponse, dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def update_efficiency_point(
-    fan_id: int,
+    product_id: int,
     point_id: int,
     body: EfficiencyPointCreate,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    product = require_product(db, fan_id)
+    product = require_product(db, product_id)
     point = db.get(EfficiencyPoint, point_id)
-    if not point or point.product_id != fan_id:
+    if not point or point.product_id != product_id:
         raise HTTPException(404, "Efficiency point not found")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(point, key, value)
@@ -1322,17 +1328,17 @@ def update_efficiency_point(
     return point
 
 
-@app.delete("/api/fans/{fan_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
-@app.delete("/api/products/{fan_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
+@app.delete("/api/fans/{product_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["Efficiency Points"], include_in_schema=False)
+@app.delete("/api/products/{product_id}/efficiency-points/{point_id}", dependencies=[Depends(get_current_user)], tags=["Efficiency Points"])
 def delete_efficiency_point(
-    fan_id: int,
+    product_id: int,
     point_id: int,
     regenerate_graph: bool = Query(True),
     db: Session = Depends(get_db),
 ):
-    product = require_product(db, fan_id)
+    product = require_product(db, product_id)
     point = db.get(EfficiencyPoint, point_id)
-    if not point or point.product_id != fan_id:
+    if not point or point.product_id != product_id:
         raise HTTPException(404, "Efficiency point not found")
     db.delete(point)
     db.commit()
@@ -1342,10 +1348,10 @@ def delete_efficiency_point(
     return {"deleted": point_id}
 
 
-@app.post("/api/fans/{fan_id}/graph-image/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
-@app.post("/api/products/{fan_id}/graph-image/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
-def refresh_product_graph_image(fan_id: int, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.post("/api/fans/{product_id}/graph-image/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], include_in_schema=False)
+@app.post("/api/products/{product_id}/graph-image/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def refresh_product_graph_image(product_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(product)
@@ -1404,21 +1410,21 @@ async def restore_backup_bundle_endpoint(file: UploadFile = File(...)):
     return {"message": "Backup bundle restored successfully."}
 
 
-@app.get("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
-@app.get("/api/products/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
-def get_product_images(fan_id: int, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.get("/api/fans/{product_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"], include_in_schema=False)
+@app.get("/api/products/{product_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
+def get_product_images(product_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
-@app.post("/api/fans/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
-@app.post("/api/products/{fan_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
+@app.post("/api/fans/{product_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"], include_in_schema=False)
+@app.post("/api/products/{product_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
 async def upload_product_images(
-    fan_id: int,
+    product_id: int,
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
-    product = require_product(db, fan_id)
+    product = require_product(db, product_id)
     if not files:
         raise HTTPException(400, "No files provided")
 
@@ -1426,8 +1432,8 @@ async def upload_product_images(
     for upload in files:
         suffix = os.path.splitext(upload.filename or "")[1].lower() or ".jpg"
         image = ProductImage(
-            product_id=fan_id,
-            file_name=f"upload_{fan_id}_{next_order}{suffix}",
+            product_id=product_id,
+            file_name=f"upload_{product_id}_{next_order}{suffix}",
             sort_order=next_order,
         )
         db.add(image)
@@ -1443,10 +1449,10 @@ async def upload_product_images(
     return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
-@app.post("/api/fans/{fan_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
-@app.post("/api/products/{fan_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
-def reorder_product_images(fan_id: int, body: ProductImageReorder, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.post("/api/fans/{product_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"], include_in_schema=False)
+@app.post("/api/products/{product_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"])
+def reorder_product_images(product_id: int, body: ProductImageReorder, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     images_by_id = {image.id: image for image in product.product_images}
     if set(body.image_ids) != set(images_by_id.keys()):
         raise HTTPException(400, "Image order must include every existing image exactly once")
@@ -1460,12 +1466,12 @@ def reorder_product_images(fan_id: int, body: ProductImageReorder, db: Session =
     return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
-@app.delete("/api/fans/{fan_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Product Images"])
-@app.delete("/api/products/{fan_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Product Images"])
-def delete_product_image(fan_id: int, image_id: int, db: Session = Depends(get_db)):
-    product = require_product(db, fan_id)
+@app.delete("/api/fans/{product_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Product Images"], include_in_schema=False)
+@app.delete("/api/products/{product_id}/product-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Product Images"])
+def delete_product_image(product_id: int, image_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
     image = db.get(ProductImage, image_id)
-    if not image or image.product_id != fan_id:
+    if not image or image.product_id != product_id:
         raise HTTPException(404, "Product image not found")
 
     delete_product_image_file(image)
@@ -1486,6 +1492,32 @@ def serve_product_image(file_name: str):
 
 @app.get("/api/media/product_graphs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
 def serve_product_graph(file_name: str):
+    file_path = PRODUCT_GRAPHS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Product graph not found")
+    return FileResponse(file_path)
+
+
+@app.get(
+    "/api/cms/media/product_images/{file_name}",
+    tags=["Customer Media"],
+    summary="Get a public customer product image",
+    description="Public product image endpoint intended for rendered customer-facing pages.",
+)
+def serve_cms_product_image(file_name: str):
+    file_path = image_file_path(file_name)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Product image not found")
+    return FileResponse(file_path)
+
+
+@app.get(
+    "/api/cms/media/product_graphs/{file_name}",
+    tags=["Customer Media"],
+    summary="Get a public customer product graph image",
+    description="Public graph image endpoint intended for rendered customer-facing pages and downloads.",
+)
+def serve_cms_product_graph(file_name: str):
     file_path = PRODUCT_GRAPHS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product graph not found")
