@@ -212,9 +212,9 @@ This means future permission checks can be added route-by-route without reworkin
 Main internal pages:
 
 - `/` Home
-- `/entry` Data Entry
-- `/catalogue` Catalogue
-- `/map` Product Map
+- `/entry` Product Editor
+- `/catalogue` Product Data
+- `/map` QA Preview
 - `/setup` Account and admin setup
 
 The `Setup` page now contains:
@@ -222,6 +222,13 @@ The `Setup` page now contains:
 - `My Account` password change for any signed-in user
 - `Current Users` overview
 - `Access` / user creation card for admins only
+- background maintenance controls for:
+  - regenerating all product graph images
+  - clearing all product graph images
+  - regenerating all product PDFs
+  - creating a backup bundle
+  - restoring a backup bundle
+- maintenance job polling with status text and a progress bar
 
 ## Environment files
 
@@ -289,6 +296,18 @@ Purpose:
 - loads `.env.sit`
 - prepares the configured database with Alembic before startup
 - keeps SIT on a separate database from deployment by default
+- configures Chromium for product PDF generation in SIT
+
+SIT PDF generation now works in either of these modes:
+
+- preferred:
+  - use a host-installed Chromium-compatible browser
+  - `run_sit.sh` auto-detects `chromium`, `chromium-browser`, `google-chrome`, or `google-chrome-stable`
+- fallback:
+  - use Chromium from the local Podman app image through [sit-chromium-wrapper.sh](/home/user1/Documents/fan_graphs_website/scripts/sit-chromium-wrapper.sh)
+  - this is used automatically when no host browser is found but `localhost/fan-graphs:latest` exists
+
+If neither is available, `run_sit.sh` now stops with an actionable error instead of letting PDF generation fail later.
 
 Use:
 
@@ -342,10 +361,16 @@ Purpose:
 - creates a zip backup bundle for SIT or deployment
 - includes a PostgreSQL dump
 - includes media folders from `data/`
-- automatically includes `product_pdfs` later if that folder exists
+- includes generated product and series assets when present:
+  - `product_images`
+  - `product_graphs`
+  - `product_pdfs`
+  - `series_graphs`
+  - `series_pdfs`
 - when backing up the deployment stack with WordPress running, it also includes:
   - a WordPress MariaDB dump
   - a `wp-content` snapshot
+- prints timestamped progress in the terminal while it runs
 
 Use:
 
@@ -367,7 +392,7 @@ For deployment specifically:
 
 Output:
 
-- zip files written into `backups/`
+- zip files written into `data/backups/` by default
 
 ### `restore_bundle.sh`
 
@@ -377,23 +402,27 @@ Purpose:
 - restores the PostgreSQL dump into SIT or deployment, depending on `ENV_FILE`
 - restores media folders back into `data/`
 - restores WordPress data too when a deployment backup includes it
+- prints timestamped progress in the terminal while it runs
+- shows byte-stream progress for large restore phases when `pv` is installed
+- terminates active PostgreSQL sessions before resetting the schema, which helps avoid restores hanging on `DROP SCHEMA`
+- prefers direct `podman exec` into the existing named containers during deployment restores
 
 Use:
 
 ```bash
-./restore_bundle.sh backups/your_backup_file.zip
+./restore_bundle.sh data/backups/your_backup_file.zip
 ```
 
 To restore a SIT backup into deployment:
 
 ```bash
-./restore_bundle.sh backups/your_backup_file.zip --deploy
+./restore_bundle.sh data/backups/your_backup_file.zip --deploy
 ```
 
 To restore into SIT:
 
 ```bash
-./restore_bundle.sh backups/your_backup_file.zip --sit
+./restore_bundle.sh data/backups/your_backup_file.zip --sit
 ```
 
 This script currently restores:
@@ -401,7 +430,9 @@ This script currently restores:
 - the Postgres SQL dump
 - `data/product_images`
 - `data/product_graphs`
-- `data/product_pdfs` if present in the backup
+- `data/product_pdfs`
+- `data/series_graphs`
+- `data/series_pdfs`
 - WordPress MariaDB + `wp-content` if present in the backup and restoring into deployment
 
 ### `postgres-compose.yml`
@@ -509,12 +540,325 @@ A custom plugin scaffold now lives at:
 
 This plugin is intended for Elementor-friendly use via shortcodes.
 
-Current shortcodes:
+It connects to these FastAPI endpoints:
+
+- `GET /api/cms/products`
+  - list of customer-facing products for WordPress cards/grids
+- `GET /api/cms/products/{product_id}`
+  - one detailed customer-facing product
+- `GET /api/cms/series`
+  - list of customer-facing series for landing pages and series cards
+- `GET /api/cms/series/{series_id}`
+  - one detailed customer-facing series
+- `GET /api/cms/media/product_images/{file_name}`
+- `GET /api/cms/media/product_graphs/{file_name}`
+ - `GET /api/cms/media/product_pdfs/{file_name}`
+ - `GET /api/cms/media/series_graphs/{file_name}`
+ - `GET /api/cms/media/series_pdfs/{file_name}`
+  - public customer media endpoints used server-side by the plugin
+
+The plugin does not expose the internal app hostname to the browser.
+Instead, it rewrites product image and graph URLs to a WordPress-side media proxy using:
+
+- `/?internal_facing_media=product_images/...`
+- `/?internal_facing_media=product_graphs/...`
+- `/?internal_facing_media=product_pdfs/...`
+- `/?internal_facing_media=series_graphs/...`
+- `/?internal_facing_media=series_pdfs/...`
+
+Legacy `?fan_graphs_media=...` requests are still accepted for backward compatibility.
+
+So the flow is:
+
+1. WordPress shortcode renders product content from `/api/cms/products...`
+2. product image / graph URLs come back as `/api/cms/media/...`
+3. the plugin rewrites those to `/?internal_facing_media=...`
+4. WordPress fetches the actual media file from the internal FastAPI app using `FAN_GRAPHS_INTERNAL_API_BASE_URL`
+5. the browser only ever sees the public WordPress domain
+
+Preferred shortcodes:
+
+- `[internal_facing_products]`
+- `[internal_facing_product id="123"]`
+- `[internal_facing_series]`
+- `[internal_facing_product_types_nav]`
+- `[internal_facing_product_picker]`
+
+Legacy aliases still supported:
 
 - `[fan_graphs_fans]`
 - `[fan_graphs_fan id="123"]`
 
-These can be placed inside Elementor’s shortcode widget to render fan data pulled from the FastAPI CMS endpoints.
+These can be placed inside Elementor’s shortcode widget to render product data pulled from the FastAPI CMS endpoints.
+
+### WordPress shortcode usage
+
+List shortcode:
+
+```text
+[internal_facing_products]
+```
+
+Supported attributes:
+
+- `limit`
+- `search`
+- `product_type`
+- `series`
+- `parameter_filters`
+- `parameter_string_filters`
+- `parameter_number_filters`
+
+Examples:
+
+```text
+[internal_facing_products]
+```
+
+```text
+[internal_facing_products limit="6" product_type="fan"]
+```
+
+```text
+[internal_facing_products product_type="fan" series="A series"]
+```
+
+```text
+[internal_facing_products search="AFD" product_type="silencer"]
+```
+
+```text
+[internal_facing_products parameter_string_filters="Motor|Type|TEFC"]
+```
+
+```text
+[internal_facing_products parameter_number_filters="Motor|Power|2|5"]
+```
+
+```text
+[internal_facing_products parameter_string_filters="Impeller|Type|Axial Aerofoil" parameter_number_filters="Motor|Power|2|5"]
+```
+
+Filter syntax:
+
+- `parameter_string_filters`
+  - `Group Name|Parameter Name|Exact Value`
+- `parameter_number_filters`
+  - `Group Name|Parameter Name|Min|Max`
+- multiple filters are separated by `;`
+
+Single product shortcode:
+
+```text
+[internal_facing_product id="1"]
+```
+
+Series shortcode examples:
+
+```text
+[internal_facing_series product_type="fan"]
+```
+
+```text
+[internal_facing_series id="1"]
+```
+
+Product type navbar shortcode:
+
+```text
+[internal_facing_product_types_nav]
+```
+
+Product picker shortcode:
+
+```text
+[internal_facing_product_picker]
+```
+
+What the plugin renders:
+
+- primary product image
+- product title / product type
+- basic meta fields such as mounting and discharge when present
+- graph download link when a graph image exists
+- PDF download link when a PDF exists
+- for single-product rendering:
+  - inline graph preview when available
+  - inline PDF preview when available
+  - `Description1`
+  - `Description2`
+  - `Description3`
+  - grouped parameter/specification sections
+  - `Comments`
+- for single-series rendering:
+  - inline graph preview when available
+  - inline PDF preview when available
+
+Additional plugin-supported public routes:
+
+- `/products/type/{product_type_key}/`
+  - product type landing page
+  - intended to list all series for that product type
+  - each series card includes links for the series detail page and series PDF
+- `/products/{product_slug-or-id}/`
+  - dedicated product detail page
+  - intended to be crawlable and indexable
+- `/series/{series_slug-or-id}/`
+  - dedicated series detail page
+  - intended to be crawlable and indexable
+
+Preferred public links now use slugified names, for example:
+
+- `/products/fan-1/`
+- `/series/fan-a-series/`
+
+Numeric routes are still accepted for compatibility.
+
+### Recommended WordPress page structure
+
+To support the customer-facing navigation and picker flow:
+
+1. Create a homepage and place:
+   - `[internal_facing_product_types_nav]`
+   - `[internal_facing_product_picker]`
+2. Create top-level product type pages as needed, for example:
+   - `/fans`
+   - `/silencers`
+   - `/speed-controllers`
+3. Add those pages to the main WordPress navbar.
+4. On each of those pages, place the series shortcode for the relevant type, for example:
+
+```text
+[internal_facing_series product_type="fan"]
+```
+
+5. The plugin also exposes dedicated dynamic public routes:
+   - `/products/type/{product_type_key}/`
+   - `/products/{product_slug-or-id}/`
+   - `/series/{series_slug-or-id}/`
+
+These routes are generated by the plugin itself and can be linked from menus, cards, buttons, or search results.
+
+If you want to change the default layout of the customer-facing product/series cards or detail views, the main places to edit are:
+
+- `internal_facing_render_product_card(...)`
+- `internal_facing_render_series_card(...)`
+
+in:
+
+- [wordpress/plugins/fan-graphs-api/fan-graphs-api.php](/home/user1/Documents/fan_graphs_website/wordpress/plugins/fan-graphs-api/fan-graphs-api.php)
+
+The plugin’s CSS is also defined in that same file, in `internal_facing_enqueue_styles()`.
+
+### Product picker behavior
+
+`[internal_facing_product_picker]` renders a server-side filter form for customers.
+
+It currently supports:
+
+- product type dropdown
+- mounting style dropdown when available for that product type
+- discharge type dropdown when available for that product type
+- grouped specification filters inferred from products of that type:
+  - exact-value dropdowns for string specs
+  - min/max range inputs for numeric specs
+
+The picker then renders matching products below the form, with links to the dedicated product pages and product PDFs.
+
+## PDF templates
+
+Product and series PDF templates are controlled by:
+
+- [registry.json](/home/user1/Documents/fan_graphs_website/templates/registry.json)
+
+Template files currently live under:
+
+- [template.html](/home/user1/Documents/fan_graphs_website/templates/product/default/template.html)
+- [template.css](/home/user1/Documents/fan_graphs_website/templates/product/default/template.css)
+- [template.html](/home/user1/Documents/fan_graphs_website/templates/series/default/template.html)
+- [template.css](/home/user1/Documents/fan_graphs_website/templates/series/default/template.css)
+
+The HTML uses placeholder tokens that the backend replaces before Chromium renders the PDF.
+
+Useful product placeholders include:
+
+- `{{product.model}}`
+- `{{product.product_type_label}}`
+- `{{product.series_name}}`
+- `{{product.description1_html}}`
+- `{{product.description2_html}}`
+- `{{product.description3_html}}`
+- `{{product.comments_html}}`
+- `{{product.primary_product_image_url}}`
+- `{{product.graph_image_url}}`
+- `{{product.image_gallery}}`
+- `{{product.grouped_specs_table}}`
+
+### Adding grouped specifications to a template
+
+The grouped-spec content is already rendered as HTML before it is injected into the template.
+
+So in the template HTML, add a placeholder where you want that table block to appear:
+
+```html
+<section class="specifications-block">
+  <h2>Grouped Specifications</h2>
+  <div class="specifications-table">
+    {{product.grouped_specs_table}}
+  </div>
+</section>
+```
+
+Then style the wrapper in the template CSS however you like.
+
+Important detail:
+
+- `{{product.grouped_specs_table}}` is not plain text
+- it expands to fully rendered HTML sections/tables for each parameter group
+- that means you should place it inside a normal container element like `<div>` or `<section>`, not inside an attribute
+
+The same pattern applies to the rich-text description fields:
+
+- `{{product.description1_html}}` -> `Description1`
+- `{{product.description2_html}}` -> `Description2`
+- `{{product.description3_html}}` -> `Description3`
+
+### Referencing one specific grouped-spec value
+
+You can now target a single grouped parameter in a product PDF template with this token format:
+
+```text
+{{spec.group_slug.parameter_slug}}
+```
+
+Examples:
+
+```text
+{{spec.impeller.size}}
+{{spec.motor.power}}
+{{spec.fan.weight}}
+```
+
+How the slugs are built:
+
+- lowercase
+- spaces and punctuation become underscores
+
+Examples:
+
+- `Impeller` + `Size` -> `{{spec.impeller.size}}`
+- `Motor` + `Power Supply` -> `{{spec.motor.power_supply}}`
+- `Fan` + `Max. Temp` -> `{{spec.fan.max_temp}}`
+
+These tokens render the final value exactly as the grouped specification would show it, including the unit when it is a numeric field.
+
+Required plugin config:
+
+- `FAN_GRAPHS_INTERNAL_API_BASE_URL`
+  - internal backend URL reachable from the WordPress container
+  - example: `http://app:8000`
+- `FAN_GRAPHS_API_TOKEN`
+  - CMS bearer token accepted by `/api/cms/products...`
 
 ### Basic WordPress bring-up
 
@@ -555,11 +899,22 @@ The backup bundle currently captures:
 - PostgreSQL SQL dump
 - `data/product_images`
 - `data/product_graphs`
-- `data/product_pdfs` if present later
-- WordPress MariaDB dump if the deployment WordPress stack is running
-- WordPress `wp-content` snapshot if the deployment WordPress stack is running
+- `data/product_pdfs`
+- `data/series_graphs`
+- `data/series_pdfs`
+- WordPress MariaDB dump if the deployment WordPress stack is running in the backed-up environment
+- WordPress `wp-content` snapshot if the deployment WordPress stack is running in the backed-up environment
 
 That gives one zip archive containing both structured data and related media files.
+
+This also explains why SIT backups can be much smaller than older deployment backups:
+
+- SIT backups usually contain the app database + app media only
+- deployment backups can additionally contain:
+  - `wordpress_dump.sql`
+  - `wordpress/wp-content.tar`
+
+So a small SIT backup is not automatically a broken backup.
 
 ## SIT to PROD initialisation
 
@@ -576,7 +931,7 @@ If you intentionally want to copy current SIT data into deployment, the intended
 2. restore that bundle into deployment:
 
 ```bash
-./restore_bundle.sh backups/your_backup_file.zip --deploy
+./restore_bundle.sh data/backups/your_backup_file.zip --deploy
 ```
 
 3. bring the deployment stack fully back up:
@@ -584,6 +939,14 @@ If you intentionally want to copy current SIT data into deployment, the intended
 ```bash
 ./redeploy.sh
 ```
+
+Important:
+
+- this is a data copy, not just a schema migration
+- `./redeploy.sh` runs schema migration/startup, but it does not copy SIT data into deployment by itself
+- restoring a SIT bundle into deployment overwrites the deployment app database and the related app media captured in that bundle
+
+For larger backup/restore/regeneration tasks, the `Setup` page now uses background maintenance jobs instead of one long blocking browser request. The page starts the job, polls for status, and shows a progress bar. This is the recommended workflow when you want to avoid browser or Cloudflare request timeouts.
 
 ## Notes
 

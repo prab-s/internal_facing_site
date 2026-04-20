@@ -19,6 +19,7 @@
   "dependencies": {
     "bootstrap": "^5.3.8",
     "echarts": "^5.5.0",
+    "grapesjs": "^0.22.14",
     "sharp": "^0.34.5"
   },
   "type": "module"

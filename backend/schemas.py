@@ -43,6 +43,112 @@ class ProductTypeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductTypeCreate(BaseModel):
+    key: Optional[str] = None
+    label: str
+    supports_graph: bool = False
+    graph_kind: Optional[str] = None
+    supports_graph_overlays: bool = False
+    supports_band_graph_style: bool = False
+    graph_line_value_label: Optional[str] = None
+    graph_line_value_unit: Optional[str] = None
+    graph_x_axis_label: Optional[str] = None
+    graph_x_axis_unit: Optional[str] = None
+    graph_y_axis_label: Optional[str] = None
+    graph_y_axis_unit: Optional[str] = None
+
+
+class ProductTypeUpdate(BaseModel):
+    key: Optional[str] = None
+    label: Optional[str] = None
+    supports_graph: Optional[bool] = None
+    graph_kind: Optional[str] = None
+    supports_graph_overlays: Optional[bool] = None
+    supports_band_graph_style: Optional[bool] = None
+    graph_line_value_label: Optional[str] = None
+    graph_line_value_unit: Optional[str] = None
+    graph_x_axis_label: Optional[str] = None
+    graph_x_axis_unit: Optional[str] = None
+    graph_y_axis_label: Optional[str] = None
+    graph_y_axis_unit: Optional[str] = None
+
+
+class TemplateDefinitionResponse(BaseModel):
+    id: str
+    label: str
+    type: str
+    path: str
+    stylesheet: Optional[str] = None
+
+
+class TemplateRegistryResponse(BaseModel):
+    product_templates: list[TemplateDefinitionResponse] = Field(default_factory=list)
+    series_templates: list[TemplateDefinitionResponse] = Field(default_factory=list)
+
+
+class TemplateCreateRequest(BaseModel):
+    template_type: str
+    label: str
+    template_id: Optional[str] = None
+    source_template_id: Optional[str] = None
+
+
+class TemplateFileResponse(BaseModel):
+    id: str
+    label: str
+    type: str
+    html_path: str
+    css_path: Optional[str] = None
+    html_content: str
+    css_content: str = ""
+
+
+class TemplateFileUpdateRequest(BaseModel):
+    html_content: str
+    css_content: str = ""
+
+
+class SeriesBase(BaseModel):
+    name: str
+    product_type_key: str
+    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
+    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
+    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
+    comments_html: Optional[str] = None
+    template_id: Optional[str] = None
+
+
+class SeriesCreate(SeriesBase):
+    pass
+
+
+class SeriesUpdate(BaseModel):
+    name: Optional[str] = None
+    product_type_key: Optional[str] = None
+    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
+    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
+    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
+    comments_html: Optional[str] = None
+    template_id: Optional[str] = None
+
+
+class SeriesResponse(BaseModel):
+    id: int
+    name: str
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    description1_html: Optional[str] = None
+    description2_html: Optional[str] = None
+    description3_html: Optional[str] = None
+    comments_html: Optional[str] = None
+    template_id: Optional[str] = None
+    product_count: int = 0
+    series_graph_image_url: Optional[str] = None
+    series_pdf_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProductParameterResponse(BaseModel):
     id: int
     parameter_name: str
@@ -80,11 +186,14 @@ class ProductParameterGroupInput(BaseModel):
 class ProductBase(BaseModel):
     model: str
     product_type_key: Optional[str] = "fan"
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
+    template_id: Optional[str] = None
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
-    description_html: Optional[str] = None
-    features_html: Optional[str] = None
-    specifications_html: Optional[str] = None
+    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
+    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
+    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
     comments_html: Optional[str] = None
     show_rpm_band_shading: bool = True
     band_graph_background_color: Optional[str] = None
@@ -101,36 +210,33 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseModel):
     model: Optional[str] = None
     product_type_key: Optional[str] = None
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
+    template_id: Optional[str] = None
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
-    description_html: Optional[str] = None
-    features_html: Optional[str] = None
-    specifications_html: Optional[str] = None
+    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
+    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
+    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
     comments_html: Optional[str] = None
     show_rpm_band_shading: Optional[bool] = None
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None
     band_graph_permissible_label_color: Optional[str] = None
+    parameter_groups: Optional[list[ProductParameterGroupInput]] = None
 
 
 class ProductResponse(ProductBase):
     id: int
     product_type_label: Optional[str] = None
     graph_image_url: Optional[str] = None
+    product_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
     product_images: list["ProductImageResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
-
-
-# Compatibility aliases kept temporarily while older imports are phased out.
-FanBase = ProductBase
-FanCreate = ProductCreate
-FanUpdate = ProductUpdate
-FanResponse = ProductResponse
-
 
 # --- RPM lines / points ---
 class RpmLineBase(BaseModel):
@@ -237,6 +343,27 @@ class GraphImageMaintenanceResponse(BaseModel):
     files_deleted: int = 0
 
 
+class PdfMaintenanceResponse(BaseModel):
+    message: str
+    products_processed: int = 0
+
+
+class MaintenanceJobResponse(BaseModel):
+    id: str
+    job_type: str
+    status: str
+    progress_message: Optional[str] = None
+    progress_current: Optional[int] = None
+    progress_total: Optional[int] = None
+    progress_percent: Optional[float] = None
+    error: Optional[str] = None
+    result_message: Optional[str] = None
+    result_download_url: Optional[str] = None
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
 class BandGraphStyleSettings(BaseModel):
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
@@ -289,22 +416,54 @@ class CmsProductResponse(BaseModel):
     model: str
     product_type_key: Optional[str] = None
     product_type_label: Optional[str] = None
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
+    template_id: Optional[str] = None
     mounting_style: Optional[str] = None
     discharge_type: Optional[str] = None
-    description_html: Optional[str] = None
-    features_html: Optional[str] = None
-    specifications_html: Optional[str] = None
+    description1_html: Optional[str] = None
+    description2_html: Optional[str] = None
+    description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     graph_image_url: Optional[str] = None
+    product_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
 
-# Compatibility alias kept temporarily for older CMS integrations.
-CmsFanResponse = CmsProductResponse
+class CmsSeriesProductSummary(BaseModel):
+    id: int
+    model: str
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
+    mounting_style: Optional[str] = None
+    discharge_type: Optional[str] = None
+    product_pdf_url: Optional[str] = None
+    primary_product_image_url: Optional[str] = None
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsSeriesResponse(BaseModel):
+    id: int
+    name: str
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    description1_html: Optional[str] = None
+    description2_html: Optional[str] = None
+    description3_html: Optional[str] = None
+    comments_html: Optional[str] = None
+    template_id: Optional[str] = None
+    product_count: int = 0
+    series_graph_image_url: Optional[str] = None
+    series_pdf_url: Optional[str] = None
+    products: list[CmsSeriesProductSummary] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
 
 ProductResponse.model_rebuild()
 ProductParameterGroupResponse.model_rebuild()

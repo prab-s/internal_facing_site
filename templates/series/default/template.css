@@ -1,0 +1,144 @@
+:root {
+  --page-background: #eef1f5;
+  --sheet-background: #ffffff;
+  --sheet-border: #d6dce3;
+  --panel-border: #dde3ea;
+  --text: #15212d;
+  --muted: #667688;
+  --accent: #7b3f00;
+  --accent-soft: #fbf3eb;
+  --shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--page-background);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.45;
+}
+
+body.series-template {
+  padding: 24px;
+}
+
+.sheet {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px;
+  background: var(--sheet-background);
+  border: 1px solid var(--sheet-border);
+  box-shadow: var(--shadow);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) 280px;
+  gap: 22px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.hero__main {
+  padding: 22px 24px;
+  background: linear-gradient(135deg, var(--accent-soft), #ffffff 68%);
+  border: 1px solid var(--panel-border);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.hero__title {
+  margin: 0 0 14px;
+  font-size: 2.5rem;
+  line-height: 1.05;
+}
+
+.hero__description > :first-child {
+  margin-top: 0;
+}
+
+.hero__description > :last-child {
+  margin-bottom: 0;
+}
+
+.hero__summary {
+  display: grid;
+  gap: 12px;
+}
+
+.summary-card,
+.panel {
+  border: 1px solid var(--panel-border);
+  background: #ffffff;
+}
+
+.summary-card {
+  padding: 16px 18px;
+}
+
+.summary-card__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.summary-card__value {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.panel {
+  margin-bottom: 18px;
+  padding: 20px 22px;
+}
+
+.panel__title {
+  margin: 0 0 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.table-slot,
+.graph-frame {
+  min-height: 220px;
+}
+
+.graph-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+@media print {
+  body.series-template {
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .sheet {
+    max-width: none;
+    border: 0;
+    box-shadow: none;
+  }
+}

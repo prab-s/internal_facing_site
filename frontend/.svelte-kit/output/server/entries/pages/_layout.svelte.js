@@ -7,7 +7,7 @@ import "@sveltejs/kit/internal/server";
 import "../../chunks/root.js";
 import "../../chunks/state.svelte.js";
 import { a as auth } from "../../chunks/auth.js";
-import { t as theme } from "../../chunks/api.js";
+import { t as theme } from "../../chunks/config.js";
 const getStores = () => {
   const stores$1 = getContext("__svelte__");
   return {
@@ -55,15 +55,15 @@ function _layout($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<header class="topbar navbar navbar-expand-lg"><div class="container-fluid app-frame px-0 d-flex align-items-center gap-3 flex-wrap justify-content-center"><div class="topbar-brand navbar-brand mb-0 text-center text-lg-start"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p></div> <span class="small text-body-secondary">`);
-      if (isActive("/entry")) {
+      if (isActive("/editor")) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`Data Entry`);
-      } else if (isActive("/catalogue")) {
+        $$renderer2.push(`Editor`);
+      } else if (isActive("/viewer")) {
         $$renderer2.push("<!--[1-->");
-        $$renderer2.push(`Catalogue`);
-      } else if (isActive("/map")) {
+        $$renderer2.push(`Viewer`);
+      } else if (isActive("/template-builder")) {
         $$renderer2.push("<!--[2-->");
-        $$renderer2.push(`Graph View`);
+        $$renderer2.push(`Template Builder`);
       } else if (isActive("/setup")) {
         $$renderer2.push("<!--[3-->");
         $$renderer2.push(`Setup`);
@@ -71,7 +71,7 @@ function _layout($$renderer, $$props) {
         $$renderer2.push("<!--[-1-->");
         $$renderer2.push(`Overview`);
       }
-      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${isActive("/") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/">Home</a> <a${attr_class(`nav-link ${isActive("/entry") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/entry">Data Entry</a> <a${attr_class(`nav-link ${isActive("/catalogue") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/catalogue">Catalogue</a> <a${attr_class(`nav-link ${isActive("/map") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/map">Graph View</a> <a${attr_class(`nav-link ${isActive("/setup") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/setup">Setup</a></nav> <div class="d-flex align-items-center gap-2"><span class="small text-body-secondary d-none d-lg-inline">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}</span> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html(store_get($$store_subs ??= {}, "$theme", theme) === "dark" ? "Switch to Light" : "Switch to Dark")}</button> <button class="btn btn-outline-secondary btn-sm" type="button">Sign Out</button></div></div></header> <main class="app-frame py-3"><!--[-->`);
+      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${isActive("/") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/">Home</a> <a${attr_class(`nav-link ${isActive("/editor") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor">Editor</a> <a${attr_class(`nav-link ${isActive("/viewer") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer">Viewer</a> <a${attr_class(`nav-link ${isActive("/template-builder") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder">Template Builder</a> <a${attr_class(`nav-link ${isActive("/setup") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/setup">Setup</a></nav> <div class="d-flex align-items-center gap-2"><span class="small text-body-secondary d-none d-lg-inline">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}</span> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html(store_get($$store_subs ??= {}, "$theme", theme) === "dark" ? "Switch to Light" : "Switch to Dark")}</button> <button class="btn btn-outline-secondary btn-sm" type="button">Sign Out</button></div></div></header> <main class="app-frame py-3"><!--[-->`);
       slot($$renderer2, $$props, "default", {});
       $$renderer2.push(`<!--]--></main>`);
     }

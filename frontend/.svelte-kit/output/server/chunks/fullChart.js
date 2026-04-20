@@ -1,3 +1,38 @@
+const LIGHT_CHART_THEME = {
+  background: "#ffffff",
+  text: "#1e293b",
+  grid: "#d7dde8",
+  accent: "#2563eb",
+  efficiency: "#15803d",
+  permissible: "#dc2626",
+  neutralLine: "#ffffff",
+  fontFamily: "DejaVu Sans, Liberation Sans, Arial, sans-serif"
+};
+const DARK_CHART_THEME = {
+  background: "#1a1b26",
+  text: "#c0caf5",
+  grid: "#3b4261",
+  accent: "#7aa2f7",
+  efficiency: "#4ade80",
+  permissible: "#f87171",
+  neutralLine: "#ffffff",
+  fontFamily: "DejaVu Sans, Liberation Sans, Arial, sans-serif"
+};
+function getChartTheme(currentTheme) {
+  return currentTheme === "light" ? LIGHT_CHART_THEME : DARK_CHART_THEME;
+}
+const RPM_BAND_FALLBACK_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#22d3ee"];
+const CHART_STYLE = {
+  rpmLineColor: "#0000ff",
+  rpmBandFadedOpacity: 0.18,
+  axisNameFontSize: 20,
+  axisNameFontWeight: "600",
+  axisLabelFontSize: 18,
+  axisLabelFontWeight: "500",
+  titleFontSize: 32,
+  dragHandleFontSize: 20,
+  permissibleLabelFontSize: 18
+};
 const FULL_CHART_LINE_DEFINITIONS = [
   {
     key: "efficiency_centre",
@@ -25,17 +60,14 @@ const FULL_CHART_LINE_DEFINITIONS = [
     label: "Permissible Use",
     colorKey: "neutralLine",
     tooltipLabel: "Permissible use",
-    lineWidth: 3
+    lineWidth: 5
   }
 ];
-const RPM_BAND_FALLBACK_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#22d3ee"];
-const RPM_LINE_COLOR = "#0000ff";
-const RPM_BAND_FADED_OPACITY = 0.18;
 const FLOW_EPSILON = 1e-6;
-const AXIS_NAME_FONT_SIZE = 18;
-const AXIS_NAME_FONT_WEIGHT = "600";
-const AXIS_LABEL_FONT_SIZE = 15;
-const AXIS_LABEL_FONT_WEIGHT = "500";
+const AXIS_NAME_FONT_SIZE = CHART_STYLE.axisNameFontSize;
+const AXIS_NAME_FONT_WEIGHT = CHART_STYLE.axisNameFontWeight;
+const AXIS_LABEL_FONT_SIZE = CHART_STYLE.axisLabelFontSize;
+const AXIS_LABEL_FONT_WEIGHT = CHART_STYLE.axisLabelFontWeight;
 const DEFAULT_GRAPH_CONFIG = {
   graph_kind: "fan_map",
   supports_graph_overlays: true,
@@ -92,7 +124,7 @@ function isDarkColor(color) {
   const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
   return luminance < 0.5;
 }
-function normalizeOpacity(value, fallback = RPM_BAND_FADED_OPACITY) {
+function normalizeOpacity(value, fallback = CHART_STYLE.rpmBandFadedOpacity) {
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return fallback;
   return clamp(numeric, 0, 1);
@@ -106,7 +138,9 @@ function resolveGraphConfig(graphConfig = null) {
     ...graphConfig ?? {}
   };
 }
-function formatGraphLineValue(value, graphConfig) {
+function formatGraphLineValue(value, graphConfig, line = null) {
+  const explicitLabel = String(line?.display_label ?? "").trim();
+  if (explicitLabel) return explicitLabel;
   const numericText = formatNumericValue(value);
   const unit = String(graphConfig?.graph_line_value_unit ?? "").trim();
   return unit ? `${numericText} ${unit}` : numericText;
@@ -723,6 +757,9 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
   const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
   const byRpm = {};
   const rpmByLineId = Object.fromEntries(rpmLines.map((line) => [line.id, line.rpm]));
+  const lineByRpm = new Map(
+    rpmLines.map((line) => [Number(line.rpm), line]).filter(([rpm]) => !Number.isNaN(rpm))
+  );
   for (const point of rpmPoints) {
     const key = String(point.rpm ?? rpmByLineId[point.rpm_line_id] ?? "");
     if (!byRpm[key]) byRpm[key] = [];
@@ -737,13 +774,14 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
   const series = [];
   const rpmCurveEntries = [];
   for (const [idx, rpm] of rpms.entries()) {
+    const rpmLine = lineByRpm.get(Number(rpm)) ?? null;
     const pointsAtRpm = byRpm[String(rpm)] ?? [];
     const hasMultiplePoints = pointsAtRpm.length > 1;
     const rawLineData = pointsAtRpm.map((point) => [point.value[0], point.value[1]]).sort((a, b) => a[0] - b[0]);
     const displayLineData = !includeDragHandles && hasMultiplePoints ? buildSmoothedCurveSamples(rawLineData) : rawLineData;
     rpmCurveEntries.push([rpm, displayLineData]);
     series.push({
-      name: formatGraphLineValue(rpm, graphConfig),
+      name: formatGraphLineValue(rpm, graphConfig, rpmLine),
       type: "line",
       smooth: false,
       data: displayLineData,
@@ -752,10 +790,10 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       symbolSize: !includeDragHandles && !hasMultiplePoints ? 8 : 0,
       lineStyle: {
         width: hasMultiplePoints ? 2 : includeDragHandles ? 0 : 1,
-        color: RPM_LINE_COLOR
+        color: CHART_STYLE.rpmLineColor
       },
       itemStyle: {
-        color: RPM_LINE_COLOR
+        color: CHART_STYLE.rpmLineColor
       },
       areaStyle: void 0,
       emphasis: { focus: "series" },
@@ -765,7 +803,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       const labelAtLineEnd = showRpmBandShading;
       const labelAnchorData = labelAtLineEnd ? buildBandLabelAnchorData(displayLineData) : displayLineData.slice().reverse();
       series.push({
-        name: `${formatGraphLineValue(rpm, graphConfig)} label`,
+        name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
         type: "line",
         smooth: false,
         data: labelAnchorData,
@@ -775,7 +813,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
         lineStyle: { width: 0, opacity: 0 },
         endLabel: {
           show: true,
-          formatter: () => formatGraphLineValue(rpm, graphConfig),
+          formatter: () => formatGraphLineValue(rpm, graphConfig, rpmLine),
           color: labelAtLineEnd ? rpmBandLabelColor ?? chartTheme.text : chartTheme.text,
           fontFamily: chartFontFamily,
           distance: 6,
@@ -783,8 +821,8 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           // x: negative = left, positive = right
           // y: negative = up, positive = down
           // Banded graph labels use the first pair; non-banded labels use the second.
-          offset: labelAtLineEnd ? [-88, 8] : [5, -10],
-          fontSize: 16,
+          offset: labelAtLineEnd ? [-108, 28] : [5, -10],
+          fontSize: CHART_STYLE.dragHandleFontSize,
           fontWeight: "normal"
         },
         z: rpms.length + 20
@@ -792,7 +830,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
     }
     if (showRpmBandShading && !includeDragHandles && !clipRpmAreaToPermissibleUse && hasMultiplePoints) {
       series.push({
-        name: `${formatGraphLineValue(rpm, graphConfig)} area`,
+        name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} area`,
         type: "line",
         smooth: false,
         data: displayLineData,
@@ -806,7 +844,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
     }
     if (!includeDragHandles) continue;
     series.push({
-      name: formatGraphLineValue(rpm, graphConfig),
+      name: formatGraphLineValue(rpm, graphConfig, rpmLine),
       type: "scatter",
       data: pointsAtRpm.map((point) => ({
         value: [point.value[0], point.value[1]],
@@ -901,8 +939,8 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
           const segmentEnd2 = api.coord([api.value(4), api.value(5)]);
           const dx = segmentEnd2[0] - segmentStart2[0];
           const dy = segmentEnd2[1] - segmentStart2[1];
-          const rightOffsetPixels = -20;
-          const verticalOffsetPixels = 65;
+          const rightOffsetPixels = -55;
+          const verticalOffsetPixels = 55;
           const rotation = -Math.atan2(dy, dx);
           return {
             type: "text",
@@ -912,7 +950,7 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
             style: {
               text: "Permissible Use",
               fill: permissibleLabelColor ?? chartTheme.text,
-              font: `14px ${chartTheme.fontFamily ?? "sans-serif"}`,
+              font: `${CHART_STYLE.permissibleLabelFontSize}px ${chartTheme.fontFamily ?? "sans-serif"}`,
               textAlign: "center",
               textVerticalAlign: "middle"
             },
@@ -1016,7 +1054,7 @@ function buildFullChartOption({
     title: {
       text: title,
       left: "center",
-      textStyle: { color: chartTheme.text, fontFamily: chartFontFamily }
+      textStyle: { color: chartTheme.text, fontSize: CHART_STYLE.titleFontSize, fontFamily: chartFontFamily }
     },
     tooltip: tooltip ?? { trigger: "axis", formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions) },
     grid: { left: "9%", right: "5%", top: "12%", bottom: "12%" },
@@ -1097,6 +1135,6 @@ function buildFullChartOption({
 }
 export {
   FULL_CHART_LINE_DEFINITIONS as F,
-  RPM_BAND_FALLBACK_COLORS as R,
-  buildFullChartOption as b
+  buildFullChartOption as b,
+  getChartTheme as g
 };

@@ -5,18 +5,8 @@ import process from 'node:process';
 import * as echarts from 'echarts';
 import sharp from 'sharp';
 
+import { LIGHT_CHART_THEME } from '../src/lib/chartTheme.js';
 import { buildFullChartOption } from '../src/lib/fullChart.js';
-
-const LIGHT_CHART_THEME = {
-  background: '#ffffff',
-  text: '#1e293b',
-  grid: '#d7dde8',
-  accent: '#2563eb',
-  efficiency: '#15803d',
-  permissible: '#dc2626',
-  neutralLine: '#6b7280',
-  fontFamily: 'DejaVu Sans, Liberation Sans, Arial, sans-serif'
-};
 
 async function readStdin() {
   const chunks = [];

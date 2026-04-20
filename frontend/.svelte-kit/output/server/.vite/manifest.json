@@ -10,19 +10,11 @@
       "_internal.js"
     ]
   },
-  "_ECharts.js": {
-    "file": "chunks/ECharts.js",
-    "name": "ECharts",
-    "imports": [
-      "_index2.js",
-      "_index-server.js"
-    ]
-  },
   "_api.js": {
     "file": "chunks/api.js",
     "name": "api",
     "imports": [
-      "_index.js"
+      "_config.js"
     ]
   },
   "_auth.js": {
@@ -31,6 +23,13 @@
     "imports": [
       "_index.js",
       "_api.js"
+    ]
+  },
+  "_config.js": {
+    "file": "chunks/config.js",
+    "name": "config",
+    "imports": [
+      "_index.js"
     ]
   },
   "_environment.js": {
@@ -157,7 +156,7 @@
       "_root.js",
       "_state.svelte.js",
       "_auth.js",
-      "_api.js"
+      "_config.js"
     ],
     "css": [
       "_app/immutable/assets/_layout.DgLIrzHR.css"
@@ -183,11 +182,29 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
-      "_api.js",
-      "_ECharts.js"
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js"
+    ]
+  },
+  "src/routes/editor/+page.svelte": {
+    "file": "entries/pages/editor/_page.svelte.js",
+    "name": "entries/pages/editor/_page.svelte",
+    "src": "src/routes/editor/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_index-server.js",
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js",
+      "_config.js",
+      "_fullChart.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.N3Ikfny1.css"
+      "_app/immutable/assets/_page.BDwNViDO.css"
     ]
   },
   "src/routes/entry/+page.svelte": {
@@ -197,16 +214,10 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
-      "_index-server.js",
       "_exports.js",
       "_utils.js",
       "_root.js",
-      "_state.svelte.js",
-      "_api.js",
-      "_fullChart.js"
-    ],
-    "css": [
-      "_app/immutable/assets/_page.DXixTBjR.css"
+      "_state.svelte.js"
     ]
   },
   "src/routes/map/+page.svelte": {
@@ -216,9 +227,10 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
-      "_api.js",
-      "_ECharts.js",
-      "_fullChart.js"
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js"
     ]
   },
   "src/routes/setup/+page.svelte": {
@@ -234,6 +246,34 @@
     ],
     "css": [
       "_app/immutable/assets/_page.CXoniXGh.css"
+    ]
+  },
+  "src/routes/template-builder/+page.svelte": {
+    "file": "entries/pages/template-builder/_page.svelte.js",
+    "name": "entries/pages/template-builder/_page.svelte",
+    "src": "src/routes/template-builder/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.B8f3IPKR.css"
+    ]
+  },
+  "src/routes/viewer/+page.svelte": {
+    "file": "entries/pages/viewer/_page.svelte.js",
+    "name": "entries/pages/viewer/_page.svelte",
+    "src": "src/routes/viewer/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_api.js",
+      "_index-server.js",
+      "_config.js",
+      "_fullChart.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.DO8j5OqU.css"
     ]
   }
 }

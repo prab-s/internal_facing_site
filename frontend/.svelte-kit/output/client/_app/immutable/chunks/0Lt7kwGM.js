@@ -1,1 +1,0 @@
-import{w as f,v as u,a4 as _,a5 as o,n as t,D as g,a3 as i,B as l,x as n,C as p,y as v}from"./CxmrOhow.js";function C(d,r){let a=null,y=t;var s;if(t){a=p;for(var e=v(document.head);e!==null&&(e.nodeType!==g||e.data!==d);)e=i(e);if(e===null)l(!1);else{var E=i(e);e.remove(),n(E)}}t||(s=document.head.appendChild(f()));try{u(()=>r(s),_|o)}finally{y&&(l(!0),n(a))}}export{C as h};

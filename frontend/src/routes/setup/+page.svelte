@@ -5,11 +5,14 @@
   import {
     changePassword,
     createUser,
-    deleteAllGraphImages,
-    downloadBackupBundle,
+    downloadMaintenanceJobFile,
+    getMaintenanceJob,
     getUsers,
-    regenerateAllGraphImages,
-    restoreBackupBundle,
+    startBackupBundleJob,
+    startDeleteAllGraphImagesJob,
+    startRegenerateAllGraphImagesJob,
+    startRegenerateAllProductPdfsJob,
+    startRestoreBackupBundleJob,
     updateUser,
     updateUserPassword
   } from '$lib/api.js';
@@ -33,9 +36,16 @@
   let maintenanceLoading = false;
   let maintenanceError = '';
   let backupFile = null;
+  let maintenanceJob = null;
+  let maintenancePollTimeout = null;
   let successMessages = [];
   let successToastKey = 0;
   let successDismissTimeout = null;
+
+  $: maintenanceProgressPercent =
+    maintenanceJob?.progress_percent != null
+      ? Math.max(0, Math.min(100, Number(maintenanceJob.progress_percent)))
+      : null;
 
   function clearSuccessToast() {
     successMessages = [];
@@ -69,6 +79,9 @@
   onDestroy(() => {
     if (successDismissTimeout) {
       clearTimeout(successDismissTimeout);
+    }
+    if (maintenancePollTimeout) {
+      clearTimeout(maintenancePollTimeout);
     }
   });
 
@@ -181,44 +194,71 @@
     }
   }
 
-  async function runMaintenance(action, options = {}) {
+  async function pollMaintenanceJob(jobId, options = {}) {
+    try {
+      const job = await getMaintenanceJob(jobId);
+      maintenanceJob = job;
+
+      if (job.status === 'completed') {
+        maintenanceLoading = false;
+        if (job.result_download_url && options.downloadOnComplete) {
+          const { blob, filename } = await downloadMaintenanceJobFile(job.id);
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(downloadUrl);
+        }
+        addSuccess(job.result_message || options.successMessage || 'Maintenance task completed.');
+        return;
+      }
+
+      if (job.status === 'failed') {
+        maintenanceLoading = false;
+        maintenanceError = job.error || options.errorMessage || 'Maintenance task failed.';
+        return;
+      }
+
+      maintenancePollTimeout = setTimeout(() => pollMaintenanceJob(jobId, options), 1500);
+    } catch (error) {
+      maintenanceLoading = false;
+      maintenanceError = error?.message || options.errorMessage || 'Unable to read maintenance job status.';
+    }
+  }
+
+  async function runMaintenanceJob(starter, options = {}) {
     if (options.confirmMessage && !window.confirm(options.confirmMessage)) {
       return;
     }
 
     maintenanceLoading = true;
     maintenanceError = '';
+    maintenanceJob = null;
     clearSuccessToast();
     try {
-      const result = await action();
-      addSuccess(result?.message || options.successMessage || 'Maintenance task completed.');
+      const job = await starter();
+      maintenanceJob = job;
+      await pollMaintenanceJob(job.id, options);
     } catch (error) {
       maintenanceError = error?.message || options.errorMessage || 'Unable to run maintenance task.';
-    } finally {
       maintenanceLoading = false;
+    } finally {
+      if (!maintenanceLoading && maintenancePollTimeout) {
+        clearTimeout(maintenancePollTimeout);
+        maintenancePollTimeout = null;
+      }
     }
   }
 
   async function handleBackupDownload() {
-    maintenanceLoading = true;
-    maintenanceError = '';
-    clearSuccessToast();
-    try {
-      const { blob, filename } = await downloadBackupBundle();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-      addSuccess(`Backup bundle downloaded as ${filename}.`);
-    } catch (error) {
-      maintenanceError = error?.message || 'Unable to download backup bundle.';
-    } finally {
-      maintenanceLoading = false;
-    }
+    await runMaintenanceJob(startBackupBundleJob, {
+      successMessage: 'Backup bundle created.',
+      errorMessage: 'Unable to create backup bundle.',
+      downloadOnComplete: true
+    });
   }
 
   function handleBackupFileChange(event) {
@@ -239,21 +279,17 @@
       return;
     }
 
-    maintenanceLoading = true;
-    maintenanceError = '';
-    clearSuccessToast();
-    try {
-      const result = await restoreBackupBundle(backupFile);
+    const fileToRestore = backupFile;
+    await runMaintenanceJob(() => startRestoreBackupBundleJob(fileToRestore), {
+      successMessage: 'Backup bundle restored successfully.',
+      errorMessage: 'Unable to restore backup bundle.'
+    });
+    if (!maintenanceError) {
       backupFile = null;
       const input = document.getElementById('backup-restore-file');
       if (input) {
         input.value = '';
       }
-      addSuccess(result?.message || 'Backup bundle restored successfully.');
-    } catch (error) {
-      maintenanceError = error?.message || 'Unable to restore backup bundle.';
-    } finally {
-      maintenanceLoading = false;
     }
   }
 
@@ -447,6 +483,43 @@
           {#if maintenanceError}
             <div class="alert alert-danger py-2">{maintenanceError}</div>
           {/if}
+          {#if maintenanceJob}
+            <div class="alert alert-secondary py-2">
+              <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                <div class="fw-semibold">Maintenance job: {maintenanceJob.job_type}</div>
+                <span class={`badge ${maintenanceJob.status === 'completed' ? 'text-bg-success' : maintenanceJob.status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>
+                  {maintenanceJob.status}
+                </span>
+              </div>
+              {#if maintenanceJob.progress_message}
+                <div class="small mb-2">{maintenanceJob.progress_message}</div>
+              {/if}
+              <div
+                class="progress"
+                role="progressbar"
+                aria-label="Maintenance progress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={maintenanceProgressPercent ?? undefined}
+              >
+                <div
+                  class={`progress-bar ${maintenanceProgressPercent == null && maintenanceJob.status === 'running' ? 'progress-bar-striped progress-bar-animated' : ''}`}
+                  style={`width: ${maintenanceProgressPercent ?? (maintenanceJob.status === 'completed' ? 100 : 100)}%`}
+                >
+                  {#if maintenanceProgressPercent != null}
+                    {maintenanceProgressPercent.toFixed(0)}%
+                  {:else if maintenanceJob.status === 'running'}
+                    Working...
+                  {/if}
+                </div>
+              </div>
+              {#if maintenanceJob.progress_current != null && maintenanceJob.progress_total != null}
+                <div class="small text-body-secondary mt-2">
+                  Step {maintenanceJob.progress_current} of {maintenanceJob.progress_total}
+                </div>
+              {/if}
+            </div>
+          {/if}
           <div class="card border mb-3">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
@@ -499,31 +572,54 @@
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                 <div>
-                  <h3 class="h6 mb-1">Graph Images</h3>
+                  <h3 class="h6 mb-1">Product Graph Images</h3>
                   <p class="mb-0 text-body-secondary">
-                    Rebuild all generated graph images, or clear them so they can be regenerated later.
+                    Generate all product graph images in one pass, or clear them so they can be regenerated later.
                   </p>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                   <button
                     class="btn btn-primary btn-sm"
                     type="button"
-                    on:click={() => runMaintenance(regenerateAllGraphImages, { successMessage: 'Graph images regenerated.' })}
+                    on:click={() => runMaintenanceJob(startRegenerateAllGraphImagesJob, { successMessage: 'Graph images regenerated.' })}
                     disabled={maintenanceLoading}
                   >
-                    Regenerate Graph Images
+                    Generate Product Graphs
                   </button>
                   <button
                     class="btn btn-outline-danger btn-sm"
                     type="button"
                     on:click={() =>
-                      runMaintenance(deleteAllGraphImages, {
+                      runMaintenanceJob(startDeleteAllGraphImagesJob, {
                         confirmMessage: 'Delete all generated graph images and clear their saved paths?',
                         successMessage: 'Graph images cleared.'
                       })}
                     disabled={maintenanceLoading}
                   >
                     Clear Graph Images
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Product PDFs</h3>
+                  <p class="mb-0 text-body-secondary">
+                    Generate or re-generate all product PDFs in one pass using the current product templates and graph data.
+                  </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={() => runMaintenanceJob(startRegenerateAllProductPdfsJob, { successMessage: 'Product PDFs regenerated.' })}
+                    disabled={maintenanceLoading}
+                  >
+                    Regenerate Product PDFs
                   </button>
                 </div>
               </div>

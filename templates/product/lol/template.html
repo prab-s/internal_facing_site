@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{product.model}} | Product PDF</title>
+    <link rel="stylesheet" href="./template.css" />
+  </head>
+  <body class="product-template">
+    <main class="sheet">
+      <header class="hero">
+        <div class="hero__content">
+          <p class="eyebrow">{{product.product_type_label}}</p>
+          <h1 class="hero__title">{{product.model}}</h1>
+          <p class="hero__series">{{product.series_name}}</p>
+          <div class="hero__meta">
+            <div class="hero__meta-item">
+              <span class="hero__meta-label">Mounting</span>
+              <span class="hero__meta-value">{{product.mounting_style}}</span>
+            </div>
+            <div class="hero__meta-item">
+              <span class="hero__meta-label">Discharge</span>
+              <span class="hero__meta-value">{{product.discharge_type}}</span>
+            </div>
+          </div>
+        </div>
+        <div class="hero__image-frame">
+          <img src="{{product.primary_product_image_url}}" alt="{{product.model}}" class="hero__image" />
+        </div>
+      </header>
+
+      <section class="content-grid">
+        <section class="panel panel--richtext">
+          <h2 class="panel__title">Description</h2>
+          <div class="richtext">{{product.description_html}}</div>
+        </section>
+
+        <section class="panel panel--richtext">
+          <h2 class="panel__title">Features</h2>
+          <div class="richtext">{{product.features_html}}</div>
+        </section>
+
+        <section class="panel panel--richtext">
+          <h2 class="panel__title">Specifications</h2>
+          <div class="richtext">{{product.specifications_html}}</div>
+        </section>
+
+        <section class="panel panel--richtext">
+          <h2 class="panel__title">Comments</h2>
+          <div class="richtext">{{product.comments_html}}</div>
+        </section>
+      </section>
+
+      <section class="panel panel--full">
+        <h2 class="panel__title">Grouped Specifications</h2>
+        <div class="table-slot">
+          {{product.grouped_specs_table}}
+        </div>
+      </section>
+
+      <section class="media-grid">
+        <section class="panel panel--media">
+          <h2 class="panel__title">Product Images</h2>
+          <div class="image-gallery-slot">
+            {{product.image_gallery}}
+          </div>
+        </section>
+
+        <section class="panel panel--media">
+          <h2 class="panel__title">Performance Graph</h2>
+          <div class="graph-frame">
+            <img src="{{product.graph_image_url}}" alt="{{product.model}} graph" class="graph-image" />
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

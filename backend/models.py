@@ -2,6 +2,7 @@
 SQLAlchemy models for the internal product catalogue.
 """
 import os
+import re
 
 from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -41,6 +42,7 @@ class ProductType(Base):
         cascade="all, delete-orphan",
         order_by="ProductTypeParameterGroupPreset.sort_order",
     )
+    series = relationship("Series", back_populates="product_type", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="product_type")
 
 
@@ -73,17 +75,82 @@ class ProductTypeParameterPreset(Base):
     group_preset = relationship("ProductTypeParameterGroupPreset", back_populates="parameter_presets")
 
 
+class Series(Base):
+    __tablename__ = "series"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description1_html = Column(Text, nullable=True)
+    description2_html = Column(Text, nullable=True)
+    description3_html = Column(Text, nullable=True)
+    comments_html = Column(Text, nullable=True)
+    template_id = Column(String(128), nullable=True)
+
+    product_type = relationship("ProductType", back_populates="series")
+    products = relationship("Product", back_populates="series")
+
+    @property
+    def product_type_key(self):
+        return self.product_type.key if self.product_type else None
+
+    @property
+    def product_type_label(self):
+        return self.product_type.label if self.product_type else None
+
+    @property
+    def product_count(self):
+        return len(self.products or [])
+
+    @property
+    def series_graph_image_url(self):
+        safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
+        file_name = f"series_graph_{safe_name or 'unknown'}.png"
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_graphs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/series_graphs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/series_graphs/{file_name}"
+        )
+
+    @property
+    def series_pdf_url(self):
+        safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
+        file_name = f"series_{safe_name or 'unknown'}.pdf"
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/series_pdfs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/series_pdfs/{file_name}"
+        )
+
+
 class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
     product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=True)
+    series_id = Column(Integer, ForeignKey("series.id"), nullable=True)
+    series_name = Column(String(255), nullable=True)
+    template_id = Column(String(128), nullable=True)
     model = Column(String(255), nullable=False)
     mounting_style = Column(String(255), nullable=True)
     discharge_type = Column(String(255), nullable=True)
-    description_html = Column(Text, nullable=True)
-    features_html = Column(Text, nullable=True)
-    specifications_html = Column(Text, nullable=True)
+    description1_html = Column(Text, nullable=True)
+    description2_html = Column(Text, nullable=True)
+    description3_html = Column(Text, nullable=True)
     comments_html = Column(Text, nullable=True)
     graph_image_path = Column(String(512), nullable=True)
     show_rpm_band_shading = Column(Boolean, nullable=False, default=True)
@@ -93,6 +160,7 @@ class Product(Base):
     band_graph_permissible_label_color = Column(String(32), nullable=True)
 
     product_type = relationship("ProductType", back_populates="products")
+    series = relationship("Series", back_populates="products")
     rpm_lines = relationship("RpmLine", back_populates="product", cascade="all, delete-orphan")
     efficiency_points = relationship("EfficiencyPoint", back_populates="product", cascade="all, delete-orphan")
     parameter_groups = relationship(
@@ -133,6 +201,25 @@ class Product(Base):
         return first_image.url
 
     @property
+    def product_pdf_url(self):
+        safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
+        file_name = f"product_{safe_model or 'unknown'}.pdf" if self.model is not None else None
+        if not file_name:
+            return None
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/product_pdfs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/product_pdfs/{file_name}"
+        )
+
+    @property
     def product_type_key(self):
         return self.product_type.key if self.product_type else None
 
@@ -140,9 +227,48 @@ class Product(Base):
     def product_type_label(self):
         return self.product_type.label if self.product_type else None
 
+    @property
+    def series_name_value(self):
+        return self.series.name if self.series else self.series_name
 
-# Temporary compatibility alias while remaining code paths are cleaned up.
-Fan = Product
+    @property
+    def description_html(self):
+        return self.description1_html
+
+    @description_html.setter
+    def description_html(self, value):
+        self.description1_html = value
+
+    @property
+    def features_html(self):
+        return self.description2_html
+
+    @features_html.setter
+    def features_html(self, value):
+        self.description2_html = value
+
+    @property
+    def specifications_html(self):
+        return self.description3_html
+
+    @specifications_html.setter
+    def specifications_html(self, value):
+        self.description3_html = value
+
+
+def _series_description_alias_property(field_name):
+    def getter(self):
+        return getattr(self, field_name)
+
+    def setter(self, value):
+        setattr(self, field_name, value)
+
+    return property(getter, setter)
+
+
+Series.description_html = _series_description_alias_property("description1_html")
+Series.features_html = _series_description_alias_property("description2_html")
+Series.specifications_html = _series_description_alias_property("description3_html")
 
 
 class AppSettings(Base):
@@ -169,19 +295,6 @@ class ProductParameterGroup(Base):
         order_by="ProductParameter.sort_order",
     )
 
-    @property
-    def fan_id(self):
-        return self.product_id
-
-    @fan_id.setter
-    def fan_id(self, value):
-        self.product_id = value
-
-    @property
-    def fan(self):
-        return self.product
-
-
 class ProductParameter(Base):
     __tablename__ = "product_parameters"
 
@@ -207,19 +320,6 @@ class RpmLine(Base):
     product = relationship("Product", back_populates="rpm_lines")
     points = relationship("RpmPoint", back_populates="rpm_line", cascade="all, delete-orphan")
 
-    @property
-    def fan_id(self):
-        return self.product_id
-
-    @fan_id.setter
-    def fan_id(self, value):
-        self.product_id = value
-
-    @property
-    def fan(self):
-        return self.product
-
-
 class RpmPoint(Base):
     __tablename__ = "rpm_points"
 
@@ -243,15 +343,6 @@ class RpmPoint(Base):
     def flow(self, value):
         self.airflow = value
 
-    @property
-    def fan_id(self):
-        return self.product_id
-
-    @fan_id.setter
-    def fan_id(self, value):
-        self.product_id = value
-
-
 class EfficiencyPoint(Base):
     __tablename__ = "efficiency_points"
 
@@ -273,19 +364,6 @@ class EfficiencyPoint(Base):
     def flow(self, value):
         self.airflow = value
 
-    @property
-    def fan_id(self):
-        return self.product_id
-
-    @fan_id.setter
-    def fan_id(self, value):
-        self.product_id = value
-
-    @property
-    def fan(self):
-        return self.product
-
-
 class ProductImage(Base):
     __tablename__ = "product_images"
 
@@ -295,18 +373,6 @@ class ProductImage(Base):
     sort_order = Column(Integer, nullable=False, default=0)
 
     product = relationship("Product", back_populates="product_images")
-
-    @property
-    def fan_id(self):
-        return self.product_id
-
-    @fan_id.setter
-    def fan_id(self, value):
-        self.product_id = value
-
-    @property
-    def fan(self):
-        return self.product
 
     @property
     def url(self):

@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
+export { getChartTheme } from '$lib/chartTheme.js';
 
 /**
  * Centralised API base URL. Change this for deployment (e.g. to relative /api or full URL).
@@ -31,15 +32,18 @@ export const DISCHARGE_TYPE_OPTIONS = [
   'side discharge'
 ];
 
-export function emptyFanForm() {
+export function emptyProductForm() {
   return {
     model: '',
     product_type_key: 'fan',
+    series_id: null,
+    series_name: '',
+    template_id: 'product-default',
     mounting_style: '',
     discharge_type: '',
-    description_html: '',
-    features_html: '',
-    specifications_html: '',
+    description1_html: '',
+    description2_html: '',
+    description3_html: '',
     comments_html: '',
     show_rpm_band_shading: true,
     band_graph_background_color: '#ffffff',
@@ -65,28 +69,4 @@ export function initTheme() {
 
 export function toggleTheme(currentTheme) {
   applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
-}
-
-export function getChartTheme(currentTheme) {
-  if (currentTheme === 'light') {
-    return {
-      background: '#ffffff',
-      text: '#1e293b',
-      grid: '#d7dde8',
-      accent: '#2563eb',
-      efficiency: '#15803d',
-      permissible: '#dc2626',
-      neutralLine: '#6b7280'
-    };
-  }
-
-  return {
-    background: '#1a1b26',
-    text: '#c0caf5',
-    grid: '#3b4261',
-    accent: '#7aa2f7',
-    efficiency: '#4ade80',
-    permissible: '#f87171',
-    neutralLine: '#9ca3af'
-  };
 }

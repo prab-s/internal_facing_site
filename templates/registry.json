@@ -1,0 +1,41 @@
+{
+  "product_templates": [
+    {
+      "id": "product-compact",
+      "label": "Product Compact",
+      "type": "product",
+      "path": "templates/product/compact/template.html",
+      "stylesheet": "templates/product/compact/template.css"
+    },
+    {
+      "id": "product-default",
+      "label": "Product Default",
+      "type": "product",
+      "path": "templates/product/default/template.html",
+      "stylesheet": "templates/product/default/template.css"
+    },
+    {
+      "id": "product-lol",
+      "label": "Product Lol",
+      "type": "product",
+      "path": "templates/product/lol/template.html",
+      "stylesheet": "templates/product/lol/template.css"
+    }
+  ],
+  "series_templates": [
+    {
+      "id": "series-compact",
+      "label": "Series Compact",
+      "type": "series",
+      "path": "templates/series/compact/template.html",
+      "stylesheet": "templates/series/compact/template.css"
+    },
+    {
+      "id": "series-default",
+      "label": "Series Default",
+      "type": "series",
+      "path": "templates/series/default/template.html",
+      "stylesheet": "templates/series/default/template.css"
+    }
+  ]
+}

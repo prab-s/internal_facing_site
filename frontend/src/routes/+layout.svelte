@@ -97,14 +97,14 @@
           <div>
             <p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p>
           </div>
-          <span class="small text-body-secondary">{#if isActive('/entry')}Data Entry{:else if isActive('/catalogue')}Catalogue{:else if isActive('/map')}Graph View{:else if isActive('/setup')}Setup{:else}Overview{/if}</span>
+          <span class="small text-body-secondary">{#if isActive('/editor')}Editor{:else if isActive('/viewer')}Viewer{:else if isActive('/template-builder')}Template Builder{:else if isActive('/setup')}Setup{:else}Overview{/if}</span>
         </div>
 
         <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary">
           <a class={`nav-link ${isActive('/') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/">Home</a>
-          <a class={`nav-link ${isActive('/entry') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/entry">Data Entry</a>
-          <a class={`nav-link ${isActive('/catalogue') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/catalogue">Catalogue</a>
-          <a class={`nav-link ${isActive('/map') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/map">Graph View</a>
+          <a class={`nav-link ${isActive('/editor') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/editor">Editor</a>
+          <a class={`nav-link ${isActive('/viewer') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/viewer">Viewer</a>
+          <a class={`nav-link ${isActive('/template-builder') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/template-builder">Template Builder</a>
           <a class={`nav-link ${isActive('/setup') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/setup">Setup</a>
         </nav>
 

@@ -1,19 +1,23 @@
 import csv
 import datetime
 import hashlib
+import html
 import io
 import json
 import logging
 import os
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import zipfile
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +35,7 @@ from backend.database import (
 )
 from backend.models import (
     Product,
+    Series,
     RpmLine,
     RpmPoint,
     EfficiencyPoint,
@@ -47,6 +52,8 @@ from backend.schemas import (
     ProductUpdate,
     ProductResponse,
     GraphImageMaintenanceResponse,
+    MaintenanceJobResponse,
+    PdfMaintenanceResponse,
     RpmLineCreate,
     RpmLineUpdate,
     RpmLineResponse,
@@ -57,6 +64,7 @@ from backend.schemas import (
     AuthSessionResponse,
     AuthPasswordChangeRequest,
     CmsProductResponse,
+    CmsSeriesResponse,
     LoginRequest,
     UserCreate,
     UserPasswordUpdate,
@@ -65,18 +73,32 @@ from backend.schemas import (
     ProductImageResponse,
     ProductImageReorder,
     ProductTypeResponse,
+    ProductTypeCreate,
+    ProductTypeUpdate,
+    SeriesCreate,
+    SeriesResponse,
+    SeriesUpdate,
+    TemplateCreateRequest,
+    TemplateFileResponse,
+    TemplateFileUpdateRequest,
+    TemplateRegistryResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
+SERIES_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "series_graphs"
+SERIES_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "series_pdfs"
 BACKUP_OUTPUT_DIR = Path(DEFAULT_DATA_DIR) / "backups"
 WORDPRESS_SITE_DIR = Path("/app/wordpress_site")
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
+TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+TEMPLATE_REGISTRY_PATH = TEMPLATES_DIR / "registry.json"
 ECHARTS_RENDER_SCRIPT = FRONTEND_DIR / "scripts" / "render_product_graph.mjs"
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
+PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
@@ -92,6 +114,9 @@ WORDPRESS_DB_USER = os.getenv("WORDPRESS_DB_USER", "").strip()
 WORDPRESS_DB_PASSWORD = os.getenv("WORDPRESS_DB_PASSWORD", "").strip()
 WORDPRESS_DB_ROOT_PASSWORD = os.getenv("WORDPRESS_DB_ROOT_PASSWORD", "").strip()
 PASSWORD_HASH_ITERATIONS = 600_000
+POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
+MAINTENANCE_JOBS: dict[str, dict] = {}
+MAINTENANCE_JOBS_LOCK = threading.Lock()
 
 
 def sanitize_name(value: str) -> str:
@@ -99,8 +124,200 @@ def sanitize_name(value: str) -> str:
     return cleaned or "unknown"
 
 
+def template_token_slug(value: str) -> str:
+    return sanitize_name(value)
+
+
 def product_slug(product: Product) -> str:
     return sanitize_name(product.model)
+
+
+def series_slug(series: Series) -> str:
+    return sanitize_name(f"{series.product_type_key or 'series'}_{series.name}")
+
+
+def load_template_registry() -> dict:
+    if not TEMPLATE_REGISTRY_PATH.exists():
+        return {"product_templates": [], "series_templates": []}
+    with TEMPLATE_REGISTRY_PATH.open("r", encoding="utf-8") as handle:
+        registry = json.load(handle)
+    if not isinstance(registry, dict):
+        return {"product_templates": [], "series_templates": []}
+    return {
+        "product_templates": list(registry.get("product_templates") or []),
+        "series_templates": list(registry.get("series_templates") or []),
+    }
+
+
+def save_template_registry(registry: dict):
+    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+    TEMPLATE_REGISTRY_PATH.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+
+
+def template_type_directory(template_type: str) -> Path:
+    normalized = (template_type or "").strip().lower()
+    if normalized not in {"product", "series"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+    directory = TEMPLATES_DIR / normalized
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def infer_template_label_from_slug(template_type: str, slug: str) -> str:
+    prefix = "Product" if template_type == "product" else "Series"
+    readable = slug.replace("_", " ").replace("-", " ").strip()
+    readable = " ".join(word.capitalize() for word in readable.split()) or "Template"
+    return f"{prefix} {readable}"
+
+
+def sync_template_registry_with_disk() -> dict:
+    registry = load_template_registry()
+    synchronized: dict[str, list[dict]] = {"product_templates": [], "series_templates": []}
+
+    for template_type in ("product", "series"):
+        collection_name = f"{template_type}_templates"
+        existing_by_path = {}
+        existing_by_id = {}
+        for item in registry.get(collection_name, []):
+            if not isinstance(item, dict):
+                continue
+            item_path = str(item.get("path") or "").strip()
+            item_id = str(item.get("id") or "").strip()
+            if item_path:
+                existing_by_path[item_path] = dict(item)
+            if item_id:
+                existing_by_id[item_id] = dict(item)
+
+        template_dir = template_type_directory(template_type)
+        for child in sorted([entry for entry in template_dir.iterdir() if entry.is_dir()], key=lambda entry: entry.name):
+            template_path = child / "template.html"
+            if not template_path.is_file():
+                continue
+
+            relative_html_path = str(template_path.relative_to(TEMPLATES_DIR.parent))
+            relative_css_path = child / "template.css"
+            entry = (
+                existing_by_path.get(relative_html_path)
+                or existing_by_id.get(f"{template_type}-{sanitize_name(child.name)}")
+                or {}
+            )
+            template_id = str(entry.get("id") or f"{template_type}-{sanitize_name(child.name)}").strip()
+            label = str(entry.get("label") or infer_template_label_from_slug(template_type, child.name)).strip()
+            stylesheet = (
+                str(relative_css_path.relative_to(TEMPLATES_DIR.parent))
+                if relative_css_path.is_file()
+                else None
+            )
+            synchronized[collection_name].append(
+                {
+                    "id": template_id,
+                    "label": label,
+                    "type": template_type,
+                    "path": relative_html_path,
+                    "stylesheet": stylesheet,
+                }
+            )
+
+    if synchronized != registry:
+        save_template_registry(synchronized)
+    return synchronized
+
+
+def scaffold_blank_template(template_type: str, destination_dir: Path):
+    if template_type == "product":
+        html_content = """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{product.model}} | Product PDF</title>
+    <link rel="stylesheet" href="./template.css" />
+  </head>
+  <body>
+    <main class="sheet">
+      <h1>{{product.model}}</h1>
+      <div>{{product.description1_html}}</div>
+      <div>{{product.grouped_specs_table}}</div>
+      <img src="{{product.graph_image_url}}" alt="{{product.model}} graph" />
+    </main>
+  </body>
+</html>
+"""
+    else:
+        html_content = """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{series.name}} | Series PDF</title>
+    <link rel="stylesheet" href="./template.css" />
+  </head>
+  <body>
+    <main class="sheet">
+      <h1>{{series.name}}</h1>
+      <div>{{series.description1_html}}</div>
+      <img src="{{series.graph_image_url}}" alt="{{series.name}} graph" />
+      <div>{{series.products_summary_table}}</div>
+    </main>
+  </body>
+</html>
+"""
+    css_content = """.sheet { font-family: Arial, sans-serif; padding: 24px; }\nimg { max-width: 100%; height: auto; }\n"""
+    destination_dir.mkdir(parents=True, exist_ok=False)
+    (destination_dir / "template.html").write_text(html_content, encoding="utf-8")
+    (destination_dir / "template.css").write_text(css_content, encoding="utf-8")
+
+
+def validate_template_id(template_id: str | None, template_type: str) -> str | None:
+    normalized = (template_id or "").strip() or None
+    if normalized is None:
+        return None
+    registry = sync_template_registry_with_disk()
+    collection_name = "product_templates" if template_type == "product" else "series_templates"
+    valid_ids = {
+        str(item.get("id")).strip()
+        for item in registry.get(collection_name, [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    if normalized not in valid_ids:
+        raise HTTPException(status_code=400, detail=f"Unknown {template_type} template id: {normalized}")
+    return normalized
+
+
+def get_template_definition(template_id: str | None, template_type: str) -> dict | None:
+    normalized = validate_template_id(template_id, template_type)
+    if normalized is None:
+        return None
+    registry = sync_template_registry_with_disk()
+    collection_name = "product_templates" if template_type == "product" else "series_templates"
+    for item in registry.get(collection_name, []):
+        if isinstance(item, dict) and str(item.get("id")).strip() == normalized:
+            return item
+    return None
+
+
+def require_template_definition(template_id: str, template_type: str) -> dict:
+    template_definition = get_template_definition(template_id, template_type)
+    if template_definition is None:
+        raise HTTPException(status_code=404, detail="Template not found.")
+    return template_definition
+
+
+def find_chromium_binary() -> str:
+    candidates = [
+        os.getenv("CHROMIUM_BIN", "").strip(),
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    raise RuntimeError("No Chromium-compatible browser was found for PDF rendering.")
 
 
 def product_image_file_name(product: Product, index: int, extension: str) -> str:
@@ -112,6 +329,30 @@ def product_image_file_name(product: Product, index: int, extension: str) -> str
 
 def graph_file_name(product: Product) -> str:
     return f"graph_{product_slug(product)}.png"
+
+
+def product_pdf_file_name(product: Product) -> str:
+    return f"product_{product_slug(product)}.pdf"
+
+
+def product_pdf_path(product: Product) -> Path:
+    return PRODUCT_PDFS_DIR / product_pdf_file_name(product)
+
+
+def series_graph_file_name(series: Series) -> str:
+    return f"series_graph_{series_slug(series)}.png"
+
+
+def series_pdf_file_name(series: Series) -> str:
+    return f"series_{series_slug(series)}.pdf"
+
+
+def series_graph_path(series: Series) -> Path:
+    return SERIES_GRAPHS_DIR / series_graph_file_name(series)
+
+
+def series_pdf_path(series: Series) -> Path:
+    return SERIES_PDFS_DIR / series_pdf_file_name(series)
 
 
 def image_file_path(file_name: str) -> Path:
@@ -140,6 +381,21 @@ def get_product_type_by_key(db: Session, product_type_key: str | None) -> Produc
     if product_type is None:
         raise HTTPException(status_code=400, detail=f"Unknown product type: {desired_key}")
     return product_type
+
+
+def get_series_by_id(db: Session, series_id: int | None) -> Series | None:
+    if series_id is None:
+        return None
+    series = db.get(Series, series_id)
+    if series is None:
+        raise HTTPException(status_code=400, detail=f"Unknown series id: {series_id}")
+    return series
+
+
+def sync_product_series(product: Product, series: Series | None) -> None:
+    product.series = series
+    product.series_id = series.id if series else None
+    product.series_name = series.name if series else None
 
 
 def sync_product_parameter_groups(product: Product, groups_payload: list[dict]):
@@ -238,6 +494,406 @@ def sync_product_image_files(product: Product):
             temp_path.rename(final_path)
         image.file_name = final_name
         image.sort_order = index - 1
+
+
+def render_richtext_html(value: str | None) -> str:
+    return value or '<p class="placeholder">Not provided.</p>'
+
+
+def render_grouped_specs_table(product: Product) -> str:
+    groups = sorted(product.parameter_groups, key=lambda group: (group.sort_order, group.id))
+    if not groups:
+        return '<p class="placeholder">No grouped specifications available.</p>'
+
+    sections: list[str] = []
+    for group in groups:
+        rows: list[str] = []
+        for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+            if parameter.value_string not in {None, ""}:
+                value_html = html.escape(parameter.value_string)
+            elif parameter.value_number is not None:
+                number_value = f"{parameter.value_number:g}"
+                value_html = html.escape(f"{number_value} {parameter.unit}".strip())
+            else:
+                value_html = "—"
+            rows.append(
+                "<tr>"
+                f"<th>{html.escape(parameter.parameter_name)}</th>"
+                f"<td>{value_html}</td>"
+                "</tr>"
+            )
+
+        sections.append(
+            '<section class="spec-group">'
+            f"<h3>{html.escape(group.group_name)}</h3>"
+            '<table class="spec-table"><tbody>'
+            + "".join(rows)
+            + "</tbody></table></section>"
+        )
+
+    return "".join(sections)
+
+
+def format_parameter_value(parameter: ProductParameter) -> str:
+    if parameter.value_string not in {None, ""}:
+        return parameter.value_string
+    if parameter.value_number is not None:
+        number_value = f"{parameter.value_number:g}"
+        return f"{number_value} {parameter.unit}".strip()
+    return ""
+
+
+def build_grouped_spec_token_map(product: Product) -> dict[str, str]:
+    replacements: dict[str, str] = {}
+    groups = sorted(product.parameter_groups, key=lambda group: (group.sort_order, group.id))
+    for group in groups:
+        group_key = template_token_slug(group.group_name or "")
+        if not group_key:
+            continue
+        for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+            parameter_key = template_token_slug(parameter.parameter_name or "")
+            if not parameter_key:
+                continue
+            replacements[f"{{{{spec.{group_key}.{parameter_key}}}}}"] = html.escape(format_parameter_value(parameter))
+    return replacements
+
+
+def render_image_gallery_html(product: Product) -> str:
+    ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
+    if not ordered_images:
+        return '<p class="placeholder">No product images available.</p>'
+
+    items: list[str] = []
+    for index, image in enumerate(ordered_images, start=1):
+        image_path = image_file_path(image.file_name)
+        if not image_path.is_file():
+            continue
+        items.append(
+            '<figure class="gallery-item">'
+            f'<img src="{image_path.as_uri()}" alt="{html.escape(product.model)} image {index}" class="gallery-image" />'
+            f'<figcaption>{html.escape("Primary image" if index == 1 else f"Image {index}")}</figcaption>'
+            "</figure>"
+        )
+
+    return "".join(items) if items else '<p class="placeholder">No product images available.</p>'
+
+
+def build_product_pdf_html(product: Product) -> str:
+    template_definition = get_template_definition(product.template_id or "product-default", "product")
+    if template_definition is None:
+        raise RuntimeError("No product PDF template is configured.")
+
+    project_root = Path(__file__).resolve().parents[1]
+    template_path = project_root / template_definition["path"]
+    stylesheet_path = project_root / template_definition.get("stylesheet", "")
+    if not template_path.is_file():
+        raise RuntimeError(f"Product template file is missing: {template_path}")
+
+    html_template = template_path.read_text(encoding="utf-8")
+    stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
+    html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
+
+    primary_image_uri = ""
+    if product.product_images:
+        first_image = sorted(product.product_images, key=lambda img: (img.sort_order, img.id))[0]
+        first_image_path = image_file_path(first_image.file_name)
+        if first_image_path.is_file():
+            primary_image_uri = first_image_path.as_uri()
+
+    graph_image_uri = ""
+    if product.graph_image_path:
+        graph_path = Path(product.graph_image_path)
+        if graph_path.is_file():
+            graph_image_uri = graph_path.as_uri()
+
+    replacements = {
+        "{{product.model}}": html.escape(product.model or ""),
+        "{{product.product_type_label}}": html.escape(product.product_type_label or ""),
+        "{{product.series_name}}": html.escape(product.series_name_value or ""),
+        "{{product.mounting_style}}": html.escape(product.mounting_style or "—"),
+        "{{product.discharge_type}}": html.escape(product.discharge_type or "—"),
+        "{{product.description1_html}}": render_richtext_html(product.description1_html),
+        "{{product.description2_html}}": render_richtext_html(product.description2_html),
+        "{{product.description3_html}}": render_richtext_html(product.description3_html),
+        "{{product.description_html}}": render_richtext_html(product.description1_html),
+        "{{product.features_html}}": render_richtext_html(product.description2_html),
+        "{{product.specifications_html}}": render_richtext_html(product.description3_html),
+        "{{product.comments_html}}": render_richtext_html(product.comments_html),
+        "{{product.grouped_specs_table}}": render_grouped_specs_table(product),
+        "{{product.image_gallery}}": render_image_gallery_html(product),
+        "{{product.primary_product_image_url}}": primary_image_uri,
+        "{{product.graph_image_url}}": graph_image_uri,
+    }
+    replacements.update(build_grouped_spec_token_map(product))
+
+    rendered = html_template
+    for token, value in replacements.items():
+        rendered = rendered.replace(token, value)
+    return rendered
+
+
+def generate_product_pdf(product: Product) -> Path:
+    browser_binary = find_chromium_binary()
+    output_path = product_pdf_path(product)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    html_content = build_product_pdf_html(product)
+
+    with tempfile.TemporaryDirectory(prefix="product-pdf-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        html_path = temp_dir / "document.html"
+        html_path.write_text(html_content, encoding="utf-8")
+
+        result = subprocess.run(
+            [
+                browser_binary,
+                "--headless",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--allow-file-access-from-files",
+                "--print-to-pdf-no-header",
+                f"--print-to-pdf={output_path}",
+                html_path.as_uri(),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not output_path.is_file():
+            raise RuntimeError((result.stderr or result.stdout or "Chromium failed to render the PDF.").strip())
+
+    return output_path
+
+
+def get_template_label(template_id: str | None, template_type: str) -> str:
+    template_definition = get_template_definition(template_id, template_type)
+    return str(template_definition.get("label")) if template_definition else "Default"
+
+
+def series_graph_rule_label() -> str:
+    return "Highest and lowest line from each product"
+
+
+def render_series_products_summary_table(series: Series) -> str:
+    ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
+    if not ordered_products:
+        return '<p class="placeholder">No products are linked to this series yet.</p>'
+
+    candidate_columns: list[tuple[str, str, str]] = []
+    seen_columns: set[tuple[str, str]] = set()
+    for product in ordered_products:
+        for group in sorted(product.parameter_groups, key=lambda item: (item.sort_order, item.id)):
+            for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+                key = (group.group_name or "", parameter.parameter_name or "")
+                if not key[0] or not key[1] or key in seen_columns:
+                    continue
+                seen_columns.add(key)
+                candidate_columns.append((key[0], key[1], f"{key[0]}: {key[1]}"))
+                if len(candidate_columns) >= 6:
+                    break
+            if len(candidate_columns) >= 6:
+                break
+        if len(candidate_columns) >= 6:
+            break
+
+    def parameter_value_map(product: Product) -> dict[tuple[str, str], str]:
+        values: dict[tuple[str, str], str] = {}
+        for group in product.parameter_groups:
+            for parameter in group.parameters:
+                values[(group.group_name or "", parameter.parameter_name or "")] = format_parameter_value(parameter) or "—"
+        return values
+
+    header_cells = [
+        "<th>Model</th>",
+        "<th>Mounting</th>",
+        "<th>Discharge</th>",
+        *[f"<th>{html.escape(label)}</th>" for _, _, label in candidate_columns],
+    ]
+
+    body_rows: list[str] = []
+    for product in ordered_products:
+        values = parameter_value_map(product)
+        data_cells = [
+            f"<td>{html.escape(product.model or '—')}</td>",
+            f"<td>{html.escape(product.mounting_style or '—')}</td>",
+            f"<td>{html.escape(product.discharge_type or '—')}</td>",
+            *[
+                f"<td>{html.escape(values.get((group_name, parameter_name), '—'))}</td>"
+                for group_name, parameter_name, _ in candidate_columns
+            ],
+        ]
+        body_rows.append("<tr>" + "".join(data_cells) + "</tr>")
+
+    return (
+        '<table class="series-summary-table"><thead><tr>'
+        + "".join(header_cells)
+        + "</tr></thead><tbody>"
+        + "".join(body_rows)
+        + "</tbody></table>"
+    )
+
+
+def build_series_graph_payload(series: Series) -> dict | None:
+    product_type = series.product_type
+    if not product_type or not product_type.supports_graph:
+        return None
+
+    synthetic_lines: list[dict] = []
+    synthetic_points: list[dict] = []
+    next_line_id = 1
+    next_point_id = 1
+
+    ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
+    for product in ordered_products:
+        ordered_lines = sorted(product.rpm_lines or [], key=lambda line: line.rpm)
+        if not ordered_lines:
+            continue
+        selected_lines = [ordered_lines[0]]
+        if len(ordered_lines) > 1 and ordered_lines[-1].id != ordered_lines[0].id:
+            selected_lines.append(ordered_lines[-1])
+
+        for index, line in enumerate(selected_lines):
+            display_label = (
+                f"{product.model} low"
+                if len(selected_lines) > 1 and index == 0
+                else f"{product.model} high"
+                if len(selected_lines) > 1
+                else f"{product.model}"
+            )
+            synthetic_line_id = next_line_id
+            next_line_id += 1
+            synthetic_lines.append(
+                {
+                    "id": synthetic_line_id,
+                    "product_id": product.id,
+                    "rpm": synthetic_line_id,
+                    "display_label": display_label,
+                    "band_color": line.band_color,
+                }
+            )
+            for point in sorted(line.points or [], key=lambda item: item.airflow):
+                synthetic_points.append(
+                    {
+                        "id": next_point_id,
+                        "product_id": product.id,
+                        "rpm_line_id": synthetic_line_id,
+                        "rpm": synthetic_line_id,
+                        "airflow": point.airflow,
+                        "pressure": point.pressure,
+                    }
+                )
+                next_point_id += 1
+
+    if not synthetic_points:
+        return None
+
+    return {
+        "title": f"{series.name} Series Graph",
+        "showRpmBandShading": False,
+        "graphConfig": build_graph_config(product_type),
+        "graphStyle": None,
+        "rpmLines": synthetic_lines,
+        "rpmPoints": synthetic_points,
+        "efficiencyPoints": [],
+    }
+
+
+def generate_series_graph(series: Series) -> Path:
+    payload = build_series_graph_payload(series)
+    if payload is None:
+        raise RuntimeError("No graph-capable products with line data are linked to this series.")
+
+    final_path = series_graph_path(series)
+    tmp_path = SERIES_GRAPHS_DIR / f"tmp_{series_graph_file_name(series)}"
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    result = subprocess.run(
+        ["node", str(ECHARTS_RENDER_SCRIPT), str(tmp_path)],
+        cwd=str(FRONTEND_DIR),
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "ECharts graph render failed: "
+            + (result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}")
+        )
+
+    shutil.move(tmp_path, final_path)
+    return final_path
+
+
+def build_series_pdf_html(series: Series) -> str:
+    template_definition = get_template_definition(series.template_id or "series-default", "series")
+    if template_definition is None:
+        raise RuntimeError("No series PDF template is configured.")
+
+    project_root = Path(__file__).resolve().parents[1]
+    template_path = project_root / template_definition["path"]
+    stylesheet_path = project_root / template_definition.get("stylesheet", "")
+    if not template_path.is_file():
+        raise RuntimeError(f"Series template file is missing: {template_path}")
+
+    html_template = template_path.read_text(encoding="utf-8")
+    stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
+    html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
+
+    graph_uri = ""
+    graph_path = series_graph_path(series)
+    if graph_path.is_file():
+        graph_uri = graph_path.as_uri()
+
+    replacements = {
+        "{{series.name}}": html.escape(series.name or ""),
+        "{{series.product_type_label}}": html.escape(series.product_type_label or ""),
+        "{{series.description1_html}}": render_richtext_html(series.description1_html),
+        "{{series.description2_html}}": render_richtext_html(series.description2_html),
+        "{{series.description3_html}}": render_richtext_html(series.description3_html),
+        "{{series.comments_html}}": render_richtext_html(series.comments_html),
+        "{{series.template_label}}": html.escape(get_template_label(series.template_id, "series")),
+        "{{series.product_count}}": html.escape(str(len(series.products or []))),
+        "{{series.graph_rule_label}}": html.escape(series_graph_rule_label()),
+        "{{series.graph_image_url}}": graph_uri,
+        "{{series.products_summary_table}}": render_series_products_summary_table(series),
+    }
+
+    rendered = html_template
+    for token, value in replacements.items():
+        rendered = rendered.replace(token, value)
+    return rendered
+
+
+def generate_series_pdf(series: Series) -> Path:
+    browser_binary = find_chromium_binary()
+    output_path = series_pdf_path(series)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    html_content = build_series_pdf_html(series)
+
+    with tempfile.TemporaryDirectory(prefix="series-pdf-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        html_path = temp_dir / "document.html"
+        html_path.write_text(html_content, encoding="utf-8")
+
+        result = subprocess.run(
+            [
+                browser_binary,
+                "--headless",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--allow-file-access-from-files",
+                "--print-to-pdf-no-header",
+                f"--print-to-pdf={output_path}",
+                html_path.as_uri(),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not output_path.is_file():
+            raise RuntimeError((result.stderr or result.stdout or "Chromium failed to render the PDF.").strip())
+
+    return output_path
 
 
 def delete_product_image_file(image: ProductImage):
@@ -362,9 +1018,6 @@ def product_matches_parameter_filters(product: Product, parameter_filters: list[
     return True
 
 
-fan_matches_parameter_filters = product_matches_parameter_filters
-
-
 def sync_graph_image(product: Product, rpm_lines: list[RpmLine], efficiency_points: list[EfficiencyPoint]):
     rpm_point_list = sorted(
         [point for rpm_line in rpm_lines for point in rpm_line.points],
@@ -479,9 +1132,6 @@ def require_product(db: Session, product_id: int) -> Product:
     if not product:
         raise HTTPException(404, "Product not found")
     return product
-
-
-require_fan = require_product
 
 
 def hash_password(password: str) -> str:
@@ -601,27 +1251,162 @@ def run_command(command: list[str], *, input_bytes: bytes | None = None):
     return result
 
 
-def create_backup_bundle() -> Path:
+def postgres_tool_database_url() -> str:
+    return postgres_cli_database_url()
+
+
+def container_runtime_binary() -> str | None:
+    for candidate in ("podman", "docker"):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    return None
+
+
+def run_postgres_client_tool(arguments: list[str], *, input_bytes: bytes | None = None):
+    tool_name = arguments[0]
+    if shutil.which(tool_name):
+        direct_command = [tool_name, postgres_tool_database_url(), *arguments[1:]]
+        return run_command(direct_command, input_bytes=input_bytes)
+
+    runtime = container_runtime_binary()
+    if not runtime:
+        raise RuntimeError(
+            f"{tool_name} is not installed and no container runtime (podman/docker) is available for fallback."
+        )
+
+    container_command = [
+        runtime,
+        "run",
+        "--rm",
+        "--network",
+        "host",
+        "-e",
+        f"DATABASE_URL={postgres_tool_database_url()}",
+        POSTGRES_CLIENT_IMAGE,
+        "sh",
+        "-lc",
+        " ".join([tool_name, '"$DATABASE_URL"'] + [shlex.quote(arg) for arg in arguments[1:]]),
+    ]
+    return run_command(container_command, input_bytes=input_bytes)
+
+
+def utc_now_iso() -> str:
+    return datetime.datetime.now(datetime.UTC).isoformat()
+
+
+def create_maintenance_job(job_type: str) -> dict:
+    job_id = uuid4().hex
+    job = {
+        "id": job_id,
+        "job_type": job_type,
+        "status": "queued",
+        "progress_message": "Queued",
+        "progress_current": None,
+        "progress_total": None,
+        "progress_percent": None,
+        "error": None,
+        "result_message": None,
+        "result_download_url": None,
+        "created_at": utc_now_iso(),
+        "started_at": None,
+        "completed_at": None,
+    }
+    with MAINTENANCE_JOBS_LOCK:
+        MAINTENANCE_JOBS[job_id] = job
+    return job
+
+
+def update_maintenance_job(job_id: str, **updates):
+    with MAINTENANCE_JOBS_LOCK:
+        job = MAINTENANCE_JOBS.get(job_id)
+        if not job:
+            return
+        job.update(updates)
+
+
+def get_maintenance_job_or_404(job_id: str) -> dict:
+    with MAINTENANCE_JOBS_LOCK:
+        job = MAINTENANCE_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Maintenance job not found")
+        return dict(job)
+
+
+def serialize_maintenance_job(job: dict) -> MaintenanceJobResponse:
+    return MaintenanceJobResponse(**job)
+
+
+def start_maintenance_job(job_type: str, work):
+    job = create_maintenance_job(job_type)
+
+    def runner():
+        update_maintenance_job(job["id"], status="running", started_at=utc_now_iso(), progress_message="Starting")
+
+        def progress(message: str, current: int | None = None, total: int | None = None):
+            updates = {"progress_message": message}
+            if current is not None:
+                updates["progress_current"] = current
+            if total is not None:
+                updates["progress_total"] = total
+            if current is not None and total not in (None, 0):
+                updates["progress_percent"] = round((current / total) * 100, 1)
+            elif total == 0:
+                updates["progress_percent"] = 100.0
+            update_maintenance_job(job["id"], **updates)
+
+        try:
+            result = work(progress) or {}
+            result_updates = dict(result)
+            result_updates.setdefault("progress_message", result.get("progress_message") or "Completed")
+            result_updates.setdefault("result_message", result.get("result_message"))
+            result_updates.setdefault("result_download_url", result.get("result_download_url"))
+            result_updates["status"] = "completed"
+            result_updates["completed_at"] = utc_now_iso()
+            update_maintenance_job(job["id"], **result_updates)
+        except Exception as exc:
+            logger.exception("Maintenance job failed: %s", job_type)
+            update_maintenance_job(
+                job["id"],
+                status="failed",
+                error=str(exc),
+                progress_message="Failed",
+                completed_at=utc_now_iso(),
+            )
+
+    thread = threading.Thread(target=runner, daemon=True, name=f"maintenance-{job['id']}")
+    thread.start()
+    return job
+
+
+def create_backup_bundle(progress_callback=None) -> Path:
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     archive_name = f"fan_graphs_backup_{timestamp}.zip"
     archive_path = BACKUP_OUTPUT_DIR / archive_name
+    backup_stages_total = 8
 
     with tempfile.TemporaryDirectory() as staging_dir_raw:
         staging_dir = Path(staging_dir_raw)
         postgres_dump_path = staging_dir / "postgres_dump.sql"
-        postgres_dump = run_command(
-            ["pg_dump", postgres_cli_database_url(), "--no-owner", "--no-privileges"]
+        if progress_callback:
+            progress_callback("Creating PostgreSQL dump", 1, backup_stages_total)
+        postgres_dump = run_postgres_client_tool(
+            ["pg_dump", "--no-owner", "--no-privileges"]
         )
         postgres_dump_path.write_bytes(postgres_dump.stdout)
 
-        for media_dir in [PRODUCT_IMAGES_DIR, PRODUCT_GRAPHS_DIR, PRODUCT_PDFS_DIR]:
+        for offset, media_dir in enumerate([PRODUCT_IMAGES_DIR, PRODUCT_GRAPHS_DIR, PRODUCT_PDFS_DIR, SERIES_GRAPHS_DIR, SERIES_PDFS_DIR], start=2):
             if media_dir.is_dir():
+                if progress_callback:
+                    progress_callback(f"Collecting {media_dir.name}", offset, backup_stages_total)
                 target_dir = staging_dir / "data" / media_dir.name
                 target_dir.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(media_dir, target_dir, dirs_exist_ok=True)
 
         if wordpress_available():
             wordpress_dump_path = staging_dir / "wordpress_dump.sql"
+            if progress_callback:
+                progress_callback("Creating WordPress database dump", 7, backup_stages_total)
             wordpress_dump = run_command(
                 [
                     "mariadb-dump",
@@ -637,6 +1422,8 @@ def create_backup_bundle() -> Path:
 
             wp_content_dir = WORDPRESS_SITE_DIR / "wp-content"
             if wp_content_dir.is_dir():
+                if progress_callback:
+                    progress_callback("Collecting WordPress content", 7, backup_stages_total)
                 wordpress_dir = staging_dir / "wordpress"
                 wordpress_dir.mkdir(parents=True, exist_ok=True)
                 with tarfile.open(wordpress_dir / "wp-content.tar", "w") as tar:
@@ -653,7 +1440,9 @@ def create_backup_bundle() -> Path:
                     "- postgres_dump.sql : PostgreSQL database dump",
                     "- data/product_images : uploaded product images (if present)",
                     "- data/product_graphs : generated graph images (if present)",
-                    "- data/product_pdfs : future PDF assets (if present)",
+                    "- data/product_pdfs : generated product PDF assets (if present)",
+                    "- data/series_graphs : generated series graph images (if present)",
+                    "- data/series_pdfs : generated series PDF assets (if present)",
                     "- wordpress_dump.sql : WordPress MariaDB dump (if present)",
                     "- wordpress/wp-content.tar : WordPress content snapshot (if present)",
                 ]
@@ -661,6 +1450,8 @@ def create_backup_bundle() -> Path:
             encoding="utf-8",
         )
 
+        if progress_callback:
+            progress_callback("Creating backup archive", 8, backup_stages_total)
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for root, _, files in os.walk(staging_dir):
                 for file_name in files:
@@ -670,11 +1461,14 @@ def create_backup_bundle() -> Path:
     return archive_path
 
 
-def restore_backup_bundle(archive_bytes: bytes):
+def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
+    restore_stages_total = 9
     with tempfile.TemporaryDirectory() as staging_dir_raw:
         staging_dir = Path(staging_dir_raw)
         archive_path = staging_dir / "upload.zip"
         archive_path.write_bytes(archive_bytes)
+        if progress_callback:
+            progress_callback("Extracting backup archive", 1, restore_stages_total)
         with zipfile.ZipFile(archive_path, "r") as archive:
             archive.extractall(staging_dir)
 
@@ -682,24 +1476,29 @@ def restore_backup_bundle(archive_bytes: bytes):
         if not postgres_dump_path.is_file():
             raise RuntimeError("Backup archive does not contain postgres_dump.sql")
 
-        run_command(
+        if progress_callback:
+            progress_callback("Resetting PostgreSQL schema", 2, restore_stages_total)
+        run_postgres_client_tool(
             [
                 "psql",
-                postgres_cli_database_url(),
                 "-v",
                 "ON_ERROR_STOP=1",
                 "-c",
-                f"DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO {POSTGRES_USER}; GRANT ALL ON SCHEMA public TO public;",
+                f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid(); DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO {POSTGRES_USER}; GRANT ALL ON SCHEMA public TO public;",
             ]
         )
-        run_command(
-            ["psql", postgres_cli_database_url(), "-v", "ON_ERROR_STOP=1"],
+        if progress_callback:
+            progress_callback("Importing PostgreSQL dump", 3, restore_stages_total)
+        run_postgres_client_tool(
+            ["psql", "-v", "ON_ERROR_STOP=1"],
             input_bytes=postgres_dump_path.read_bytes(),
         )
 
         wordpress_dump_path = staging_dir / "wordpress_dump.sql"
         wordpress_content_tar = staging_dir / "wordpress" / "wp-content.tar"
         if wordpress_available() and wordpress_dump_path.is_file():
+            if progress_callback:
+                progress_callback("Restoring WordPress database", 4, restore_stages_total)
             run_command(
                 [
                     "mariadb",
@@ -731,18 +1530,31 @@ def restore_backup_bundle(archive_bytes: bytes):
             )
 
         if wordpress_content_tar.is_file():
+            if progress_callback:
+                progress_callback("Restoring WordPress content", 5, restore_stages_total)
             wp_content_dir = WORDPRESS_SITE_DIR / "wp-content"
             shutil.rmtree(wp_content_dir, ignore_errors=True)
             with tarfile.open(wordpress_content_tar, "r") as tar:
                 tar.extractall(WORDPRESS_SITE_DIR)
 
-        for media_dir in ["product_images", "product_graphs", "product_pdfs"]:
+        for offset, media_dir in enumerate(["product_images", "product_graphs", "product_pdfs", "series_graphs", "series_pdfs"], start=4):
+            if progress_callback:
+                progress_callback(f"Restoring {media_dir}", min(offset, restore_stages_total - 1), restore_stages_total)
             source_dir = staging_dir / "data" / media_dir
             target_dir = Path(DEFAULT_DATA_DIR) / media_dir
             shutil.rmtree(target_dir, ignore_errors=True)
             target_dir.mkdir(parents=True, exist_ok=True)
             if source_dir.is_dir():
                 shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+
+
+def run_post_restore_schema_prep(progress_callback=None):
+    if progress_callback:
+        progress_callback("Running database migrations", 9, 9)
+    from backend.db_management import prepare_configured_databases
+
+    prepare_configured_databases()
+    init_db()
 
 
 OPENAPI_TAGS = [
@@ -773,6 +1585,14 @@ OPENAPI_TAGS = [
     {
         "name": "Product Types",
         "description": "Product type definitions and seeded parameter preset libraries.",
+    },
+    {
+        "name": "Series",
+        "description": "Series records that group products within a product type.",
+    },
+    {
+        "name": "Templates",
+        "description": "Controlled-list template definitions used for product and series PDF/layout selection.",
     },
     {
         "name": "RPM Lines",
@@ -862,6 +1682,388 @@ def swagger_ui():
 @app.get("/api/product-types", response_model=list[ProductTypeResponse], dependencies=[Depends(get_current_user)], tags=["Product Types"])
 def list_product_types(db: Session = Depends(get_db)):
     return db.query(ProductType).order_by(ProductType.label).all()
+
+
+@app.get(
+    "/api/cms/product-types",
+    response_model=list[ProductTypeResponse],
+    dependencies=[Depends(require_cms_token)],
+    tags=["Customer CMS"],
+    summary="List customer-facing product types",
+    description="Read-only product-type feed for the WordPress customer-facing site.",
+)
+def list_cms_product_types(db: Session = Depends(get_db)):
+    return db.query(ProductType).order_by(ProductType.label).all()
+
+
+@app.post("/api/product-types", response_model=ProductTypeResponse, dependencies=[Depends(get_current_user)], tags=["Product Types"])
+def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
+    label = (body.label or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="Product type label is required.")
+
+    key = sanitize_name((body.key or "").strip() or label)
+    if not key:
+        raise HTTPException(status_code=400, detail="Product type key is required.")
+
+    existing = db.query(ProductType).filter(ProductType.key == key).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="A product type with that key already exists.")
+
+    product_type = ProductType(
+        key=key,
+        label=label,
+        supports_graph=bool(body.supports_graph),
+        graph_kind=(body.graph_kind or "").strip() or None,
+        supports_graph_overlays=bool(body.supports_graph_overlays),
+        supports_band_graph_style=bool(body.supports_band_graph_style),
+        graph_line_value_label=(body.graph_line_value_label or "").strip() or None,
+        graph_line_value_unit=(body.graph_line_value_unit or "").strip() or None,
+        graph_x_axis_label=(body.graph_x_axis_label or "").strip() or None,
+        graph_x_axis_unit=(body.graph_x_axis_unit or "").strip() or None,
+        graph_y_axis_label=(body.graph_y_axis_label or "").strip() or None,
+        graph_y_axis_unit=(body.graph_y_axis_unit or "").strip() or None,
+    )
+    db.add(product_type)
+    db.commit()
+    db.refresh(product_type)
+    return product_type
+
+
+@app.put("/api/product-types/{product_type_id}", response_model=ProductTypeResponse, dependencies=[Depends(get_current_user)], tags=["Product Types"])
+def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Session = Depends(get_db)):
+    product_type = db.query(ProductType).filter(ProductType.id == product_type_id).first()
+    if not product_type:
+        raise HTTPException(status_code=404, detail="Product type not found.")
+
+    updates = body.model_dump(exclude_unset=True)
+
+    if "key" in updates:
+        new_key = sanitize_name((updates.get("key") or "").strip())
+        if not new_key:
+            raise HTTPException(status_code=400, detail="Product type key cannot be blank.")
+        duplicate = db.query(ProductType).filter(ProductType.key == new_key, ProductType.id != product_type_id).first()
+        if duplicate:
+            raise HTTPException(status_code=400, detail="A product type with that key already exists.")
+        product_type.key = new_key
+
+    if "label" in updates:
+        label = (updates.get("label") or "").strip()
+        if not label:
+            raise HTTPException(status_code=400, detail="Product type label cannot be blank.")
+        product_type.label = label
+
+    for field in [
+        "supports_graph",
+        "supports_graph_overlays",
+        "supports_band_graph_style",
+        "graph_kind",
+        "graph_line_value_label",
+        "graph_line_value_unit",
+        "graph_x_axis_label",
+        "graph_x_axis_unit",
+        "graph_y_axis_label",
+        "graph_y_axis_unit",
+    ]:
+        if field in updates:
+            value = updates[field]
+            if isinstance(value, str):
+                value = value.strip() or None
+            setattr(product_type, field, value)
+
+    db.commit()
+    db.refresh(product_type)
+    return product_type
+
+
+@app.get("/api/templates", response_model=TemplateRegistryResponse, dependencies=[Depends(get_current_user)], tags=["Templates"], summary="List available templates")
+def list_templates():
+    return sync_template_registry_with_disk()
+
+
+@app.post("/api/templates/refresh", response_model=TemplateRegistryResponse, dependencies=[Depends(get_current_user)], tags=["Templates"], summary="Refresh template registry from disk")
+def refresh_templates():
+    return sync_template_registry_with_disk()
+
+
+@app.post("/api/templates", response_model=TemplateRegistryResponse, dependencies=[Depends(get_current_user)], tags=["Templates"], summary="Create a new template")
+def create_template(body: TemplateCreateRequest):
+    template_type = (body.template_type or "").strip().lower()
+    template_dir = template_type_directory(template_type)
+    registry = sync_template_registry_with_disk()
+    collection_name = f"{template_type}_templates"
+    existing_ids = {str(item.get("id")).strip() for item in registry.get(collection_name, []) if isinstance(item, dict)}
+
+    label = (body.label or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="Template label is required.")
+
+    template_id = (body.template_id or "").strip() or f"{template_type}-{sanitize_name(label)}"
+    if template_id in existing_ids:
+        raise HTTPException(status_code=400, detail="A template with that id already exists.")
+
+    directory_slug = sanitize_name(template_id.replace(f"{template_type}-", "", 1))
+    destination_dir = template_dir / directory_slug
+    if destination_dir.exists():
+        raise HTTPException(status_code=400, detail="A template directory with that name already exists.")
+
+    source_template_id = (body.source_template_id or "").strip() or None
+    if source_template_id:
+        source_definition = get_template_definition(source_template_id, template_type)
+        if source_definition is None:
+            raise HTTPException(status_code=404, detail="Source template not found.")
+        source_path = Path(__file__).resolve().parents[1] / source_definition["path"]
+        if not source_path.is_file():
+            raise HTTPException(status_code=404, detail="Source template files are missing on disk.")
+        shutil.copytree(source_path.parent, destination_dir)
+    else:
+        scaffold_blank_template(template_type, destination_dir)
+
+    registry = sync_template_registry_with_disk()
+    for item in registry.get(collection_name, []):
+        if item.get("path") == str((destination_dir / "template.html").relative_to(Path(__file__).resolve().parents[1])):
+            item["id"] = template_id
+            item["label"] = label
+            item["type"] = template_type
+            break
+    save_template_registry(registry)
+    return sync_template_registry_with_disk()
+
+
+@app.delete("/api/templates/{template_type}/{template_id}", response_model=TemplateRegistryResponse, dependencies=[Depends(get_current_user)], tags=["Templates"], summary="Delete a template")
+def delete_template(template_type: str, template_id: str, db: Session = Depends(get_db)):
+    normalized_type = (template_type or "").strip().lower()
+    registry = sync_template_registry_with_disk()
+    collection_name = f"{normalized_type}_templates"
+    entry = next(
+        (
+            item
+            for item in registry.get(collection_name, [])
+            if isinstance(item, dict) and str(item.get("id")).strip() == template_id
+        ),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Template not found.")
+
+    if normalized_type == "product":
+        in_use = db.query(Product).filter(Product.template_id == template_id).count()
+    elif normalized_type == "series":
+        in_use = db.query(Series).filter(Series.template_id == template_id).count()
+    else:
+        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+
+    if in_use:
+        raise HTTPException(status_code=400, detail="Template is still assigned. Reassign records before deleting it.")
+
+    template_path = Path(__file__).resolve().parents[1] / str(entry.get("path") or "")
+    template_dir = template_path.parent
+    if template_dir.exists():
+        shutil.rmtree(template_dir, ignore_errors=True)
+
+    registry[collection_name] = [
+        item
+        for item in registry.get(collection_name, [])
+        if not (isinstance(item, dict) and str(item.get("id")).strip() == template_id)
+    ]
+    save_template_registry(registry)
+    return sync_template_registry_with_disk()
+
+
+@app.get(
+    "/api/templates/{template_type}/{template_id}/files",
+    response_model=TemplateFileResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Templates"],
+    summary="Load template source files",
+)
+def get_template_files(template_type: str, template_id: str):
+    normalized_type = (template_type or "").strip().lower()
+    if normalized_type not in {"product", "series"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+
+    template_definition = require_template_definition(template_id, normalized_type)
+    template_path = Path(__file__).resolve().parents[1] / str(template_definition.get("path") or "")
+    if not template_path.is_file():
+        raise HTTPException(status_code=404, detail="Template HTML file is missing.")
+
+    stylesheet_path = None
+    stylesheet_value = template_definition.get("stylesheet")
+    if stylesheet_value:
+        stylesheet_path = Path(__file__).resolve().parents[1] / str(stylesheet_value)
+
+    return TemplateFileResponse(
+        id=str(template_definition.get("id") or template_id),
+        label=str(template_definition.get("label") or template_id),
+        type=normalized_type,
+        html_path=str(template_path.relative_to(Path(__file__).resolve().parents[1])),
+        css_path=str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1])) if stylesheet_path and stylesheet_path.exists() else str(stylesheet_value or "") or None,
+        html_content=template_path.read_text(encoding="utf-8"),
+        css_content=stylesheet_path.read_text(encoding="utf-8") if stylesheet_path and stylesheet_path.is_file() else "",
+    )
+
+
+@app.put(
+    "/api/templates/{template_type}/{template_id}/files",
+    response_model=TemplateFileResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Templates"],
+    summary="Save template source files",
+)
+def update_template_files(template_type: str, template_id: str, body: TemplateFileUpdateRequest):
+    normalized_type = (template_type or "").strip().lower()
+    if normalized_type not in {"product", "series"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+
+    template_definition = require_template_definition(template_id, normalized_type)
+    template_path = Path(__file__).resolve().parents[1] / str(template_definition.get("path") or "")
+    if not template_path.is_file():
+        raise HTTPException(status_code=404, detail="Template HTML file is missing.")
+
+    stylesheet_value = str(template_definition.get("stylesheet") or "").strip()
+    stylesheet_path = (Path(__file__).resolve().parents[1] / stylesheet_value) if stylesheet_value else (template_path.parent / "template.css")
+
+    template_path.write_text(body.html_content, encoding="utf-8")
+    stylesheet_path.parent.mkdir(parents=True, exist_ok=True)
+    stylesheet_path.write_text(body.css_content or "", encoding="utf-8")
+
+    registry = sync_template_registry_with_disk()
+    collection_name = f"{normalized_type}_templates"
+    for item in registry.get(collection_name, []):
+        if isinstance(item, dict) and str(item.get("id") or "").strip() == template_id:
+            item["stylesheet"] = str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1]))
+            break
+    save_template_registry(registry)
+
+    return TemplateFileResponse(
+        id=str(template_definition.get("id") or template_id),
+        label=str(template_definition.get("label") or template_id),
+        type=normalized_type,
+        html_path=str(template_path.relative_to(Path(__file__).resolve().parents[1])),
+        css_path=str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1])),
+        html_content=body.html_content,
+        css_content=body.css_content or "",
+    )
+
+
+@app.get("/api/series", response_model=list[SeriesResponse], dependencies=[Depends(get_current_user)], tags=["Series"], summary="List series")
+def list_series(
+    db: Session = Depends(get_db),
+    product_type_key: Optional[str] = Query(None),
+):
+    q = db.query(Series).options(joinedload(Series.product_type))
+    if product_type_key:
+        q = q.join(ProductType).filter(ProductType.key == product_type_key)
+    return q.order_by(Series.name).all()
+
+
+@app.post("/api/series", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Create a series")
+def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
+    product_type = get_product_type_by_key(db, body.product_type_key)
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Series name is required.")
+    existing = (
+        db.query(Series)
+        .filter(Series.product_type_id == product_type.id, Series.name.ilike(name))
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="A series with that name already exists for this product type.")
+    series = Series(
+        product_type_id=product_type.id,
+        name=name,
+        description1_html=body.description1_html,
+        description2_html=body.description2_html,
+        description3_html=body.description3_html,
+        comments_html=body.comments_html,
+        template_id=validate_template_id(body.template_id, "series"),
+    )
+    series.product_type = product_type
+    db.add(series)
+    db.commit()
+    db.refresh(series)
+    return series
+
+
+@app.put("/api/series/{series_id}", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Update a series")
+def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_db)):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(status_code=404, detail="Series not found")
+    updates = body.model_dump(exclude_unset=True)
+    if "product_type_key" in updates:
+        product_type = get_product_type_by_key(db, updates.pop("product_type_key"))
+        series.product_type_id = product_type.id
+        series.product_type = product_type
+    if "name" in updates:
+        name = (updates["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Series name is required.")
+        existing = (
+            db.query(Series)
+            .filter(
+                Series.product_type_id == series.product_type_id,
+                Series.name.ilike(name),
+                Series.id != series_id,
+            )
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=400, detail="A series with that name already exists for this product type.")
+        series.name = name
+    for field in ("description1_html", "description2_html", "description3_html", "comments_html"):
+        if field in updates:
+            setattr(series, field, updates[field])
+    if "template_id" in updates:
+        series.template_id = validate_template_id(updates["template_id"], "series")
+    for product in series.products:
+        product.series_name = series.name
+    db.commit()
+    db.refresh(series)
+    return series
+
+
+@app.delete("/api/series/{series_id}", dependencies=[Depends(get_current_user)], tags=["Series"], summary="Delete a series")
+def delete_series(series_id: int, db: Session = Depends(get_db)):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(status_code=404, detail="Series not found")
+    for product in list(series.products):
+        sync_product_series(product, None)
+    db.delete(series)
+    db.commit()
+    return {"deleted": series_id}
+
+
+@app.post("/api/series/{series_id}/graph-image/refresh", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Generate a series graph image")
+def refresh_series_graph_image(series_id: int, db: Session = Depends(get_db)):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(status_code=404, detail="Series not found")
+    db.refresh(series)
+    try:
+        generate_series_graph(series)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to generate series graph: {exc}") from exc
+    db.refresh(series)
+    return series
+
+
+@app.post("/api/series/{series_id}/pdf/refresh", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Generate a series PDF")
+def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(status_code=404, detail="Series not found")
+    db.refresh(series)
+    try:
+        if series.product_type and series.product_type.supports_graph:
+            generate_series_graph(series)
+        generate_series_pdf(series)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
+    db.refresh(series)
+    return series
 
 
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
@@ -990,16 +2192,21 @@ def update_band_graph_style_settings(body: BandGraphStyleSettings, db: Session =
 
 
 @app.get("/api/cms/fans", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], include_in_schema=False)
-@app.get("/api/cms/products", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing products", description="Read-only product catalogue feed for the WordPress customer-facing site. Supports search, product type, and grouped-parameter filtering.")
+@app.get("/api/cms/products", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing products", description="Read-only product catalogue feed for the WordPress customer-facing site. Supports search, product type, series, and grouped-parameter filtering.")
 def list_cms_products(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
     product_type_key: Optional[str] = Query(None),
+    series_id: Optional[int] = Query(None),
+    series_name: Optional[str] = Query(None),
+    mounting_style: Optional[str] = Query(None),
+    discharge_type: Optional[str] = Query(None),
     parameter_filters: Optional[str] = Query(None),
 ):
     parsed_parameter_filters = parse_parameter_filters(parameter_filters)
     q = db.query(Product).options(
         joinedload(Product.product_type),
+        joinedload(Product.series),
         selectinload(Product.product_images),
         selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
     )
@@ -1008,6 +2215,14 @@ def list_cms_products(
         q = q.filter(Product.model.ilike(s))
     if product_type_key:
         q = q.join(ProductType).filter(ProductType.key == product_type_key)
+    if series_id is not None:
+        q = q.filter(Product.series_id == series_id)
+    if series_name:
+        q = q.filter(Product.series_name.ilike(f"%{series_name}%"))
+    if mounting_style:
+        q = q.filter(Product.mounting_style == mounting_style)
+    if discharge_type:
+        q = q.filter(Product.discharge_type == discharge_type)
     results = q.order_by(Product.model).all()
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
@@ -1021,14 +2236,48 @@ def get_cms_product(product_id: int, db: Session = Depends(get_db)):
     return product
 
 
+@app.get("/api/cms/series", response_model=list[CmsSeriesResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing series", description="Read-only series feed for the WordPress customer-facing site. Supports product type filtering.")
+def list_cms_series(
+    db: Session = Depends(get_db),
+    product_type_key: Optional[str] = Query(None),
+):
+    q = db.query(Series).options(
+        joinedload(Series.product_type),
+        selectinload(Series.products).joinedload(Product.product_type),
+        selectinload(Series.products).selectinload(Product.product_images),
+    )
+    if product_type_key:
+        q = q.join(ProductType).filter(ProductType.key == product_type_key)
+    return q.order_by(Series.name).all()
+
+
+@app.get("/api/cms/series/{series_id}", response_model=CmsSeriesResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="Get one customer-facing series", description="Returns a single series record, including its linked products, for the WordPress customer-facing site.")
+def get_cms_series(series_id: int, db: Session = Depends(get_db)):
+    series = (
+        db.query(Series)
+        .options(
+            joinedload(Series.product_type),
+            selectinload(Series.products).joinedload(Product.product_type),
+            selectinload(Series.products).selectinload(Product.product_images),
+        )
+        .filter(Series.id == series_id)
+        .first()
+    )
+    if not series:
+        raise HTTPException(status_code=404, detail="Series not found")
+    return series
+
+
 # --- Products CRUD ---
 @app.get("/api/fans", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
-@app.get("/api/products", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"], summary="List internal products", description="Primary internal catalogue endpoint used by the Svelte staff application.")
+@app.get("/api/products", response_model=list[ProductResponse], dependencies=[Depends(get_current_user)], tags=["Products"], summary="List internal products", description="Primary internal catalogue endpoint used by the Svelte staff application. Supports search, product type, series, and grouped-parameter filtering.")
 def list_products(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None, description="Search model"),
     model: Optional[str] = Query(None),
     product_type_key: Optional[str] = Query(None),
+    series_id: Optional[int] = Query(None),
+    series_name: Optional[str] = Query(None),
     mounting_style: Optional[str] = Query(None),
     discharge_type: Optional[str] = Query(None),
     parameter_filters: Optional[str] = Query(None),
@@ -1036,6 +2285,7 @@ def list_products(
     parsed_parameter_filters = parse_parameter_filters(parameter_filters)
     q = db.query(Product).options(
         joinedload(Product.product_type),
+        joinedload(Product.series),
         selectinload(Product.product_images),
         selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
     )
@@ -1046,6 +2296,10 @@ def list_products(
         q = q.filter(Product.model.ilike(f"%{model}%"))
     if product_type_key:
         q = q.join(ProductType).filter(ProductType.key == product_type_key)
+    if series_id is not None:
+        q = q.filter(Product.series_id == series_id)
+    if series_name:
+        q = q.filter(Product.series_name.ilike(f"%{series_name}%"))
     if mounting_style:
         q = q.filter(Product.mounting_style == mounting_style)
     if discharge_type:
@@ -1059,13 +2313,19 @@ def list_products(
 def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     product_data = body.model_dump()
     product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
+    series = get_series_by_id(db, product_data.pop("series_id", None))
     parameter_groups = product_data.pop("parameter_groups", [])
     product_data["band_graph_background_color"] = normalize_color_value(product_data.get("band_graph_background_color"))
     product_data["band_graph_label_text_color"] = normalize_color_value(product_data.get("band_graph_label_text_color"))
     product_data["band_graph_permissible_label_color"] = normalize_color_value(product_data.get("band_graph_permissible_label_color"))
+    product_data["template_id"] = validate_template_id(product_data.get("template_id"), "product")
     product_data["product_type_id"] = product_type.id
+    if series is not None and series.product_type_id != product_type.id:
+        raise HTTPException(status_code=400, detail="Selected series does not belong to the chosen product type.")
+    product_data["series_name"] = series.name if series is not None else (product_data.get("series_name") or None)
     product = Product(**product_data)
     product.product_type = product_type
+    sync_product_series(product, series)
     db.add(product)
     db.flush()
     sync_product_parameter_groups(product, parameter_groups)
@@ -1091,10 +2351,19 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
     product = require_product(db, product_id)
     updates = body.model_dump(exclude_unset=True)
+    next_product_type = product.product_type
     if "product_type_key" in updates:
         product_type = get_product_type_by_key(db, updates.pop("product_type_key"))
         product.product_type_id = product_type.id
         product.product_type = product_type
+        next_product_type = product_type
+        if product.series is not None and product.series.product_type_id != product_type.id:
+            sync_product_series(product, None)
+    if "series_id" in updates:
+        series = get_series_by_id(db, updates.pop("series_id"))
+        if series is not None and next_product_type is not None and series.product_type_id != next_product_type.id:
+            raise HTTPException(status_code=400, detail="Selected series does not belong to the chosen product type.")
+        sync_product_series(product, series)
     if "parameter_groups" in updates:
         sync_product_parameter_groups(product, updates.pop("parameter_groups"))
     for k, v in updates.items():
@@ -1102,8 +2371,12 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
             setattr(product, k, normalize_color_value(v))
         elif k == "band_graph_faded_opacity":
             setattr(product, k, None if v is None else max(0, min(1, float(v))))
+        elif k == "template_id":
+            setattr(product, k, validate_template_id(v, "product"))
         else:
             setattr(product, k, v)
+    if product.series is not None:
+        product.series_name = product.series.name
     sync_product_image_files(product)
     sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
     db.commit()
@@ -1358,6 +2631,21 @@ def refresh_product_graph_image(product_id: int, db: Session = Depends(get_db)):
     return product
 
 
+@app.post("/api/fans/{product_id}/pdf/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], include_in_schema=False)
+@app.post("/api/products/{product_id}/pdf/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Generate a product PDF")
+def refresh_product_pdf(product_id: int, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
+    if product.product_type and product.product_type.supports_graph:
+        refresh_graph_for_product(db, product)
+    try:
+        generate_product_pdf(product)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to generate product PDF: {exc}") from exc
+    db.commit()
+    db.refresh(product)
+    return product
+
+
 @app.post("/api/maintenance/graph-images/regenerate-all", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def regenerate_all_graph_images(db: Session = Depends(get_db)):
     products = db.query(Product).all()
@@ -1371,6 +2659,62 @@ def regenerate_all_graph_images(db: Session = Depends(get_db)):
     )
 
 
+@app.post("/api/maintenance/jobs/graph-images/regenerate-all", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Start regenerating all graph images")
+def start_regenerate_all_graph_images_job():
+    def work(progress):
+        with SessionLocal() as db:
+            products = db.query(Product).all()
+            total = len(products)
+            for index, product in enumerate(products, start=1):
+                progress(f"Generating graph {index} of {total}: {product.model}", index, total)
+                refresh_graph_for_product(db, product)
+            db.commit()
+        return {
+            "result_message": "Graph images regenerated.",
+            "products_processed": total,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("regenerate_all_graph_images", work))
+
+
+@app.post("/api/maintenance/product-pdfs/regenerate-all", response_model=PdfMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def regenerate_all_product_pdfs(db: Session = Depends(get_db)):
+    products = db.query(Product).options(joinedload(Product.product_type)).all()
+    processed = 0
+    for product in products:
+        if product.product_type and product.product_type.supports_graph:
+            refresh_graph_for_product(db, product)
+        generate_product_pdf(product)
+        processed += 1
+    db.commit()
+    return PdfMaintenanceResponse(
+        message="Product PDFs regenerated.",
+        products_processed=processed,
+    )
+
+
+@app.post("/api/maintenance/jobs/product-pdfs/regenerate-all", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Start regenerating all product PDFs")
+def start_regenerate_all_product_pdfs_job():
+    def work(progress):
+        with SessionLocal() as db:
+            products = db.query(Product).options(joinedload(Product.product_type)).all()
+            total = len(products)
+            processed = 0
+            for index, product in enumerate(products, start=1):
+                progress(f"Generating PDF {index} of {total}: {product.model}", index, total)
+                if product.product_type and product.product_type.supports_graph:
+                    refresh_graph_for_product(db, product)
+                generate_product_pdf(product)
+                processed += 1
+            db.commit()
+        return {
+            "result_message": "Product PDFs regenerated.",
+            "products_processed": processed,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("regenerate_all_product_pdfs", work))
+
+
 @app.delete("/api/maintenance/graph-images", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 def delete_all_graph_images(db: Session = Depends(get_db)):
     deleted_files = clear_all_graph_images(db)
@@ -1380,6 +2724,24 @@ def delete_all_graph_images(db: Session = Depends(get_db)):
         products_processed=0,
         files_deleted=deleted_files,
     )
+
+
+@app.post("/api/maintenance/jobs/graph-images/clear", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Start clearing all graph images")
+def start_delete_all_graph_images_job():
+    def work(progress):
+        with SessionLocal() as db:
+            progress("Clearing stored graph image files", 0, 1)
+            deleted_files = clear_all_graph_images(db)
+            db.commit()
+        return {
+            "result_message": "Graph image files deleted and product graph paths cleared.",
+            "files_deleted": deleted_files,
+            "progress_current": 1,
+            "progress_total": 1,
+            "progress_percent": 100.0,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("clear_all_graph_images", work))
 
 
 @app.get("/api/maintenance/backups/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"])
@@ -1396,6 +2758,23 @@ def download_backup_bundle():
     )
 
 
+@app.post("/api/maintenance/jobs/backups/create", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start creating a backup bundle")
+def start_backup_bundle_job():
+    def work(progress):
+        archive_path = create_backup_bundle(progress)
+        return {
+            "result_message": f"Backup bundle created: {archive_path.name}",
+            "result_download_url": f"/api/maintenance/jobs/{job['id']}/download",
+            "result_file_path": str(archive_path),
+            "progress_current": 1,
+            "progress_total": 1,
+            "progress_percent": 100.0,
+        }
+
+    job = start_maintenance_job("create_backup_bundle", work)
+    return serialize_maintenance_job(job)
+
+
 @app.post("/api/maintenance/backups/restore", dependencies=[Depends(require_admin_user)], tags=["Maintenance"])
 async def restore_backup_bundle_endpoint(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".zip"):
@@ -1408,6 +2787,49 @@ async def restore_backup_bundle_endpoint(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Unable to restore backup bundle: {exc}") from exc
 
     return {"message": "Backup bundle restored successfully."}
+
+
+@app.post("/api/maintenance/jobs/backups/restore", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start restoring a backup bundle")
+async def start_restore_backup_bundle_job(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Please upload a .zip backup bundle.")
+
+    archive_bytes = await file.read()
+
+    def work(progress):
+        restore_backup_bundle(archive_bytes, progress)
+        run_post_restore_schema_prep(progress)
+        return {
+            "result_message": "Backup bundle restored successfully.",
+            "progress_current": 1,
+            "progress_total": 1,
+            "progress_percent": 100.0,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("restore_backup_bundle", work))
+
+
+@app.get("/api/maintenance/jobs/{job_id}", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Get maintenance job status")
+def get_maintenance_job(job_id: str):
+    return serialize_maintenance_job(get_maintenance_job_or_404(job_id))
+
+
+@app.get("/api/maintenance/jobs/{job_id}/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Download a completed backup bundle")
+def download_maintenance_job_file(job_id: str):
+    job = get_maintenance_job_or_404(job_id)
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Maintenance job is not complete yet.")
+    file_path = job.get("result_file_path")
+    if not file_path:
+        raise HTTPException(status_code=404, detail="This maintenance job does not have a downloadable file.")
+    archive_path = Path(file_path)
+    if not archive_path.is_file():
+        raise HTTPException(status_code=404, detail="The generated file is no longer available.")
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=archive_path.name,
+    )
 
 
 @app.get("/api/fans/{product_id}/product-images", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"], include_in_schema=False)
@@ -1498,6 +2920,30 @@ def serve_product_graph(file_name: str):
     return FileResponse(file_path)
 
 
+@app.get("/api/media/product_pdfs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_product_pdf(file_name: str):
+    file_path = PRODUCT_PDFS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Product PDF not found")
+    return FileResponse(file_path, media_type="application/pdf")
+
+
+@app.get("/api/media/series_graphs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_series_graph(file_name: str):
+    file_path = SERIES_GRAPHS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Series graph not found")
+    return FileResponse(file_path)
+
+
+@app.get("/api/media/series_pdfs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_series_pdf(file_name: str):
+    file_path = SERIES_PDFS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Series PDF not found")
+    return FileResponse(file_path, media_type="application/pdf")
+
+
 @app.get(
     "/api/cms/media/product_images/{file_name}",
     tags=["Customer Media"],
@@ -1522,6 +2968,45 @@ def serve_cms_product_graph(file_name: str):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product graph not found")
     return FileResponse(file_path)
+
+
+@app.get(
+    "/api/cms/media/product_pdfs/{file_name}",
+    tags=["Customer Media"],
+    summary="Get a public customer product PDF",
+    description="Public product PDF endpoint intended for customer-facing downloads.",
+)
+def serve_cms_product_pdf(file_name: str):
+    file_path = PRODUCT_PDFS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Product PDF not found")
+    return FileResponse(file_path, media_type="application/pdf")
+
+
+@app.get(
+    "/api/cms/media/series_graphs/{file_name}",
+    tags=["Customer Media"],
+    summary="Get a public customer series graph image",
+    description="Public series graph endpoint intended for rendered customer-facing pages and downloads.",
+)
+def serve_cms_series_graph(file_name: str):
+    file_path = SERIES_GRAPHS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Series graph not found")
+    return FileResponse(file_path)
+
+
+@app.get(
+    "/api/cms/media/series_pdfs/{file_name}",
+    tags=["Customer Media"],
+    summary="Get a public customer series PDF",
+    description="Public series PDF endpoint intended for customer-facing downloads.",
+)
+def serve_cms_series_pdf(file_name: str):
+    file_path = SERIES_PDFS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Series PDF not found")
+    return FileResponse(file_path, media_type="application/pdf")
 
 
 # --- Frontend static serving ---

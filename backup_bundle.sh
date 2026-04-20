@@ -3,15 +3,29 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+timestamp() {
+  date +"[%A, %d/%m/%Y %H:%M:%S]"
+}
+
+log() {
+  echo
+  timestamp
+  echo "$*"
+}
+
 ENV_FILE="${ENV_FILE:-.env.deploy}"
 COMPOSE_FILE="${COMPOSE_FILE:-deploy-compose.yml}"
 COMPOSE_BIN="${COMPOSE_BIN:-podman compose}"
 PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-docker.io/library/postgres:16}"
-OUTPUT_DIR="${OUTPUT_DIR:-backups}"
+OUTPUT_DIR="${OUTPUT_DIR:-data/backups}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 ARCHIVE_NAME="${ARCHIVE_NAME:-fan_graphs_backup_${TIMESTAMP}.zip}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 PG_TOOL_DATABASE_URL=""
+PODMAN_BIN="${PODMAN_BIN:-podman}"
+POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-fan-graphs-postgres}"
+WORDPRESS_DB_CONTAINER_NAME="${WORDPRESS_DB_CONTAINER_NAME:-fan-graphs-wordpress-db}"
+WORDPRESS_CONTAINER_NAME="${WORDPRESS_CONTAINER_NAME:-fan-graphs-wordpress}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -79,7 +93,8 @@ if [[ "$BACKUP_MODE" == "auto" ]]; then
 fi
 
 dump_postgres_via_compose() {
-  ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" exec -T postgres pg_dump \
+  log "Creating PostgreSQL dump via compose service"
+  ${PODMAN_BIN} exec -i "${POSTGRES_CONTAINER_NAME}" pg_dump \
     -U "${POSTGRES_USER}" \
     -d "${POSTGRES_DB}" \
     --no-owner \
@@ -87,6 +102,7 @@ dump_postgres_via_compose() {
 }
 
 dump_postgres_via_url() {
+  log "Creating PostgreSQL dump via direct URL"
   if [[ -z "${DATABASE_URL:-}" ]]; then
     echo "DATABASE_URL is required for URL-mode backup."
     exit 1
@@ -104,26 +120,30 @@ print(url.render_as_string(hide_password=False))
 PY
 )"
 
-  podman run --rm --network host \
+  ${PODMAN_BIN} run --rm --network host \
     -e DATABASE_URL="${PG_TOOL_DATABASE_URL}" \
     "${PG_CLIENT_IMAGE}" \
     sh -lc 'pg_dump "$DATABASE_URL" --no-owner --no-privileges' > "${DB_DUMP_PATH}"
 }
 
 backup_optional_wordpress_data() {
-  if ! podman ps --format '{{.Names}}' | grep -qx 'fan-graphs-wordpress'; then
+  if ! ${PODMAN_BIN} ps --format '{{.Names}}' | grep -qx "${WORDPRESS_CONTAINER_NAME}"; then
+    log "No running WordPress stack detected; skipping WordPress backup"
     return 0
   fi
 
-  if podman ps --format '{{.Names}}' | grep -qx 'fan-graphs-wordpress-db'; then
-    ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" exec -T wordpress_db mariadb-dump \
+  log "Backing up WordPress data"
+  if ${PODMAN_BIN} ps --format '{{.Names}}' | grep -qx "${WORDPRESS_DB_CONTAINER_NAME}"; then
+    echo "  Dumping WordPress MariaDB"
+    ${PODMAN_BIN} exec -i "${WORDPRESS_DB_CONTAINER_NAME}" mariadb-dump \
       -u "${WORDPRESS_DB_USER}" \
       "-p${WORDPRESS_DB_PASSWORD}" \
       "${WORDPRESS_DB_NAME}" > "${STAGING_DIR}/wordpress_dump.sql"
   fi
 
   mkdir -p "${STAGING_DIR}/wordpress"
-  ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" exec -T wordpress \
+  echo "  Capturing wp-content"
+  ${PODMAN_BIN} exec -i "${WORDPRESS_CONTAINER_NAME}" \
     tar -C /var/www/html -cf - wp-content > "${STAGING_DIR}/wordpress/wp-content.tar"
 }
 
@@ -143,7 +163,9 @@ esac
 
 mkdir -p "$STAGING_DIR/data"
 
-for media_dir in product_images product_graphs product_pdfs; do
+log "Collecting media assets"
+for media_dir in product_images product_graphs product_pdfs series_graphs series_pdfs; do
+  echo "  ${media_dir}"
   if [[ -d "data/${media_dir}" ]]; then
     cp -a "data/${media_dir}" "$STAGING_DIR/data/${media_dir}"
   fi
@@ -182,6 +204,6 @@ with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as arc
 print(archive_path)
 PY
 
-echo
+log "Backup written"
 echo "Backup written to:"
 echo "  ${OUTPUT_DIR}/${ARCHIVE_NAME}"

@@ -68,6 +68,109 @@ export async function getProductTypes() {
   return r.json();
 }
 
+export async function createProductType(body) {
+  const r = await apiFetch('/product-types', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function updateProductType(id, body) {
+  const r = await apiFetch(`/product-types/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function getTemplates() {
+  const r = await apiFetch('/templates');
+  return r.json();
+}
+
+export async function refreshTemplates() {
+  const r = await apiFetch('/templates/refresh', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function createTemplate(body) {
+  const r = await apiFetch('/templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function deleteTemplate(templateType, templateId) {
+  const r = await apiFetch(`/templates/${templateType}/${encodeURIComponent(templateId)}`, {
+    method: 'DELETE'
+  });
+  return r.json();
+}
+
+export async function getTemplateFiles(templateType, templateId) {
+  const r = await apiFetch(`/templates/${templateType}/${encodeURIComponent(templateId)}/files`);
+  return r.json();
+}
+
+export async function updateTemplateFiles(templateType, templateId, body) {
+  const r = await apiFetch(`/templates/${templateType}/${encodeURIComponent(templateId)}/files`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function getSeries(params = {}) {
+  const sp = new URLSearchParams(params).toString();
+  const r = await apiFetch('/series' + (sp ? '?' + sp : ''));
+  return r.json();
+}
+
+export async function createSeries(body) {
+  const r = await apiFetch('/series', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function updateSeries(id, body) {
+  const r = await apiFetch(`/series/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function deleteSeries(id) {
+  const r = await apiFetch(`/series/${id}`, { method: 'DELETE' });
+  return r.json();
+}
+
+export async function refreshSeriesGraphImage(id) {
+  const r = await apiFetch(`/series/${id}/graph-image/refresh`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function refreshSeriesPdf(id) {
+  const r = await apiFetch(`/series/${id}/pdf/refresh`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function getProduct(id) {
   const r = await apiFetch(`/products/${id}`);
   return r.json();
@@ -199,6 +302,13 @@ export async function refreshGraphImage(productId) {
   return r.json();
 }
 
+export async function refreshProductPdf(productId) {
+  const r = await apiFetch(`/products/${productId}/pdf/refresh`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function getProductChartData(productId) {
   const [rpmLines, rpmPoints, efficiencyPoints] = await Promise.all([
     getRpmLines(productId),
@@ -305,9 +415,37 @@ export async function regenerateAllGraphImages() {
   return r.json();
 }
 
+export async function startRegenerateAllGraphImagesJob() {
+  const r = await apiFetch('/maintenance/jobs/graph-images/regenerate-all', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function regenerateAllProductPdfs() {
+  const r = await apiFetch('/maintenance/product-pdfs/regenerate-all', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function startRegenerateAllProductPdfsJob() {
+  const r = await apiFetch('/maintenance/jobs/product-pdfs/regenerate-all', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function deleteAllGraphImages() {
   const r = await apiFetch('/maintenance/graph-images', {
     method: 'DELETE'
+  });
+  return r.json();
+}
+
+export async function startDeleteAllGraphImagesJob() {
+  const r = await apiFetch('/maintenance/jobs/graph-images/clear', {
+    method: 'POST'
   });
   return r.json();
 }
@@ -323,6 +461,13 @@ export async function downloadBackupBundle() {
   };
 }
 
+export async function startBackupBundleJob() {
+  const r = await apiFetch('/maintenance/jobs/backups/create', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function restoreBackupBundle(file) {
   const formData = new FormData();
   formData.append('file', file);
@@ -331,6 +476,32 @@ export async function restoreBackupBundle(file) {
     body: formData
   });
   return r.json();
+}
+
+export async function startRestoreBackupBundleJob(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await apiFetch('/maintenance/jobs/backups/restore', {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function getMaintenanceJob(jobId) {
+  const r = await apiFetch(`/maintenance/jobs/${jobId}`);
+  return r.json();
+}
+
+export async function downloadMaintenanceJobFile(jobId) {
+  const r = await apiFetch(`/maintenance/jobs/${jobId}/download`);
+  const blob = await r.blob();
+  const disposition = r.headers.get('content-disposition') || '';
+  const filenameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
+  return {
+    blob,
+    filename: filenameMatch?.[1] || 'internal_facing_backup.zip'
+  };
 }
 
 export async function getUsers() {

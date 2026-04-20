@@ -22,6 +22,7 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        chromium \
         fontconfig \
         fonts-dejavu-core \
         mariadb-client \
@@ -34,6 +35,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY backend/ /app/backend/
 COPY alembic.ini /app/alembic.ini
 COPY alembic/ /app/alembic/
+COPY templates/ /app/templates/
 COPY start_app.sh /app/start_app.sh
 RUN mkdir -p /app/data
 RUN mkdir -p /app/frontend/src/lib /app/frontend/scripts

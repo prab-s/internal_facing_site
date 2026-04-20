@@ -1,0 +1,1 @@
+import{a5 as y,k as _,ar as u,as as o,h as e,a2 as g,am as i,a0 as l,_ as n,a1 as m,an as p}from"./jEMt36Lc.js";function C(r,d){let t=null,E=e;var s;if(e){t=m;for(var a=p(document.head);a!==null&&(a.nodeType!==g||a.data!==r);)a=i(a);if(a===null)l(!1);else{var f=i(a);a.remove(),n(f)}}e||(s=document.head.appendChild(y()));try{_(()=>d(s),u|o)}finally{E&&(l(!0),n(t))}}export{C as h};

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{product.model}} | Product PDF</title>
+    <link rel="stylesheet" href="./template.css" />
+  </head>
+  <body class="product-template vt-sheet-body">
+    <main class="page">
+      <header class="topbar">
+        <div class="topbar__title">
+          {{product.mounting_style}} {{product.discharge_type}}
+        </div>
+        <div class="topbar__model">{{product.series_name}} {{product.model}}</div>
+      </header>
+
+      <section class="intro-grid">
+        <aside class="left-rail">
+          <div class="hero-card">
+            <img
+              src="{{product.primary_product_image_url}}"
+              alt="{{product.model}}"
+              class="hero-image"
+            />
+          </div>
+
+          <section class="spec-card">
+            <h2 class="spec-card__title">Impeller</h2>
+            <dl class="spec-list">
+              <div class="spec-list__row">
+                <dt>Series</dt>
+                <dd>{{product.series_name}}</dd>
+              </div>
+              <div class="spec-list__row">
+                <dt>Mounting</dt>
+                <dd>{{product.mounting_style}}</dd>
+              </div>
+              <div class="spec-list__row">
+                <dt>Discharge</dt>
+                <dd>{{product.discharge_type}}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="spec-card">
+            <h2 class="spec-card__title">Motor</h2>
+            <dl class="spec-list">
+              <div class="spec-list__row">
+                <dt>Series</dt>
+                <dd>{{product.series_name}}</dd>
+              </div>
+              <div class="spec-list__row">
+                <dt>Mounting</dt>
+                <dd>{{product.mounting_style}}</dd>
+              </div>
+              <div class="spec-list__row">
+                <dt>Discharge</dt>
+                <dd>{{product.discharge_type}}</dd>
+              </div>
+            </dl>
+          </section>
+          
+          <section class="spec-card">
+            <h2 class="spec-card__title">Fan</h2>
+            <dl class="spec-list">
+              <div class="spec-list__row">
+                <dt>Series</dt>
+                <dd>{{product.series_name}}</dd>
+              </div>
+              <div class="spec-list__row">
+                <dt>Mounting</dt>
+                <dd>{{product.mounting_style}}</dd>
+              </div>
+              <div class="spec-list__row">
+                <dt>Discharge</dt>
+                <dd>{{product.discharge_type}}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="spec-card">
+            <h2 class="spec-card__title">Comments</h2>
+            <div class="compact-richtext">{{product.comments_html}}</div>
+          </section>
+        </aside>
+
+        <section class="main-panel">
+          <div class="copy-block">
+            <div class="copy-section">
+              <h3>Description1</h3>
+              <div class="richtext">{{product.description1_html}}</div>
+            </div>
+
+          <section class="graph-panel">
+            <img
+              src="{{product.graph_image_url}}"
+              alt="{{product.model}} graph"
+              class="graph-image"
+            />
+          </section>
+        </section>
+      </section>
+
+      <section class="performance-band">
+        <div class="performance-table">{{product.grouped_specs_table}}</div>
+      </section>
+
+      <section class="lower-grid">
+        <section class="drawing-panel">
+          <div class="drawing-panel__inner">
+            <img
+              src="{{product.primary_product_image_url}}"
+              alt="{{product.model}} detailed view"
+              class="drawing-image"
+            />
+          </div>
+        </section>
+
+        <section class="gallery-panel">
+          <div class="gallery-grid">{{product.image_gallery}}</div>
+        </section>
+      </section>
+
+      <footer class="footer-area">
+        <div class="footer-brand-row">
+          <div class="footer-brand footer-brand--left">{{product.product_type_label}}</div>
+          <div class="footer-site">{{product.series_name}}</div>
+          <div class="footer-brand footer-brand--right">{{product.mounting_style}}</div>
+        </div>
+
+        <div class="footer-contact-row">
+          <div class="footer-contact">
+            {{product.product_type_label}} &middot; {{product.series_name}} &middot; {{product.discharge_type}}
+          </div>
+          <div class="footer-badge">{{product.model}}</div>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>

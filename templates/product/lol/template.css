@@ -1,0 +1,241 @@
+:root {
+  --page-background: #e7ecf2;
+  --sheet-background: #ffffff;
+  --sheet-border: #d4dbe3;
+  --panel-border: #dde4ec;
+  --muted: #66758a;
+  --text: #16202c;
+  --accent: #204c72;
+  --accent-soft: #edf4fb;
+  --shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--page-background);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.45;
+}
+
+body.product-template {
+  padding: 24px;
+}
+
+.sheet {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px;
+  background: var(--sheet-background);
+  border: 1px solid var(--sheet-border);
+  box-shadow: var(--shadow);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: 28px;
+  align-items: stretch;
+  margin-bottom: 28px;
+}
+
+.hero__content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 22px 24px;
+  background: linear-gradient(135deg, var(--accent-soft), #ffffff 60%);
+  border: 1px solid var(--panel-border);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.hero__title {
+  margin: 0;
+  font-size: 2.4rem;
+  line-height: 1.05;
+}
+
+.hero__series {
+  margin: 8px 0 18px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.hero__meta-item {
+  min-width: 150px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.hero__meta-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero__meta-value {
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.hero__image-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: 22px;
+  background: #f8fafc;
+  border: 1px solid var(--panel-border);
+}
+
+.hero__image,
+.graph-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 18px;
+}
+
+.panel {
+  padding: 20px 22px;
+  border: 1px solid var(--panel-border);
+  background: #ffffff;
+}
+
+.panel--full {
+  margin-bottom: 18px;
+}
+
+.panel__title {
+  margin: 0 0 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.richtext > :first-child {
+  margin-top: 0;
+}
+
+.richtext > :last-child {
+  margin-bottom: 0;
+}
+
+.table-slot,
+.image-gallery-slot,
+.graph-frame {
+  min-height: 180px;
+}
+
+.placeholder {
+  margin: 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.spec-group + .spec-group {
+  margin-top: 18px;
+}
+
+.spec-group h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  color: var(--accent);
+}
+
+.spec-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.spec-table th,
+.spec-table td {
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.spec-table th {
+  width: 36%;
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.image-gallery-slot {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.gallery-item {
+  margin: 0;
+}
+
+.gallery-image {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  border: 1px solid var(--panel-border);
+  background: #f8fafc;
+}
+
+.gallery-item figcaption {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+@media print {
+  body.product-template {
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .sheet {
+    max-width: none;
+    border: 0;
+    box-shadow: none;
+  }
+}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{series.name}} | Series PDF</title>
+    <link rel="stylesheet" href="./template.css" />
+  </head>
+  <body class="series-template series-template--compact">
+    <main class="sheet">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">{{series.product_type_label}}</p>
+          <h1>{{series.name}}</h1>
+          <div class="richtext">{{series.description1_html}}</div>
+        </div>
+        <div class="meta-list">
+          <div><strong>Template</strong><span>{{series.template_label}}</span></div>
+          <div><strong>Products</strong><span>{{series.product_count}}</span></div>
+          <div><strong>Graph Rule</strong><span>{{series.graph_rule_label}}</span></div>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h2>Series Graph</h2>
+        <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
+      </section>
+
+      <section class="panel">
+        <h2>Series Product Summary</h2>
+        <div class="table-slot">{{series.products_summary_table}}</div>
+      </section>
+
+      <section class="notes-grid">
+        <section class="panel">
+          <h2>Description2</h2>
+          <div class="richtext">{{series.description2_html}}</div>
+        </section>
+        <section class="panel">
+          <h2>Description3</h2>
+          <div class="richtext">{{series.description3_html}}</div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <h2>Comments</h2>
+        <div class="richtext">{{series.comments_html}}</div>
+      </section>
+    </main>
+  </body>
+</html>

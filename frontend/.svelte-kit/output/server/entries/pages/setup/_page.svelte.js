@@ -1,7 +1,7 @@
 import { s as store_get, h as head, d as ensure_array_like, e as escape_html, a as attr, b as attr_class, u as unsubscribe_stores } from "../../../chunks/index2.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
-import { k as getUsers } from "../../../chunks/api.js";
+import { g as getUsers } from "../../../chunks/api.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
@@ -107,8 +107,12 @@ function _page($$renderer, $$props) {
       {
         $$renderer2.push("<!--[-1-->");
       }
+      $$renderer2.push(`<!--]--> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
       $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backups</h3> <p class="mb-2 text-body-secondary">Download a full backup ZIP of the deployed data, or restore one here. The backup bundle includes
-                    the app database and media, plus the WordPress database and \`wp-content\`.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Backup ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="backup-restore-file">Restore Backup ZIP</label> <input id="backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore Backup ZIP</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Graph Images</h3> <p class="mb-0 text-body-secondary">Rebuild all generated graph images, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Graph Images</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div></div></div></div></div></div></div>`);
+                    the app database and media, plus the WordPress database and \`wp-content\`.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Backup ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="backup-restore-file">Restore Backup ZIP</label> <input id="backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore Backup ZIP</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product PDFs in one pass using the current product templates and graph data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product PDFs</button></div></div></div></div></div></div></div></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }

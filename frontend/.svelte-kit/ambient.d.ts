@@ -50,6 +50,7 @@ declare module '$env/static/private' {
 	export const npm_config_noproxy: string;
 	export const HOME: string;
 	export const OLDPWD: string;
+	export const CHROMIUM_BIN: string;
 	export const SESSION_SECRET: string;
 	export const SSH_TTY: string;
 	export const npm_package_json: string;
@@ -200,6 +201,7 @@ declare module '$env/dynamic/private' {
 		npm_config_noproxy: string;
 		HOME: string;
 		OLDPWD: string;
+		CHROMIUM_BIN: string;
 		SESSION_SECRET: string;
 		SSH_TTY: string;
 		npm_package_json: string;
