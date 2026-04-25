@@ -368,8 +368,6 @@ function internal_facing_render_product_card($product, $detailed = false) {
     $model = esc_html($product['model'] ?? '');
     $product_type = esc_html($product['product_type_label'] ?? $product['product_type_key'] ?? '');
     $series_name = esc_html($product['series_name'] ?? '');
-    $mounting_style = esc_html($product['mounting_style'] ?? '');
-    $discharge_type = esc_html($product['discharge_type'] ?? '');
     $graph_image_url = esc_url(internal_facing_resolve_media_url($product['graph_image_url'] ?? ''));
     $product_pdf_url = esc_url(internal_facing_resolve_media_url($product['product_pdf_url'] ?? ''));
     $primary_product_image_url = esc_url(internal_facing_resolve_media_url($product['primary_product_image_url'] ?? ''));
@@ -388,14 +386,6 @@ function internal_facing_render_product_card($product, $detailed = false) {
       <?php if ($series_name !== '') : ?>
         <p class="internal-facing-card__series"><?php echo $series_name; ?></p>
       <?php endif; ?>
-      <dl class="internal-facing-card__meta">
-        <?php if ($mounting_style !== '') : ?>
-          <div><dt>Mounting</dt><dd><?php echo $mounting_style; ?></dd></div>
-        <?php endif; ?>
-        <?php if ($discharge_type !== '') : ?>
-          <div><dt>Discharge</dt><dd><?php echo $discharge_type; ?></dd></div>
-        <?php endif; ?>
-      </dl>
       <div class="internal-facing-card__actions">
         <?php if ($detail_url !== '') : ?>
           <a href="<?php echo $detail_url; ?>">View details</a>
@@ -508,8 +498,6 @@ function internal_facing_shortcode_products($atts) {
         'search' => '',
         'product_type' => '',
         'series' => '',
-        'mounting_style' => '',
-        'discharge_type' => '',
         'parameter_filters' => '',
         'parameter_string_filters' => '',
         'parameter_number_filters' => '',
@@ -520,8 +508,6 @@ function internal_facing_shortcode_products($atts) {
         'search' => $atts['search'],
         'product_type_key' => $atts['product_type'],
         'series_name' => $atts['series'],
-        'mounting_style' => $atts['mounting_style'],
-        'discharge_type' => $atts['discharge_type'],
         'parameter_filters' => $parameter_filters,
     );
 
@@ -632,22 +618,10 @@ function internal_facing_shortcode_product_types_nav($atts) {
 
 function internal_facing_collect_picker_metadata($products) {
     $metadata = array(
-        'mounting_styles' => array(),
-        'discharge_types' => array(),
         'parameter_fields' => array(),
     );
 
     foreach ($products as $product) {
-        $mounting = trim((string) ($product['mounting_style'] ?? ''));
-        if ($mounting !== '') {
-            $metadata['mounting_styles'][$mounting] = $mounting;
-        }
-
-        $discharge = trim((string) ($product['discharge_type'] ?? ''));
-        if ($discharge !== '') {
-            $metadata['discharge_types'][$discharge] = $discharge;
-        }
-
         foreach (($product['parameter_groups'] ?? array()) as $group) {
             $group_name = trim((string) ($group['group_name'] ?? ''));
             if ($group_name === '') {
@@ -693,8 +667,6 @@ function internal_facing_collect_picker_metadata($products) {
         }
     }
 
-    ksort($metadata['mounting_styles']);
-    ksort($metadata['discharge_types']);
     foreach ($metadata['parameter_fields'] as $key => $field) {
         if (!empty($field['values'])) {
             ksort($field['values']);
@@ -746,8 +718,6 @@ function internal_facing_shortcode_product_picker($atts) {
 
     $prefix = (string) $atts['request_prefix'];
     $selected_type = trim((string) internal_facing_get_query_value($prefix . 'product_type', ''));
-    $selected_mounting = trim((string) internal_facing_get_query_value($prefix . 'mounting_style', ''));
-    $selected_discharge = trim((string) internal_facing_get_query_value($prefix . 'discharge_type', ''));
 
     $product_types = internal_facing_api_request('/api/cms/product-types');
     if (is_wp_error($product_types)) {
@@ -771,8 +741,6 @@ function internal_facing_shortcode_product_picker($atts) {
     if ($selected_type !== '') {
         $query = array(
             'product_type_key' => $selected_type,
-            'mounting_style' => $selected_mounting,
-            'discharge_type' => $selected_discharge,
             'parameter_filters' => !empty($parameter_filters) ? wp_json_encode($parameter_filters) : '',
         );
         $results = internal_facing_api_request('/api/cms/products', $query);
@@ -797,29 +765,6 @@ function internal_facing_shortcode_product_picker($atts) {
           </select>
         </div>
 
-        <?php if (!empty($metadata['mounting_styles'])) : ?>
-          <div>
-            <label for="<?php echo esc_attr($prefix . 'mounting_style'); ?>">Mounting style</label>
-            <select id="<?php echo esc_attr($prefix . 'mounting_style'); ?>" name="<?php echo esc_attr($prefix . 'mounting_style'); ?>">
-              <option value="">Any mounting style</option>
-              <?php foreach ($metadata['mounting_styles'] as $value) : ?>
-                <option value="<?php echo esc_attr($value); ?>" <?php selected($selected_mounting, $value); ?>><?php echo esc_html($value); ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-        <?php endif; ?>
-
-        <?php if (!empty($metadata['discharge_types'])) : ?>
-          <div>
-            <label for="<?php echo esc_attr($prefix . 'discharge_type'); ?>">Discharge type</label>
-            <select id="<?php echo esc_attr($prefix . 'discharge_type'); ?>" name="<?php echo esc_attr($prefix . 'discharge_type'); ?>">
-              <option value="">Any discharge type</option>
-              <?php foreach ($metadata['discharge_types'] as $value) : ?>
-                <option value="<?php echo esc_attr($value); ?>" <?php selected($selected_discharge, $value); ?>><?php echo esc_html($value); ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-        <?php endif; ?>
       </div>
 
       <?php if (!empty($metadata['parameter_fields'])) : ?>

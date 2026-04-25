@@ -36,11 +36,30 @@ class ProductType(Base):
     graph_x_axis_unit = Column(String(64), nullable=True)
     graph_y_axis_label = Column(String(128), nullable=True)
     graph_y_axis_unit = Column(String(64), nullable=True)
+    product_template_id = Column(String(128), nullable=True)
+    printed_product_template_id = Column(String(128), nullable=True)
+    online_product_template_id = Column(String(128), nullable=True)
+    band_graph_background_color = Column(String(32), nullable=True)
+    band_graph_label_text_color = Column(String(32), nullable=True)
+    band_graph_faded_opacity = Column(Float, nullable=True)
+    band_graph_permissible_label_color = Column(String(32), nullable=True)
     parameter_group_presets = relationship(
         "ProductTypeParameterGroupPreset",
         back_populates="product_type",
         cascade="all, delete-orphan",
         order_by="ProductTypeParameterGroupPreset.sort_order",
+    )
+    rpm_line_presets = relationship(
+        "ProductTypeRpmLinePreset",
+        back_populates="product_type",
+        cascade="all, delete-orphan",
+        order_by="ProductTypeRpmLinePreset.sort_order",
+    )
+    efficiency_point_presets = relationship(
+        "ProductTypeEfficiencyPointPreset",
+        back_populates="product_type",
+        cascade="all, delete-orphan",
+        order_by="ProductTypeEfficiencyPointPreset.sort_order",
     )
     series = relationship("Series", back_populates="product_type", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="product_type")
@@ -71,8 +90,55 @@ class ProductTypeParameterPreset(Base):
     parameter_name = Column(String(255), nullable=False)
     sort_order = Column(Integer, nullable=False, default=0)
     preferred_unit = Column(String(64), nullable=True)
+    value_string = Column(Text, nullable=True)
+    value_number = Column(Float, nullable=True)
 
     group_preset = relationship("ProductTypeParameterGroupPreset", back_populates="parameter_presets")
+
+
+class ProductTypeRpmLinePreset(Base):
+    __tablename__ = "product_type_rpm_line_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=False)
+    rpm = Column(Float, nullable=False)
+    band_color = Column(String(32), nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    product_type = relationship("ProductType", back_populates="rpm_line_presets")
+    point_presets = relationship(
+        "ProductTypeRpmPointPreset",
+        back_populates="line_preset",
+        cascade="all, delete-orphan",
+        order_by="ProductTypeRpmPointPreset.sort_order",
+    )
+
+
+class ProductTypeRpmPointPreset(Base):
+    __tablename__ = "product_type_rpm_point_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    line_preset_id = Column(Integer, ForeignKey("product_type_rpm_line_presets.id"), nullable=False)
+    airflow = Column(Float, nullable=False)
+    pressure = Column(Float, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    line_preset = relationship("ProductTypeRpmLinePreset", back_populates="point_presets")
+
+
+class ProductTypeEfficiencyPointPreset(Base):
+    __tablename__ = "product_type_efficiency_point_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=False)
+    airflow = Column(Float, nullable=False)
+    efficiency_centre = Column(Float, nullable=True)
+    efficiency_lower_end = Column(Float, nullable=True)
+    efficiency_higher_end = Column(Float, nullable=True)
+    permissible_use = Column(Float, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    product_type = relationship("ProductType", back_populates="efficiency_point_presets")
 
 
 class Series(Base):
@@ -84,8 +150,10 @@ class Series(Base):
     description1_html = Column(Text, nullable=True)
     description2_html = Column(Text, nullable=True)
     description3_html = Column(Text, nullable=True)
-    comments_html = Column(Text, nullable=True)
+    description4_html = Column(Text, nullable=True)
     template_id = Column(String(128), nullable=True)
+    printed_template_id = Column(String(128), nullable=True)
+    online_template_id = Column(String(128), nullable=True)
 
     product_type = relationship("ProductType", back_populates="series")
     products = relationship("Product", back_populates="series")
@@ -121,8 +189,46 @@ class Series(Base):
 
     @property
     def series_pdf_url(self):
+        return self.series_online_pdf_url or self.series_printed_pdf_url or self.legacy_series_pdf_url
+
+    @property
+    def legacy_series_pdf_url(self):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
         file_name = f"series_{safe_name or 'unknown'}.pdf"
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/series_pdfs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/series_pdfs/{file_name}"
+        )
+
+    @property
+    def series_printed_pdf_url(self):
+        safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
+        file_name = f"series_printed_{safe_name or 'unknown'}.pdf"
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/series_pdfs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/series_pdfs/{file_name}"
+        )
+
+    @property
+    def series_online_pdf_url(self):
+        safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
+        file_name = f"series_online_{safe_name or 'unknown'}.pdf"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
         if not os.path.isfile(file_path):
             return None
@@ -145,9 +251,9 @@ class Product(Base):
     series_id = Column(Integer, ForeignKey("series.id"), nullable=True)
     series_name = Column(String(255), nullable=True)
     template_id = Column(String(128), nullable=True)
+    printed_template_id = Column(String(128), nullable=True)
+    online_template_id = Column(String(128), nullable=True)
     model = Column(String(255), nullable=False)
-    mounting_style = Column(String(255), nullable=True)
-    discharge_type = Column(String(255), nullable=True)
     description1_html = Column(Text, nullable=True)
     description2_html = Column(Text, nullable=True)
     description3_html = Column(Text, nullable=True)
@@ -202,8 +308,50 @@ class Product(Base):
 
     @property
     def product_pdf_url(self):
+        return self.product_online_pdf_url or self.product_printed_pdf_url or self.legacy_product_pdf_url
+
+    @property
+    def legacy_product_pdf_url(self):
         safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
         file_name = f"product_{safe_model or 'unknown'}.pdf" if self.model is not None else None
+        if not file_name:
+            return None
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/product_pdfs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/product_pdfs/{file_name}"
+        )
+
+    @property
+    def product_printed_pdf_url(self):
+        safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
+        file_name = f"product_printed_{safe_model or 'unknown'}.pdf" if self.model is not None else None
+        if not file_name:
+            return None
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/product_pdfs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/product_pdfs/{file_name}"
+        )
+
+    @property
+    def product_online_pdf_url(self):
+        safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
+        file_name = f"product_online_{safe_model or 'unknown'}.pdf" if self.model is not None else None
         if not file_name:
             return None
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
@@ -269,6 +417,7 @@ def _series_description_alias_property(field_name):
 Series.description_html = _series_description_alias_property("description1_html")
 Series.features_html = _series_description_alias_property("description2_html")
 Series.specifications_html = _series_description_alias_property("description3_html")
+Series.comments_html = _series_description_alias_property("description4_html")
 
 
 class AppSettings(Base):

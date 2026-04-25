@@ -1,10 +1,12 @@
-import { h as head, a as attr, e as escape_html, d as ensure_array_like } from "../../../chunks/index2.js";
+import { h as head, a as attr, e as escape_html, i as ensure_array_like } from "../../../chunks/index2.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let availableTemplates, createSourceTemplates;
     let templates = { product_templates: [], series_templates: [] };
     let templateType = "";
     let templateId = "";
+    let rawHtmlContent = "";
+    let rawCssContent = "";
     let refreshing = false;
     let createLabel = "";
     let createType = "";
@@ -19,7 +21,7 @@ function _page($$renderer, $$props) {
         $$renderer4.push(`<title>Template Builder | Internal Facing</title>`);
       });
     });
-    $$renderer2.push(`<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Visual Templates</p> <h1 class="h3 mb-1">Template Builder</h1> <p class="text-body-secondary mb-0">Use GrapesJS to visually edit the HTML body of product and series PDF templates, while preserving the full file wrapper and saving CSS alongside it.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-secondary" type="button"${attr("disabled", refreshing, true)}>${escape_html("Refresh template library")}</button> <button class="btn btn-primary" type="button"${attr("disabled", true, true)}>${escape_html("Save template")}</button></div></div> `);
+    $$renderer2.push(`<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Visual Templates</p> <h1 class="h3 mb-1">Template Builder</h1> <p class="text-body-secondary mb-0">Edit the real HTML/CSS source safely, and use GrapesJS as a live preview sandbox for the template body.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-secondary" type="button"${attr("disabled", refreshing, true)}>${escape_html("Refresh template library")}</button> <button class="btn btn-primary" type="button"${attr("disabled", true, true)}>${escape_html("Save template")}</button></div></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }
@@ -109,7 +111,17 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<p class="text-body-secondary mb-0">Load a template to inspect its file paths and edit it.</p>`);
     }
-    $$renderer2.push(`<!--]--></div></div></div></div> <div class="col-12 col-xxl-9"><div class="card shadow-sm"><div class="card-body"><div class="row g-3"><div class="col-12 col-xl-3"><div class="border rounded p-2 bg-body-tertiary"><div class="small text-uppercase text-body-secondary fw-semibold mb-2">Blocks</div> <div id="gjs-blocks" class="template-blocks svelte-yl845"></div></div></div> <div class="col-12 col-xl-9"><div class="template-editor-host border rounded overflow-hidden svelte-yl845"></div></div></div></div></div></div></div>`);
+    $$renderer2.push(`<!--]--></div></div></div></div> <div class="col-12 col-xxl-9"><div class="card shadow-sm mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h2 class="h5 mb-1">Source Editors</h2> <p class="text-body-secondary mb-0">These fields are the real saved template source. Save here to preserve your handcrafted layout.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", true, true)}>Refresh visual preview</button></div> <div class="row g-3"><div class="col-12 col-xl-7"><label class="form-label" for="template-html-source">HTML</label> <textarea id="template-html-source" class="form-control font-monospace" rows="22" spellcheck="false"${attr("disabled", true, true)}>`);
+    const $$body = escape_html(rawHtmlContent);
+    if ($$body) {
+      $$renderer2.push(`${$$body}`);
+    }
+    $$renderer2.push(`</textarea></div> <div class="col-12 col-xl-5"><label class="form-label" for="template-css-source">CSS</label> <textarea id="template-css-source" class="form-control font-monospace" rows="22" spellcheck="false"${attr("disabled", true, true)}>`);
+    const $$body_1 = escape_html(rawCssContent);
+    if ($$body_1) {
+      $$renderer2.push(`${$$body_1}`);
+    }
+    $$renderer2.push(`</textarea></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h2 class="h5 mb-1">Visual Preview Sandbox</h2> <p class="text-body-secondary mb-0">Drag-and-drop here to experiment, but use the source editors above for the final saved version.</p></div></div> <div class="template-editor-host border rounded overflow-hidden svelte-yl845"></div></div></div></div></div>`);
   });
 }
 export {

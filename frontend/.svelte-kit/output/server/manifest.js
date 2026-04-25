@@ -10,7 +10,7 @@ return {
 	assets: new Set(["bg.jpg"]),
 	mimeTypes: {".jpg":"image/jpeg"},
 	_: {
-		client: {start:"_app/immutable/entry/start.V4meT5On.js",app:"_app/immutable/entry/app.BLncsqhM.js",imports:["_app/immutable/entry/start.V4meT5On.js","_app/immutable/chunks/DC4E6O3L.js","_app/immutable/chunks/jEMt36Lc.js","_app/immutable/entry/app.BLncsqhM.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/jEMt36Lc.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/DMXCnF_P.js","_app/immutable/chunks/DdtOhThv.js","_app/immutable/chunks/Bqh2u6dH.js","_app/immutable/chunks/CQXjvDgI.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.BU2aEMV1.js",app:"_app/immutable/entry/app.71XUNj_8.js",imports:["_app/immutable/entry/start.BU2aEMV1.js","_app/immutable/chunks/NLKegVE8.js","_app/immutable/chunks/CBZ4VVe0.js","_app/immutable/chunks/ybKNl7rA.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/entry/app.71XUNj_8.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/ybKNl7rA.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/CBZ4VVe0.js","_app/immutable/chunks/X-Xyc-7L.js","_app/immutable/chunks/Cxm1NYHM.js","_app/immutable/chunks/CCrs-1nr.js","_app/immutable/chunks/Br59tnrG.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -21,7 +21,15 @@ return {
 			__memo(() => import('./nodes/6.js')),
 			__memo(() => import('./nodes/7.js')),
 			__memo(() => import('./nodes/8.js')),
-			__memo(() => import('./nodes/9.js'))
+			__memo(() => import('./nodes/9.js')),
+			__memo(() => import('./nodes/10.js')),
+			__memo(() => import('./nodes/11.js')),
+			__memo(() => import('./nodes/12.js')),
+			__memo(() => import('./nodes/13.js')),
+			__memo(() => import('./nodes/14.js')),
+			__memo(() => import('./nodes/15.js')),
+			__memo(() => import('./nodes/16.js')),
+			__memo(() => import('./nodes/17.js'))
 		],
 		remotes: {
 			
@@ -49,38 +57,94 @@ return {
 				endpoint: null
 			},
 			{
+				id: "/editor/create",
+				pattern: /^\/editor\/create\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 5 },
+				endpoint: null
+			},
+			{
+				id: "/editor/edit",
+				pattern: /^\/editor\/edit\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 6 },
+				endpoint: null
+			},
+			{
+				id: "/editor/product-types",
+				pattern: /^\/editor\/product-types\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 7 },
+				endpoint: null
+			},
+			{
+				id: "/editor/product-types/create",
+				pattern: /^\/editor\/product-types\/create\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 8 },
+				endpoint: null
+			},
+			{
+				id: "/editor/product-types/edit",
+				pattern: /^\/editor\/product-types\/edit\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 9 },
+				endpoint: null
+			},
+			{
+				id: "/editor/series",
+				pattern: /^\/editor\/series\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 10 },
+				endpoint: null
+			},
+			{
+				id: "/editor/series/create",
+				pattern: /^\/editor\/series\/create\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 11 },
+				endpoint: null
+			},
+			{
+				id: "/editor/series/edit",
+				pattern: /^\/editor\/series\/edit\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 12 },
+				endpoint: null
+			},
+			{
 				id: "/entry",
 				pattern: /^\/entry\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 5 },
+				page: { layouts: [0,], errors: [1,], leaf: 13 },
 				endpoint: null
 			},
 			{
 				id: "/map",
 				pattern: /^\/map\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 6 },
+				page: { layouts: [0,], errors: [1,], leaf: 14 },
 				endpoint: null
 			},
 			{
 				id: "/setup",
 				pattern: /^\/setup\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 7 },
+				page: { layouts: [0,], errors: [1,], leaf: 15 },
 				endpoint: null
 			},
 			{
 				id: "/template-builder",
 				pattern: /^\/template-builder\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 8 },
+				page: { layouts: [0,], errors: [1,], leaf: 16 },
 				endpoint: null
 			},
 			{
 				id: "/viewer",
 				pattern: /^\/viewer\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 9 },
+				page: { layouts: [0,], errors: [1,], leaf: 17 },
 				endpoint: null
 			}
 		],

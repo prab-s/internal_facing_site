@@ -22,7 +22,7 @@ from typing import Iterable
 import psycopg
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL, make_url
 
@@ -44,6 +44,8 @@ KNOWN_APP_TABLES = {
     "product_images",
     "app_settings",
 }
+
+PRINTED_ONLINE_TEMPLATE_REVISION = "20260425_000011"
 
 
 def _iter_configured_database_urls() -> Iterable[str]:
@@ -125,6 +127,29 @@ def _database_has_app_tables(engine: Engine) -> bool:
     return bool(table_names & KNOWN_APP_TABLES)
 
 
+def _get_current_alembic_revision(engine: Engine) -> str | None:
+    if not _database_has_alembic_version(engine):
+        return None
+    with engine.connect() as connection:
+        return connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
+
+
+def _schema_matches_printed_online_template_revision(engine: Engine) -> bool:
+    inspector = inspect(engine)
+    required_columns = {
+        "products": {"printed_template_id", "online_template_id"},
+        "series": {"printed_template_id", "online_template_id"},
+        "product_types": {"printed_product_template_id", "online_product_template_id"},
+    }
+    for table_name, columns in required_columns.items():
+        if table_name not in set(inspector.get_table_names()):
+            return False
+        existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
+        if not columns.issubset(existing_columns):
+            return False
+    return True
+
+
 def _apply_compatibility_schema(engine: Engine) -> None:
     from backend import models  # noqa: F401
     from backend.database import (
@@ -132,6 +157,7 @@ def _apply_compatibility_schema(engine: Engine) -> None:
         _ensure_fan_columns,
         _ensure_product_platform_columns,
         _ensure_product_type_columns,
+        _ensure_product_type_parameter_preset_columns,
         _ensure_rpm_line_columns,
         _ensure_user_columns,
         _migrate_legacy_map_points,
@@ -150,6 +176,7 @@ def _apply_compatibility_schema(engine: Engine) -> None:
     _remove_deprecated_product_optional_columns(engine)
     _ensure_product_platform_columns(engine)
     _ensure_product_type_columns(engine)
+    _ensure_product_type_parameter_preset_columns(engine)
     _remove_deprecated_product_type_secondary_axis_label(engine)
     _ensure_user_columns(engine)
     _seed_product_types(engine)
@@ -165,11 +192,22 @@ def prepare_database(database_url: str) -> None:
         has_app_tables = _database_has_app_tables(engine)
 
         if has_alembic_version:
+            current_revision = _get_current_alembic_revision(engine)
+            if (
+                current_revision != PRINTED_ONLINE_TEMPLATE_REVISION
+                and _schema_matches_printed_online_template_revision(engine)
+            ):
+                command.stamp(alembic_config, PRINTED_ONLINE_TEMPLATE_REVISION)
             command.upgrade(alembic_config, "head")
             _apply_compatibility_schema(engine)
             return
 
         if has_app_tables:
+            if _schema_matches_printed_online_template_revision(engine):
+                command.stamp(alembic_config, PRINTED_ONLINE_TEMPLATE_REVISION)
+                command.upgrade(alembic_config, "head")
+                _apply_compatibility_schema(engine)
+                return
             command.stamp(alembic_config, "20260418_000001")
             command.upgrade(alembic_config, "head")
             _apply_compatibility_schema(engine)

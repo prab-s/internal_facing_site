@@ -42,6 +42,8 @@ RUN mkdir -p /app/frontend/src/lib /app/frontend/scripts
 COPY frontend/package*.json /app/frontend/
 COPY frontend/scripts/render_product_graph.mjs /app/frontend/scripts/render_product_graph.mjs
 COPY frontend/src/lib/fullChart.js /app/frontend/src/lib/fullChart.js
+COPY frontend/src/lib/chartTheme.js /app/frontend/src/lib/chartTheme.js
+COPY frontend/src/lib/chartStyle.js /app/frontend/src/lib/chartStyle.js
 COPY --from=frontend-builder /app/frontend/node_modules /app/frontend/node_modules
 COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
 COPY --from=frontend-builder /app/frontend/build /app/frontend/build

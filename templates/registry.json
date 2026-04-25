@@ -1,6 +1,13 @@
 {
   "product_templates": [
     {
+      "id": "product-original_backup",
+      "label": "Product Original Backup",
+      "type": "product",
+      "path": "templates/product/Original_backup/template.html",
+      "stylesheet": "templates/product/Original_backup/template.css"
+    },
+    {
       "id": "product-compact",
       "label": "Product Compact",
       "type": "product",

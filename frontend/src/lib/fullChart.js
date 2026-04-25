@@ -7,30 +7,43 @@ export const FULL_CHART_LINE_DEFINITIONS = [
     label: 'Efficiency Centre',
     colorKey: 'efficiency',
     tooltipLabel: 'Efficiency centre',
-    lineWidth: 1
+    lineWidth: 2
   },
   {
     key: 'efficiency_lower_end',
     label: 'Efficiency Lower End',
     colorKey: 'permissible',
     tooltipLabel: 'Efficiency lower end',
-    lineWidth: 1
+    lineWidth: 2
   },
   {
     key: 'efficiency_higher_end',
     label: 'Efficiency Higher End',
     colorKey: 'permissible',
     tooltipLabel: 'Efficiency higher end',
-    lineWidth: 1
+    lineWidth: 2
   },
   {
     key: 'permissible_use',
     label: 'Permissible Use',
     colorKey: 'neutralLine',
     tooltipLabel: 'Permissible use',
-    lineWidth: 5
+    lineWidth: 3
   }
 ];
+// The `colorKey` values above map to `chartTheme.<key>` in `chartTheme.js` (`neutralLine`, `efficiency`, `permissible`).
+export const OVERLAY_LINE_DECORATION = {
+  outline: {
+    color: '#000000',
+    width: 2,
+    opacity: 0.35
+  },
+  glow: {
+    color: '#ffffff',
+    width: 4,
+    opacity: 0.18
+  }
+};
 
 const FLOW_EPSILON = 1e-6;
 export const AXIS_NAME_FONT_SIZE = CHART_STYLE.axisNameFontSize;
@@ -836,7 +849,7 @@ function buildRpmBandPolygonSeries(
   clipRpmAreaToPermissibleUse,
   maximumVisibleFlow = null,
   pressureAxisMax = null,
-  fadedBandOpacity = RPM_BAND_FADED_OPACITY,
+  fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity,
   graphConfig = DEFAULT_GRAPH_CONFIG
 ) {
   if (!rpmCurveEntries.length) return [];
@@ -960,7 +973,7 @@ function buildRpmBandPolygonSeries(
         emphasis: { disabled: true },
         tooltip: { show: false },
         silent: true,
-        z: rpmCurveEntries.length + 10 + index
+        z: -20 - index
       });
     }
 
@@ -1013,7 +1026,7 @@ function buildRpmBandPolygonSeries(
       emphasis: { disabled: true },
       tooltip: { show: false },
       silent: true,
-      z: Math.max(0, rpmCurveEntries.length - index - 1)
+      z: -10 - index
     });
 
     return series;
@@ -1042,7 +1055,7 @@ function buildRpmSeries(
   maximumVisibleFlow = null,
   pressureAxisMax = null,
   rpmBandLabelColor = null,
-  fadedBandOpacity = RPM_BAND_FADED_OPACITY,
+  fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity,
   graphConfig = DEFAULT_GRAPH_CONFIG
 ) {
   function buildBandLabelAnchorData(lineData) {
@@ -1155,7 +1168,7 @@ function buildRpmSeries(
           // x: negative = left, positive = right
           // y: negative = up, positive = down
           // Banded graph labels use the first pair; non-banded labels use the second.
-          offset: labelAtLineEnd ? [-108, 28] : [5, -10],
+          offset: labelAtLineEnd ? [-95, 28] : [5, -10],
           fontSize: CHART_STYLE.dragHandleFontSize,
           fontWeight: 'normal'
         },
@@ -1196,14 +1209,15 @@ function buildRpmSeries(
         pointType: 'rpm'
       })),
       symbol: 'circle',
-      symbolSize: 10,
+      symbolSize: 14, // Drag points: This is the interactive handle for RPM points, so it needs to be big enough to grab easily. The actual point is centered and smaller, with the rest of the area being transparent for easier interaction.
+      itemStyle: { borderColor: '#000000', borderWidth: 2 },
       draggable: true,
       showInLegend: false,
       emphasis: {
         focus: 'series',
         scale: true,
         scaleSize: 1.2,
-        itemStyle: { borderColor: chartTheme.background, borderWidth: 2 }
+        itemStyle: { borderColor: '#000000', borderWidth: 2 }
       },
       z: idx * 2 + 1
     });
@@ -1232,6 +1246,85 @@ function getLineDefinitionByLabel(label) {
   return FULL_CHART_LINE_DEFINITIONS.find((definition) => definition.label === label) ?? null;
 }
 
+function buildDecoratedOverlayLineSeries({
+  name,
+  data,
+  color,
+  lineWidth,
+  smooth,
+  yAxisIndex = 1,
+  z = 999
+}) {
+  const outlineWidth = lineWidth + OVERLAY_LINE_DECORATION.outline.width;
+  const glowWidth = lineWidth + OVERLAY_LINE_DECORATION.glow.width;
+
+  return [
+    {
+      name: `${name} glow`,
+      type: 'line',
+      smooth,
+      data,
+      showSymbol: false,
+      yAxisIndex,
+      itemStyle: {
+        color: OVERLAY_LINE_DECORATION.glow.color
+      },
+      lineStyle: {
+        width: glowWidth,
+        color: OVERLAY_LINE_DECORATION.glow.color,
+        opacity: OVERLAY_LINE_DECORATION.glow.opacity,
+        cap: 'round',
+        join: 'round'
+      },
+      emphasis: { disabled: true },
+      tooltip: { show: false },
+      silent: true,
+      z: z - 2
+    },
+    {
+      name: `${name} outline`,
+      type: 'line',
+      smooth,
+      data,
+      showSymbol: false,
+      yAxisIndex,
+      itemStyle: {
+        color: OVERLAY_LINE_DECORATION.outline.color
+      },
+      lineStyle: {
+        width: outlineWidth,
+        color: OVERLAY_LINE_DECORATION.outline.color,
+        opacity: OVERLAY_LINE_DECORATION.outline.opacity,
+        cap: 'round',
+        join: 'round'
+      },
+      emphasis: { disabled: true },
+      tooltip: { show: false },
+      silent: true,
+      z: z - 1
+    },
+    {
+      name,
+      type: 'line',
+      smooth,
+      data,
+      showSymbol: false,
+      yAxisIndex,
+      itemStyle: { color },
+      lineStyle: {
+        width: lineWidth,
+        color,
+        cap: 'round',
+        join: 'round'
+      },
+      emphasis: { disabled: true },
+      tooltip: { show: false },
+      silent: true,
+      z
+    }
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Overlay line series
 //
@@ -1258,18 +1351,19 @@ function buildEfficiencyAndPermissibleSeries(
     if (!lineData.length) continue;
 
     const color = chartTheme[definition.colorKey];
+    const smooth = lineData.length > 1 ? 0.18 : false;
 
-    series.push({
-      name: definition.label,
-      type: 'line',
-      smooth: lineData.length > 1 ? 0.18 : false,
-      data: lineData,
-      showSymbol: false,
-      yAxisIndex: 1,
-      itemStyle: { color },
-      lineStyle: { width: definition.lineWidth, color },
-      z: 999
-    });
+    series.push(
+      ...buildDecoratedOverlayLineSeries({
+        name: definition.label,
+        data: lineData,
+        color,
+        lineWidth: definition.lineWidth,
+        smooth,
+        yAxisIndex: 1,
+        z: 999
+      })
+    );
 
     if (!includeDragHandles && definition.key === 'permissible_use' && lineData.length >= 2) {
       const highestPoints = [...lineData]
@@ -1322,8 +1416,8 @@ function buildEfficiencyAndPermissibleSeries(
           // Pixel offsets after anchoring the label:
           // rightOffsetPixels: negative = left, positive = right
           // verticalOffsetPixels: negative = up, positive = down
-          const rightOffsetPixels = -55;
-          const verticalOffsetPixels = 55;
+          const rightOffsetPixels = -40;
+          const verticalOffsetPixels = 60;
           // Rotation is in radians. This one flips the label to match the line direction.
           const rotation = -Math.atan2(dy, dx);
 
@@ -1361,13 +1455,13 @@ function buildEfficiencyAndPermissibleSeries(
         })),
       draggable: true,
       showInLegend: false,
-      itemStyle: { color },
-      symbolSize: 10,
+      itemStyle: { borderColor: '#000000', borderWidth: 2 },
+      symbolSize: 14, // Drag points: This is the interactive handle for efficiency/permissible points, so it needs to be big enough to grab easily. The actual point is centered and smaller, with the rest of the area being transparent for easier interaction.
       emphasis: {
         focus: 'series',
         scale: true,
         scaleSize: 1.2,
-        itemStyle: { borderColor: chartTheme.background, borderWidth: 2 }
+        itemStyle: { borderColor: '#000000', borderWidth: 2 }
       },
       yAxisIndex: 1,
       z: 1000
@@ -1455,7 +1549,7 @@ export function buildFullChartOption({
   const bandGraphFadedOpacity =
     showRpmBandShading && resolvedGraphConfig.supports_band_graph_style
       ? normalizeOpacity(graphStyle?.band_graph_faded_opacity)
-      : RPM_BAND_FADED_OPACITY;
+      : CHART_STYLE.rpmBandFadedOpacity;
   const permissibleLabelColor =
     resolvedGraphConfig.supports_band_graph_style
       ? normalizeOptionalColor(graphStyle?.band_graph_permissible_label_color) ??
@@ -1490,7 +1584,7 @@ export function buildFullChartOption({
       textStyle: { color: chartTheme.text, fontSize: CHART_STYLE.titleFontSize, fontFamily: chartFontFamily }
     },
     tooltip: tooltip ?? { trigger: 'axis', formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions) },
-    grid: { left: '9%', right: '5%', top: '12%', bottom: '12%' },
+    grid: { left: '9%', right: '5%', top: '12%', bottom: '12%', z: -1 },
     xAxis: {
       type: 'value',
       name: xAxisName,

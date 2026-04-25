@@ -22,25 +22,14 @@ export const GLOBAL_UNIT_OPTIONS = [
   '°C'
 ];
 
-export const MOUNTING_STYLE_OPTIONS = [
-  'roof mounted',
-  'inline'
-];
-
-export const DISCHARGE_TYPE_OPTIONS = [
-  'vertical discharge',
-  'side discharge'
-];
-
 export function emptyProductForm() {
   return {
     model: '',
     product_type_key: 'fan',
     series_id: null,
     series_name: '',
-    template_id: 'product-default',
-    mounting_style: '',
-    discharge_type: '',
+    printed_template_id: '',
+    online_template_id: '',
     description1_html: '',
     description2_html: '',
     description3_html: '',

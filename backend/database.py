@@ -54,7 +54,10 @@ def init_db():
     _remove_deprecated_fan_notes_column(engine)
     _remove_deprecated_product_optional_columns(engine)
     _ensure_product_platform_columns(engine)
+    _ensure_series_template_columns(engine)
+    _rename_series_comments_column(engine)
     _ensure_product_type_columns(engine)
+    _ensure_product_type_parameter_preset_columns(engine)
     _remove_deprecated_product_type_secondary_axis_label(engine)
     _ensure_user_columns(engine)
     _seed_product_types(engine)
@@ -70,8 +73,6 @@ def _ensure_fan_columns(target_engine):
     boolean_true_sql = "TRUE" if target_engine.dialect.name == "postgresql" else "1"
     existing_columns = {column["name"] for column in inspector.get_columns(product_table_name)}
     missing_columns = {
-        "mounting_style": "VARCHAR(255)",
-        "discharge_type": "VARCHAR(255)",
         "graph_image_path": "VARCHAR(512)",
         "show_rpm_band_shading": f"BOOLEAN NOT NULL DEFAULT {boolean_true_sql}",
         "band_graph_background_color": "VARCHAR(32)",
@@ -104,6 +105,8 @@ def _ensure_product_platform_columns(target_engine):
         "series_id": "INTEGER",
         "series_name": "VARCHAR(255)",
         "template_id": "VARCHAR(128)",
+        "printed_template_id": "VARCHAR(128)",
+        "online_template_id": "VARCHAR(128)",
         "description1_html": "TEXT",
         "description2_html": "TEXT",
         "description3_html": "TEXT",
@@ -114,6 +117,58 @@ def _ensure_product_platform_columns(target_engine):
         for column_name, column_type in missing_columns.items():
             if column_name not in existing_columns:
                 connection.execute(text(f"ALTER TABLE {product_table_name} ADD COLUMN {column_name} {column_type}"))
+        connection.execute(
+            text(
+                f"""
+                UPDATE {product_table_name}
+                SET
+                    printed_template_id = COALESCE(printed_template_id, template_id),
+                    online_template_id = COALESCE(online_template_id, template_id)
+                WHERE template_id IS NOT NULL
+                """
+            )
+        )
+
+
+def _ensure_series_template_columns(target_engine):
+    inspector = inspect(target_engine)
+    if "series" not in set(inspector.get_table_names()):
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("series")}
+    missing_columns = {
+        "printed_template_id": "VARCHAR(128)",
+        "online_template_id": "VARCHAR(128)",
+    }
+
+    with target_engine.begin() as connection:
+        for column_name, column_type in missing_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(text(f"ALTER TABLE series ADD COLUMN {column_name} {column_type}"))
+        connection.execute(
+            text(
+                """
+                UPDATE series
+                SET
+                    printed_template_id = COALESCE(printed_template_id, template_id),
+                    online_template_id = COALESCE(online_template_id, template_id)
+                WHERE template_id IS NOT NULL
+                """
+            )
+        )
+
+
+def _rename_series_comments_column(target_engine):
+    inspector = inspect(target_engine)
+    if "series" not in set(inspector.get_table_names()):
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("series")}
+    if "comments_html" not in existing_columns or "description4_html" in existing_columns:
+        return
+
+    with target_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE series RENAME COLUMN comments_html TO description4_html"))
 
 
 def _ensure_product_type_columns(target_engine):
@@ -133,12 +188,50 @@ def _ensure_product_type_columns(target_engine):
         "graph_x_axis_unit": "VARCHAR(64)",
         "graph_y_axis_label": "VARCHAR(128)",
         "graph_y_axis_unit": "VARCHAR(64)",
+        "product_template_id": "VARCHAR(128)",
+        "printed_product_template_id": "VARCHAR(128)",
+        "online_product_template_id": "VARCHAR(128)",
+        "band_graph_background_color": "VARCHAR(32)",
+        "band_graph_label_text_color": "VARCHAR(32)",
+        "band_graph_faded_opacity": "FLOAT",
+        "band_graph_permissible_label_color": "VARCHAR(32)",
     }
 
     with target_engine.begin() as connection:
         for column_name, column_type in missing_columns.items():
             if column_name not in existing_columns:
                 connection.execute(text(f"ALTER TABLE product_types ADD COLUMN {column_name} {column_type}"))
+        connection.execute(
+            text(
+                """
+                UPDATE product_types
+                SET
+                    printed_product_template_id = COALESCE(printed_product_template_id, product_template_id),
+                    online_product_template_id = COALESCE(online_product_template_id, product_template_id)
+                WHERE product_template_id IS NOT NULL
+                """
+            )
+        )
+
+
+def _ensure_product_type_parameter_preset_columns(target_engine):
+    inspector = inspect(target_engine)
+    tables = set(inspector.get_table_names())
+    if "product_type_parameter_presets" not in tables:
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("product_type_parameter_presets")}
+    missing_columns = {
+        "value_string": "TEXT",
+        "value_number": "FLOAT",
+    }
+
+    with target_engine.begin() as connection:
+        for column_name, column_type in missing_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    text(f"ALTER TABLE product_type_parameter_presets ADD COLUMN {column_name} {column_type}")
+                )
 
 
 def _seed_product_types(target_engine):
@@ -166,6 +259,11 @@ def _seed_product_types(target_engine):
             "graph_x_axis_unit": "L/s",
             "graph_y_axis_label": "Pressure",
             "graph_y_axis_unit": "Pa",
+            "product_template_id": None,
+            "band_graph_background_color": "#ffffff",
+            "band_graph_label_text_color": "#000000",
+            "band_graph_faded_opacity": 0.18,
+            "band_graph_permissible_label_color": "#000000",
             "groups": [
                 ("Impeller", [("Size", "mm"), ("Type", None), ("Material", None), ("Motor finish", None)]),
                 ("Motor", [("Type", None), ("IP Rating", None), ("Insulation", None), ("Power", "kW"), ("Power Supply", None), ("Speed", "RPM"), ("FLC", "A"), ("Capacitor", None), ("Control", None), ("Protection", None)]),
@@ -185,6 +283,11 @@ def _seed_product_types(target_engine):
             "graph_x_axis_unit": "L/s",
             "graph_y_axis_label": "Pressure Loss",
             "graph_y_axis_unit": "Pa",
+            "product_template_id": None,
+            "band_graph_background_color": "#ffffff",
+            "band_graph_label_text_color": "#000000",
+            "band_graph_faded_opacity": 0.18,
+            "band_graph_permissible_label_color": "#000000",
             "groups": [
                 ("Silencer", [("Diameter", "mm"), ("Length", "mm"), ("Casing", None), ("Media", None), ("Weight", "kg")]),
             ],
@@ -202,6 +305,11 @@ def _seed_product_types(target_engine):
             "graph_x_axis_unit": None,
             "graph_y_axis_label": None,
             "graph_y_axis_unit": None,
+            "product_template_id": None,
+            "band_graph_background_color": "#ffffff",
+            "band_graph_label_text_color": "#000000",
+            "band_graph_faded_opacity": 0.18,
+            "band_graph_permissible_label_color": "#000000",
             "groups": [
                 ("Controller", [("Power Supply", None), ("Current", "A"), ("Mounting", None), ("Protection", None)]),
             ],
@@ -211,11 +319,13 @@ def _seed_product_types(target_engine):
     with target_engine.begin() as connection:
         product_type_ids: dict[str, int] = {}
         for seed in seeds:
+            created_product_type = False
             existing = connection.execute(
                 text("SELECT id FROM product_types WHERE key = :key"),
                 {"key": seed["key"]},
             ).scalar()
             if existing is None:
+                created_product_type = True
                 inserted = connection.execute(
                     text(
                         """
@@ -231,7 +341,12 @@ def _seed_product_types(target_engine):
                             graph_x_axis_label,
                             graph_x_axis_unit,
                             graph_y_axis_label,
-                            graph_y_axis_unit
+                            graph_y_axis_unit,
+                            product_template_id,
+                            band_graph_background_color,
+                            band_graph_label_text_color,
+                            band_graph_faded_opacity,
+                            band_graph_permissible_label_color
                         )
                         VALUES (
                             :key,
@@ -245,7 +360,12 @@ def _seed_product_types(target_engine):
                             :graph_x_axis_label,
                             :graph_x_axis_unit,
                             :graph_y_axis_label,
-                            :graph_y_axis_unit
+                            :graph_y_axis_unit,
+                            :product_template_id,
+                            :band_graph_background_color,
+                            :band_graph_label_text_color,
+                            :band_graph_faded_opacity,
+                            :band_graph_permissible_label_color
                         )
                         """
                     ),
@@ -262,6 +382,11 @@ def _seed_product_types(target_engine):
                         "graph_x_axis_unit": seed["graph_x_axis_unit"],
                         "graph_y_axis_label": seed["graph_y_axis_label"],
                         "graph_y_axis_unit": seed["graph_y_axis_unit"],
+                        "product_template_id": seed["product_template_id"],
+                        "band_graph_background_color": seed["band_graph_background_color"],
+                        "band_graph_label_text_color": seed["band_graph_label_text_color"],
+                        "band_graph_faded_opacity": seed["band_graph_faded_opacity"],
+                        "band_graph_permissible_label_color": seed["band_graph_permissible_label_color"],
                     },
                 )
                 existing = connection.execute(
@@ -284,7 +409,11 @@ def _seed_product_types(target_engine):
                             graph_x_axis_label = :graph_x_axis_label,
                             graph_x_axis_unit = :graph_x_axis_unit,
                             graph_y_axis_label = :graph_y_axis_label,
-                            graph_y_axis_unit = :graph_y_axis_unit
+                            graph_y_axis_unit = :graph_y_axis_unit,
+                            band_graph_background_color = :band_graph_background_color,
+                            band_graph_label_text_color = :band_graph_label_text_color,
+                            band_graph_faded_opacity = :band_graph_faded_opacity,
+                            band_graph_permissible_label_color = :band_graph_permissible_label_color
                         WHERE id = :id
                         """
                     ),
@@ -301,9 +430,39 @@ def _seed_product_types(target_engine):
                         "graph_x_axis_unit": seed["graph_x_axis_unit"],
                         "graph_y_axis_label": seed["graph_y_axis_label"],
                         "graph_y_axis_unit": seed["graph_y_axis_unit"],
+                        "band_graph_background_color": seed["band_graph_background_color"],
+                        "band_graph_label_text_color": seed["band_graph_label_text_color"],
+                        "band_graph_faded_opacity": seed["band_graph_faded_opacity"],
+                        "band_graph_permissible_label_color": seed["band_graph_permissible_label_color"],
                     },
                 )
+                if seed["product_template_id"] is None:
+                    connection.execute(
+                        text(
+                            """
+                            UPDATE product_types
+                            SET product_template_id = NULL
+                            WHERE id = :id AND product_template_id = 'product-default'
+                            """
+                        ),
+                        {"id": existing},
+                    )
             product_type_ids[seed["key"]] = int(existing)
+
+            existing_group_count = connection.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM product_type_parameter_group_presets
+                    WHERE product_type_id = :product_type_id
+                    """
+                ),
+                {"product_type_id": existing},
+            ).scalar()
+            if not created_product_type and existing_group_count:
+                # Preserve saved presets for existing product types instead of
+                # reapplying the built-in seed definitions on every startup.
+                continue
 
             for group_index, (group_name, parameters) in enumerate(seed["groups"]):
                 group_id = connection.execute(
@@ -374,13 +533,17 @@ def _seed_product_types(target_engine):
                                     group_preset_id,
                                     parameter_name,
                                     sort_order,
-                                    preferred_unit
+                                    preferred_unit,
+                                    value_string,
+                                    value_number
                                 )
                                 VALUES (
                                     :group_preset_id,
                                     :parameter_name,
                                     :sort_order,
-                                    :preferred_unit
+                                    :preferred_unit,
+                                    NULL,
+                                    NULL
                                 )
                                 """
                             ),
@@ -488,8 +651,6 @@ def _remove_deprecated_fan_manufacturer_column(target_engine):
                     id INTEGER PRIMARY KEY,
                     model VARCHAR(255) NOT NULL,
                     notes TEXT,
-                    mounting_style VARCHAR(255),
-                    discharge_type VARCHAR(255),
                     graph_image_path VARCHAR(512),
                     show_rpm_band_shading BOOLEAN NOT NULL DEFAULT 1,
                     band_graph_background_color VARCHAR(32),
@@ -507,8 +668,6 @@ def _remove_deprecated_fan_manufacturer_column(target_engine):
                     id,
                     model,
                     notes,
-                    mounting_style,
-                    discharge_type,
                     graph_image_path,
                     show_rpm_band_shading,
                     band_graph_background_color,
@@ -520,8 +679,6 @@ def _remove_deprecated_fan_manufacturer_column(target_engine):
                     id,
                     model,
                     notes,
-                    mounting_style,
-                    discharge_type,
                     graph_image_path,
                     show_rpm_band_shading,
                     NULL AS band_graph_background_color,
@@ -568,8 +725,6 @@ def _remove_deprecated_fan_notes_column(target_engine):
                 CREATE TABLE {temp_table_name} (
                     id INTEGER PRIMARY KEY,
                     model VARCHAR(255) NOT NULL,
-                    mounting_style VARCHAR(255),
-                    discharge_type VARCHAR(255),
                     graph_image_path VARCHAR(512),
                     show_rpm_band_shading BOOLEAN NOT NULL DEFAULT 1,
                     band_graph_background_color VARCHAR(32),
@@ -586,8 +741,6 @@ def _remove_deprecated_fan_notes_column(target_engine):
                 INSERT INTO {temp_table_name} (
                     id,
                     model,
-                    mounting_style,
-                    discharge_type,
                     graph_image_path,
                     show_rpm_band_shading,
                     band_graph_background_color,
@@ -598,8 +751,6 @@ def _remove_deprecated_fan_notes_column(target_engine):
                 SELECT
                     id,
                     model,
-                    mounting_style,
-                    discharge_type,
                     graph_image_path,
                     show_rpm_band_shading,
                     band_graph_background_color,
@@ -649,8 +800,6 @@ def _remove_deprecated_product_optional_columns(target_engine):
                     id INTEGER PRIMARY KEY,
                     product_type_id INTEGER,
                     model VARCHAR(255) NOT NULL,
-                    mounting_style VARCHAR(255),
-                    discharge_type VARCHAR(255),
                     description1_html TEXT,
                     description2_html TEXT,
                     description3_html TEXT,
@@ -673,8 +822,6 @@ def _remove_deprecated_product_optional_columns(target_engine):
                     id,
                     product_type_id,
                     model,
-                    mounting_style,
-                    discharge_type,
                     description1_html,
                     description2_html,
                     description3_html,
@@ -690,8 +837,6 @@ def _remove_deprecated_product_optional_columns(target_engine):
                     id,
                     product_type_id,
                     model,
-                    mounting_style,
-                    discharge_type,
                     description1_html,
                     description2_html,
                     description3_html,
@@ -749,7 +894,10 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     graph_x_axis_label VARCHAR(128),
                     graph_x_axis_unit VARCHAR(64),
                     graph_y_axis_label VARCHAR(128),
-                    graph_y_axis_unit VARCHAR(64)
+                    graph_y_axis_unit VARCHAR(64),
+                    product_template_id VARCHAR(128),
+                    printed_product_template_id VARCHAR(128),
+                    online_product_template_id VARCHAR(128)
                 )
                 """
             )
@@ -770,7 +918,10 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     graph_x_axis_label,
                     graph_x_axis_unit,
                     graph_y_axis_label,
-                    graph_y_axis_unit
+                    graph_y_axis_unit,
+                    product_template_id,
+                    printed_product_template_id,
+                    online_product_template_id
                 )
                 SELECT
                     id,
@@ -785,7 +936,10 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     graph_x_axis_label,
                     graph_x_axis_unit,
                     graph_y_axis_label,
-                    graph_y_axis_unit
+                    graph_y_axis_unit,
+                    product_template_id,
+                    printed_product_template_id,
+                    online_product_template_id
                 FROM product_types
                 """
             )

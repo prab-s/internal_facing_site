@@ -41,6 +41,11 @@ from backend.models import (
     EfficiencyPoint,
     ProductImage,
     ProductType,
+    ProductTypeParameterGroupPreset,
+    ProductTypeParameterPreset,
+    ProductTypeRpmLinePreset,
+    ProductTypeRpmPointPreset,
+    ProductTypeEfficiencyPointPreset,
     ProductParameterGroup,
     ProductParameter,
     User,
@@ -74,7 +79,10 @@ from backend.schemas import (
     ProductImageReorder,
     ProductTypeResponse,
     ProductTypeCreate,
+    ProductTypeParameterGroupPresetUpdate,
+    ProductTypePresetUpdate,
     ProductTypeUpdate,
+    ProductTypeParameterPresetUpdate,
     SeriesCreate,
     SeriesResponse,
     SeriesUpdate,
@@ -134,6 +142,197 @@ def product_slug(product: Product) -> str:
 
 def series_slug(series: Series) -> str:
     return sanitize_name(f"{series.product_type_key or 'series'}_{series.name}")
+
+
+def apply_product_type_parameter_presets(product_type: ProductType, preset_groups: list[ProductTypeParameterGroupPresetUpdate]):
+    product_type.parameter_group_presets.clear()
+
+    for group_index, group in enumerate(preset_groups or []):
+        group_name = (group.group_name or "").strip()
+        if not group_name:
+            raise HTTPException(status_code=400, detail="Each parameter group needs a name.")
+
+        group_model = ProductTypeParameterGroupPreset(
+            group_name=group_name,
+            sort_order=group_index,
+        )
+
+        seen_parameters: set[str] = set()
+        for parameter_index, parameter in enumerate(group.parameters or []):
+            parameter_name = (parameter.parameter_name or "").strip()
+            if not parameter_name:
+                raise HTTPException(status_code=400, detail=f"Each parameter in '{group_name}' needs a name.")
+
+            normalized_parameter_name = parameter_name.casefold()
+            if normalized_parameter_name in seen_parameters:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parameter names must be unique within '{group_name}'.",
+                )
+            seen_parameters.add(normalized_parameter_name)
+
+            preferred_unit = (parameter.preferred_unit or "").strip() or None
+            value_string = None if parameter.value_string is None else str(parameter.value_string).strip() or None
+            value_number = None if parameter.value_number is None else float(parameter.value_number)
+            if value_string is not None and value_number is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Each parameter preset in '{group_name}' must be either text or number, not both.",
+                )
+            if value_string is not None and preferred_unit is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Text parameter presets in '{group_name}' cannot define a unit.",
+                )
+            group_model.parameter_presets.append(
+                ProductTypeParameterPreset(
+                    parameter_name=parameter_name,
+                    sort_order=parameter_index,
+                    preferred_unit=preferred_unit,
+                    value_string=value_string,
+                    value_number=value_number,
+                )
+            )
+
+        product_type.parameter_group_presets.append(group_model)
+
+
+def apply_product_type_rpm_line_presets(product_type: ProductType, preset_lines: list):
+    product_type.rpm_line_presets.clear()
+
+    for line_index, line in enumerate(preset_lines or []):
+        line_model = ProductTypeRpmLinePreset(
+            rpm=float(line.rpm),
+            band_color=(line.band_color or "").strip() or None,
+            sort_order=line_index,
+        )
+
+        for point_index, point in enumerate(line.points or []):
+            line_model.point_presets.append(
+                ProductTypeRpmPointPreset(
+                    airflow=float(point.airflow),
+                    pressure=float(point.pressure),
+                    sort_order=point_index,
+                )
+            )
+
+        product_type.rpm_line_presets.append(line_model)
+
+
+def apply_product_type_efficiency_point_presets(product_type: ProductType, preset_points: list):
+    product_type.efficiency_point_presets.clear()
+
+    for point_index, point in enumerate(preset_points or []):
+        product_type.efficiency_point_presets.append(
+            ProductTypeEfficiencyPointPreset(
+                airflow=float(point.airflow),
+                efficiency_centre=point.efficiency_centre,
+                efficiency_lower_end=point.efficiency_lower_end,
+                efficiency_higher_end=point.efficiency_higher_end,
+                permissible_use=point.permissible_use,
+                sort_order=point_index,
+            )
+        )
+
+
+def apply_product_type_presets(
+    product_type: ProductType,
+    preset_groups: list[ProductTypeParameterGroupPresetUpdate],
+    preset_lines: list,
+    preset_efficiency_points: list,
+    product_template_id: str | None = None,
+    printed_product_template_id: str | None = None,
+    online_product_template_id: str | None = None,
+):
+    apply_product_type_parameter_presets(product_type, preset_groups)
+    apply_product_type_rpm_line_presets(product_type, preset_lines)
+    apply_product_type_efficiency_point_presets(product_type, preset_efficiency_points)
+    if printed_product_template_id is None and online_product_template_id is None:
+        printed_product_template_id = product_template_id
+        online_product_template_id = product_template_id
+    product_type.printed_product_template_id = validate_template_id(printed_product_template_id, "product")
+    product_type.online_product_template_id = validate_template_id(online_product_template_id, "product")
+    product_type.product_template_id = (
+        product_type.online_product_template_id
+        or product_type.printed_product_template_id
+        or validate_template_id(product_template_id, "product")
+    )
+
+
+def resolve_product_type_default_template_id(product_type: ProductType, variant: str) -> str | None:
+    candidate = (
+        product_type.printed_product_template_id
+        if variant == "printed"
+        else product_type.online_product_template_id
+    ) or product_type.product_template_id
+    if not candidate:
+        return None
+    try:
+        return validate_template_id(candidate, "product")
+    except HTTPException:
+        return None
+
+
+def resolve_template_pair(
+    template_type: str,
+    legacy_template_id: str | None = None,
+    printed_template_id: str | None = None,
+    online_template_id: str | None = None,
+) -> tuple[str | None, str | None]:
+    if printed_template_id is None and online_template_id is None and legacy_template_id is not None:
+        printed_template_id = legacy_template_id
+        online_template_id = legacy_template_id
+    return (
+        validate_template_id(printed_template_id, template_type),
+        validate_template_id(online_template_id, template_type),
+    )
+
+
+def resolve_product_type_band_graph_style_defaults(product_type: ProductType) -> dict:
+    return {
+        "band_graph_background_color": normalize_color_value(product_type.band_graph_background_color) or "#ffffff",
+        "band_graph_label_text_color": normalize_color_value(product_type.band_graph_label_text_color) or "#000000",
+        "band_graph_faded_opacity": (
+            product_type.band_graph_faded_opacity if product_type.band_graph_faded_opacity is not None else 0.18
+        ),
+        "band_graph_permissible_label_color": (
+            normalize_color_value(product_type.band_graph_permissible_label_color)
+            or normalize_color_value(product_type.band_graph_label_text_color)
+            or "#000000"
+        ),
+    }
+
+
+def build_product_type_rpm_line_presets(product_type: ProductType) -> list[dict]:
+    preset_lines: list[dict] = []
+    for line in product_type.rpm_line_presets or []:
+        preset_lines.append(
+            {
+                "rpm": line.rpm,
+                "band_color": line.band_color,
+                "points": [
+                    {
+                        "airflow": point.airflow,
+                        "pressure": point.pressure,
+                    }
+                    for point in line.point_presets or []
+                ],
+            }
+        )
+    return preset_lines
+
+
+def build_product_type_efficiency_point_presets(product_type: ProductType) -> list[dict]:
+    return [
+        {
+            "airflow": point.airflow,
+            "efficiency_centre": point.efficiency_centre,
+            "efficiency_lower_end": point.efficiency_lower_end,
+            "efficiency_higher_end": point.efficiency_higher_end,
+            "permissible_use": point.permissible_use,
+        }
+        for point in product_type.efficiency_point_presets or []
+    ]
 
 
 def load_template_registry() -> dict:
@@ -331,28 +530,28 @@ def graph_file_name(product: Product) -> str:
     return f"graph_{product_slug(product)}.png"
 
 
-def product_pdf_file_name(product: Product) -> str:
-    return f"product_{product_slug(product)}.pdf"
+def product_pdf_file_name(product: Product, variant: str) -> str:
+    return f"product_{variant}_{product_slug(product)}.pdf"
 
 
-def product_pdf_path(product: Product) -> Path:
-    return PRODUCT_PDFS_DIR / product_pdf_file_name(product)
+def product_pdf_path(product: Product, variant: str) -> Path:
+    return PRODUCT_PDFS_DIR / product_pdf_file_name(product, variant)
 
 
 def series_graph_file_name(series: Series) -> str:
     return f"series_graph_{series_slug(series)}.png"
 
 
-def series_pdf_file_name(series: Series) -> str:
-    return f"series_{series_slug(series)}.pdf"
+def series_pdf_file_name(series: Series, variant: str) -> str:
+    return f"series_{variant}_{series_slug(series)}.pdf"
 
 
 def series_graph_path(series: Series) -> Path:
     return SERIES_GRAPHS_DIR / series_graph_file_name(series)
 
 
-def series_pdf_path(series: Series) -> Path:
-    return SERIES_PDFS_DIR / series_pdf_file_name(series)
+def series_pdf_path(series: Series, variant: str) -> Path:
+    return SERIES_PDFS_DIR / series_pdf_file_name(series, variant)
 
 
 def image_file_path(file_name: str) -> Path:
@@ -534,6 +733,39 @@ def render_grouped_specs_table(product: Product) -> str:
     return "".join(sections)
 
 
+def render_grouped_specs_group_html(product: Product, group_name: str) -> str:
+    target_slug = template_token_slug(group_name)
+    matching_groups = [
+        group
+        for group in sorted(product.parameter_groups, key=lambda item: (item.sort_order, item.id))
+        if template_token_slug(group.group_name or "") == target_slug
+    ]
+    if not matching_groups:
+        return f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
+
+    rows: list[str] = []
+    for group in matching_groups:
+        for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+            if parameter.value_string not in {None, ""}:
+                value_html = html.escape(parameter.value_string)
+            elif parameter.value_number is not None:
+                number_value = f"{parameter.value_number:g}"
+                value_html = html.escape(f"{number_value} {parameter.unit}".strip())
+            else:
+                value_html = "—"
+            rows.append(
+                "<div class=\"spec-list__row\">"
+                f"<dt>{html.escape(parameter.parameter_name)}</dt>"
+                f"<dd>{value_html}</dd>"
+                "</div>"
+            )
+
+    if not rows:
+        return f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
+
+    return '<dl class="spec-list">' + "".join(rows) + "</dl>"
+
+
 def format_parameter_value(parameter: ProductParameter) -> str:
     if parameter.value_string not in {None, ""}:
         return parameter.value_string
@@ -558,6 +790,89 @@ def build_grouped_spec_token_map(product: Product) -> dict[str, str]:
     return replacements
 
 
+def build_grouped_spec_group_token_map(product: Product) -> dict[str, str]:
+    replacements: dict[str, str] = {}
+    for group_name in ("impeller", "motor", "fan"):
+        target_slug = template_token_slug(group_name)
+        matching_groups = [
+            group
+            for group in sorted(product.parameter_groups, key=lambda item: (item.sort_order, item.id))
+            if template_token_slug(group.group_name or "") == target_slug
+        ]
+        if not matching_groups:
+            replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = (
+                f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
+            )
+            continue
+
+        rows: list[str] = []
+        for group in matching_groups:
+            for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+                if parameter.value_string not in {None, ""}:
+                    value_html = html.escape(parameter.value_string)
+                elif parameter.value_number is not None:
+                    number_value = f"{parameter.value_number:g}"
+                    value_html = html.escape(f"{number_value} {parameter.unit}".strip())
+                else:
+                    value_html = "—"
+                rows.append(
+                    "<div class=\"spec-list__row\">"
+                    f"<dt>{html.escape(parameter.parameter_name)}</dt>"
+                    f"<dd>{value_html}</dd>"
+                    "</div>"
+                )
+
+        if not rows:
+            replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = (
+                f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
+            )
+            continue
+
+        replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = '<dl class="spec-list">' + "".join(rows) + "</dl>"
+    return replacements
+
+
+def render_fan_map_points_table(product: Product) -> str:
+    ordered_lines = sorted(product.rpm_lines, key=lambda line: (line.rpm, line.id))
+    if not ordered_lines:
+        return '<p class="placeholder">No fan map points available.</p>'
+
+    rows: list[str] = []
+    for line in ordered_lines:
+        ordered_points = sorted(line.points or [], key=lambda point: (point.airflow, point.id))
+        if not ordered_points:
+            rows.append(
+                "<tr>"
+                f"<td>{html.escape(f'{line.rpm:g}')}</td>"
+                "<td colspan=\"3\">No points recorded</td>"
+                "</tr>"
+            )
+            continue
+
+        for index, point in enumerate(ordered_points, start=1):
+            rows.append(
+                "<tr>"
+                f"<td>{html.escape(f'{line.rpm:g}')}</td>"
+                f"<td>{html.escape(str(index))}</td>"
+                f"<td>{html.escape(f'{point.airflow:g}')}</td>"
+                f"<td>{html.escape(f'{point.pressure:g}')}</td>"
+                "</tr>"
+            )
+
+    return (
+        '<table class="fan-map-points-table">'
+        '<caption>Fan Map Points</caption>'
+        "<thead><tr>"
+        "<th>RPM Line</th>"
+        "<th>Point</th>"
+        "<th>Airflow</th>"
+        "<th>Pressure</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+
+
 def render_image_gallery_html(product: Product) -> str:
     ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
     if not ordered_images:
@@ -578,8 +893,9 @@ def render_image_gallery_html(product: Product) -> str:
     return "".join(items) if items else '<p class="placeholder">No product images available.</p>'
 
 
-def build_product_pdf_html(product: Product) -> str:
-    template_definition = get_template_definition(product.template_id or "product-default", "product")
+def build_product_pdf_html(product: Product, variant: str) -> str:
+    template_id = product.printed_template_id if variant == "printed" else product.online_template_id
+    template_definition = get_template_definition(template_id or product.template_id or "product-default", "product")
     if template_definition is None:
         raise RuntimeError("No product PDF template is configured.")
 
@@ -610,8 +926,6 @@ def build_product_pdf_html(product: Product) -> str:
         "{{product.model}}": html.escape(product.model or ""),
         "{{product.product_type_label}}": html.escape(product.product_type_label or ""),
         "{{product.series_name}}": html.escape(product.series_name_value or ""),
-        "{{product.mounting_style}}": html.escape(product.mounting_style or "—"),
-        "{{product.discharge_type}}": html.escape(product.discharge_type or "—"),
         "{{product.description1_html}}": render_richtext_html(product.description1_html),
         "{{product.description2_html}}": render_richtext_html(product.description2_html),
         "{{product.description3_html}}": render_richtext_html(product.description3_html),
@@ -620,10 +934,12 @@ def build_product_pdf_html(product: Product) -> str:
         "{{product.specifications_html}}": render_richtext_html(product.description3_html),
         "{{product.comments_html}}": render_richtext_html(product.comments_html),
         "{{product.grouped_specs_table}}": render_grouped_specs_table(product),
+        "{{product.fan_map_points_table}}": render_fan_map_points_table(product),
         "{{product.image_gallery}}": render_image_gallery_html(product),
         "{{product.primary_product_image_url}}": primary_image_uri,
         "{{product.graph_image_url}}": graph_image_uri,
     }
+    replacements.update(build_grouped_spec_group_token_map(product))
     replacements.update(build_grouped_spec_token_map(product))
 
     rendered = html_template
@@ -632,11 +948,11 @@ def build_product_pdf_html(product: Product) -> str:
     return rendered
 
 
-def generate_product_pdf(product: Product) -> Path:
+def generate_product_pdf(product: Product, variant: str) -> Path:
     browser_binary = find_chromium_binary()
-    output_path = product_pdf_path(product)
+    output_path = product_pdf_path(product, variant)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    html_content = build_product_pdf_html(product)
+    html_content = build_product_pdf_html(product, variant)
 
     with tempfile.TemporaryDirectory(prefix="product-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
@@ -703,8 +1019,6 @@ def render_series_products_summary_table(series: Series) -> str:
 
     header_cells = [
         "<th>Model</th>",
-        "<th>Mounting</th>",
-        "<th>Discharge</th>",
         *[f"<th>{html.escape(label)}</th>" for _, _, label in candidate_columns],
     ]
 
@@ -713,8 +1027,6 @@ def render_series_products_summary_table(series: Series) -> str:
         values = parameter_value_map(product)
         data_cells = [
             f"<td>{html.escape(product.model or '—')}</td>",
-            f"<td>{html.escape(product.mounting_style or '—')}</td>",
-            f"<td>{html.escape(product.discharge_type or '—')}</td>",
             *[
                 f"<td>{html.escape(values.get((group_name, parameter_name), '—'))}</td>"
                 for group_name, parameter_name, _ in candidate_columns
@@ -825,8 +1137,9 @@ def generate_series_graph(series: Series) -> Path:
     return final_path
 
 
-def build_series_pdf_html(series: Series) -> str:
-    template_definition = get_template_definition(series.template_id or "series-default", "series")
+def build_series_pdf_html(series: Series, variant: str) -> str:
+    template_id = series.printed_template_id if variant == "printed" else series.online_template_id
+    template_definition = get_template_definition(template_id or series.template_id or "series-default", "series")
     if template_definition is None:
         raise RuntimeError("No series PDF template is configured.")
 
@@ -851,8 +1164,9 @@ def build_series_pdf_html(series: Series) -> str:
         "{{series.description1_html}}": render_richtext_html(series.description1_html),
         "{{series.description2_html}}": render_richtext_html(series.description2_html),
         "{{series.description3_html}}": render_richtext_html(series.description3_html),
-        "{{series.comments_html}}": render_richtext_html(series.comments_html),
-        "{{series.template_label}}": html.escape(get_template_label(series.template_id, "series")),
+        "{{series.description4_html}}": render_richtext_html(series.description4_html),
+        "{{series.comments_html}}": render_richtext_html(series.description4_html),
+        "{{series.template_label}}": html.escape(get_template_label(template_id or series.template_id, "series")),
         "{{series.product_count}}": html.escape(str(len(series.products or []))),
         "{{series.graph_rule_label}}": html.escape(series_graph_rule_label()),
         "{{series.graph_image_url}}": graph_uri,
@@ -865,11 +1179,11 @@ def build_series_pdf_html(series: Series) -> str:
     return rendered
 
 
-def generate_series_pdf(series: Series) -> Path:
+def generate_series_pdf(series: Series, variant: str) -> Path:
     browser_binary = find_chromium_binary()
-    output_path = series_pdf_path(series)
+    output_path = series_pdf_path(series, variant)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    html_content = build_series_pdf_html(series)
+    html_content = build_series_pdf_html(series, variant)
 
     with tempfile.TemporaryDirectory(prefix="series-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
@@ -1681,7 +1995,18 @@ def swagger_ui():
 
 @app.get("/api/product-types", response_model=list[ProductTypeResponse], dependencies=[Depends(get_current_user)], tags=["Product Types"])
 def list_product_types(db: Session = Depends(get_db)):
-    return db.query(ProductType).order_by(ProductType.label).all()
+    return (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.parameter_group_presets).selectinload(
+                ProductTypeParameterGroupPreset.parameter_presets
+            ),
+            selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
+            selectinload(ProductType.efficiency_point_presets),
+        )
+        .order_by(ProductType.label)
+        .all()
+    )
 
 
 @app.get(
@@ -1693,7 +2018,18 @@ def list_product_types(db: Session = Depends(get_db)):
     description="Read-only product-type feed for the WordPress customer-facing site.",
 )
 def list_cms_product_types(db: Session = Depends(get_db)):
-    return db.query(ProductType).order_by(ProductType.label).all()
+    return (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.parameter_group_presets).selectinload(
+                ProductTypeParameterGroupPreset.parameter_presets
+            ),
+            selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
+            selectinload(ProductType.efficiency_point_presets),
+        )
+        .order_by(ProductType.label)
+        .all()
+    )
 
 
 @app.post("/api/product-types", response_model=ProductTypeResponse, dependencies=[Depends(get_current_user)], tags=["Product Types"])
@@ -1710,6 +2046,13 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="A product type with that key already exists.")
 
+    printed_product_template_id, online_product_template_id = resolve_template_pair(
+        "product",
+        body.product_template_id,
+        body.printed_product_template_id,
+        body.online_product_template_id,
+    )
+
     product_type = ProductType(
         key=key,
         label=label,
@@ -1723,6 +2066,13 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
         graph_x_axis_unit=(body.graph_x_axis_unit or "").strip() or None,
         graph_y_axis_label=(body.graph_y_axis_label or "").strip() or None,
         graph_y_axis_unit=(body.graph_y_axis_unit or "").strip() or None,
+        printed_product_template_id=printed_product_template_id,
+        online_product_template_id=online_product_template_id,
+        product_template_id=online_product_template_id or printed_product_template_id,
+        band_graph_background_color=normalize_color_value(body.band_graph_background_color),
+        band_graph_label_text_color=normalize_color_value(body.band_graph_label_text_color),
+        band_graph_faded_opacity=None if body.band_graph_faded_opacity is None else max(0, min(1, float(body.band_graph_faded_opacity))),
+        band_graph_permissible_label_color=normalize_color_value(body.band_graph_permissible_label_color),
     )
     db.add(product_type)
     db.commit()
@@ -1753,6 +2103,22 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
             raise HTTPException(status_code=400, detail="Product type label cannot be blank.")
         product_type.label = label
 
+    if any(field in updates for field in ("product_template_id", "printed_product_template_id", "online_product_template_id")):
+        printed_product_template_id, online_product_template_id = resolve_template_pair(
+            "product",
+            updates.pop("product_template_id", None),
+            updates.pop("printed_product_template_id", None),
+            updates.pop("online_product_template_id", None),
+        )
+        if body.model_fields_set.intersection({"product_template_id", "printed_product_template_id"}):
+            product_type.printed_product_template_id = printed_product_template_id
+        if body.model_fields_set.intersection({"product_template_id", "online_product_template_id"}):
+            product_type.online_product_template_id = online_product_template_id
+        product_type.product_template_id = (
+            product_type.online_product_template_id
+            or product_type.printed_product_template_id
+        )
+
     for field in [
         "supports_graph",
         "supports_graph_overlays",
@@ -1764,13 +2130,62 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
         "graph_x_axis_unit",
         "graph_y_axis_label",
         "graph_y_axis_unit",
+        "band_graph_background_color",
+        "band_graph_label_text_color",
+        "band_graph_faded_opacity",
+        "band_graph_permissible_label_color",
     ]:
         if field in updates:
             value = updates[field]
             if isinstance(value, str):
                 value = value.strip() or None
+            if field in {"band_graph_background_color", "band_graph_label_text_color", "band_graph_permissible_label_color"}:
+                value = normalize_color_value(value)
+            elif field == "band_graph_faded_opacity":
+                value = None if value is None else max(0, min(1, float(value)))
             setattr(product_type, field, value)
 
+    db.commit()
+    db.refresh(product_type)
+    return product_type
+
+
+@app.put(
+    "/api/product-types/{product_type_id}/parameter-group-presets",
+    response_model=ProductTypeResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Product Types"],
+    summary="Replace presets for a product type",
+)
+def update_product_type_parameter_group_presets(
+    product_type_id: int,
+    body: ProductTypePresetUpdate,
+    db: Session = Depends(get_db),
+):
+    product_type = (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.parameter_group_presets).selectinload(
+                ProductTypeParameterGroupPreset.parameter_presets
+            ),
+            selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
+            selectinload(ProductType.efficiency_point_presets),
+        )
+        .filter(ProductType.id == product_type_id)
+        .first()
+    )
+    if not product_type:
+        raise HTTPException(status_code=404, detail="Product type not found.")
+
+    apply_product_type_presets(
+        product_type,
+        body.parameter_group_presets,
+        body.rpm_line_presets,
+        body.efficiency_point_presets,
+        body.product_template_id,
+        body.printed_product_template_id,
+        body.online_product_template_id,
+    )
     db.commit()
     db.refresh(product_type)
     return product_type
@@ -1847,9 +2262,32 @@ def delete_template(template_type: str, template_id: str, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Template not found.")
 
     if normalized_type == "product":
-        in_use = db.query(Product).filter(Product.template_id == template_id).count()
+        in_use = (
+            db.query(Product)
+            .filter(
+                (Product.template_id == template_id)
+                | (Product.printed_template_id == template_id)
+                | (Product.online_template_id == template_id)
+            )
+            .count()
+            + db.query(ProductType)
+            .filter(
+                (ProductType.product_template_id == template_id)
+                | (ProductType.printed_product_template_id == template_id)
+                | (ProductType.online_product_template_id == template_id)
+            )
+            .count()
+        )
     elif normalized_type == "series":
-        in_use = db.query(Series).filter(Series.template_id == template_id).count()
+        in_use = (
+            db.query(Series)
+            .filter(
+                (Series.template_id == template_id)
+                | (Series.printed_template_id == template_id)
+                | (Series.online_template_id == template_id)
+            )
+            .count()
+        )
     else:
         raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
 
@@ -1970,14 +2408,23 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
     )
     if existing:
         raise HTTPException(status_code=400, detail="A series with that name already exists for this product type.")
+    printed_template_id, online_template_id = resolve_template_pair(
+        "series",
+        body.template_id,
+        body.printed_template_id,
+        body.online_template_id,
+    )
+
     series = Series(
         product_type_id=product_type.id,
         name=name,
         description1_html=body.description1_html,
         description2_html=body.description2_html,
         description3_html=body.description3_html,
-        comments_html=body.comments_html,
-        template_id=validate_template_id(body.template_id, "series"),
+        description4_html=body.description4_html,
+        printed_template_id=printed_template_id,
+        online_template_id=online_template_id,
+        template_id=online_template_id or printed_template_id,
     )
     series.product_type = product_type
     db.add(series)
@@ -2012,11 +2459,21 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
         if existing:
             raise HTTPException(status_code=400, detail="A series with that name already exists for this product type.")
         series.name = name
-    for field in ("description1_html", "description2_html", "description3_html", "comments_html"):
+    for field in ("description1_html", "description2_html", "description3_html", "description4_html"):
         if field in updates:
             setattr(series, field, updates[field])
-    if "template_id" in updates:
-        series.template_id = validate_template_id(updates["template_id"], "series")
+    if any(field in updates for field in ("template_id", "printed_template_id", "online_template_id")):
+        printed_template_id, online_template_id = resolve_template_pair(
+            "series",
+            updates.get("template_id"),
+            updates.get("printed_template_id"),
+            updates.get("online_template_id"),
+        )
+        if "printed_template_id" in updates or "template_id" in updates:
+            series.printed_template_id = printed_template_id
+        if "online_template_id" in updates or "template_id" in updates:
+            series.online_template_id = online_template_id
+        series.template_id = series.online_template_id or series.printed_template_id
     for product in series.products:
         product.series_name = series.name
     db.commit()
@@ -2059,7 +2516,8 @@ def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
     try:
         if series.product_type and series.product_type.supports_graph:
             generate_series_graph(series)
-        generate_series_pdf(series)
+        generate_series_pdf(series, "printed")
+        generate_series_pdf(series, "online")
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
     db.refresh(series)
@@ -2199,8 +2657,6 @@ def list_cms_products(
     product_type_key: Optional[str] = Query(None),
     series_id: Optional[int] = Query(None),
     series_name: Optional[str] = Query(None),
-    mounting_style: Optional[str] = Query(None),
-    discharge_type: Optional[str] = Query(None),
     parameter_filters: Optional[str] = Query(None),
 ):
     parsed_parameter_filters = parse_parameter_filters(parameter_filters)
@@ -2219,10 +2675,6 @@ def list_cms_products(
         q = q.filter(Product.series_id == series_id)
     if series_name:
         q = q.filter(Product.series_name.ilike(f"%{series_name}%"))
-    if mounting_style:
-        q = q.filter(Product.mounting_style == mounting_style)
-    if discharge_type:
-        q = q.filter(Product.discharge_type == discharge_type)
     results = q.order_by(Product.model).all()
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
@@ -2278,8 +2730,6 @@ def list_products(
     product_type_key: Optional[str] = Query(None),
     series_id: Optional[int] = Query(None),
     series_name: Optional[str] = Query(None),
-    mounting_style: Optional[str] = Query(None),
-    discharge_type: Optional[str] = Query(None),
     parameter_filters: Optional[str] = Query(None),
 ):
     parsed_parameter_filters = parse_parameter_filters(parameter_filters)
@@ -2300,10 +2750,6 @@ def list_products(
         q = q.filter(Product.series_id == series_id)
     if series_name:
         q = q.filter(Product.series_name.ilike(f"%{series_name}%"))
-    if mounting_style:
-        q = q.filter(Product.mounting_style == mounting_style)
-    if discharge_type:
-        q = q.filter(Product.discharge_type == discharge_type)
     results = q.order_by(Product.model).all()
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
@@ -2315,10 +2761,39 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
     series = get_series_by_id(db, product_data.pop("series_id", None))
     parameter_groups = product_data.pop("parameter_groups", [])
-    product_data["band_graph_background_color"] = normalize_color_value(product_data.get("band_graph_background_color"))
-    product_data["band_graph_label_text_color"] = normalize_color_value(product_data.get("band_graph_label_text_color"))
-    product_data["band_graph_permissible_label_color"] = normalize_color_value(product_data.get("band_graph_permissible_label_color"))
-    product_data["template_id"] = validate_template_id(product_data.get("template_id"), "product")
+    rpm_line_presets = product_data.pop("rpm_lines", [])
+    efficiency_point_presets = product_data.pop("efficiency_points", [])
+    if not rpm_line_presets:
+        rpm_line_presets = build_product_type_rpm_line_presets(product_type)
+    if not efficiency_point_presets:
+        efficiency_point_presets = build_product_type_efficiency_point_presets(product_type)
+    band_graph_style_defaults = resolve_product_type_band_graph_style_defaults(product_type)
+    product_data["band_graph_background_color"] = (
+        normalize_color_value(product_data.get("band_graph_background_color"))
+        or band_graph_style_defaults["band_graph_background_color"]
+    )
+    product_data["band_graph_label_text_color"] = (
+        normalize_color_value(product_data.get("band_graph_label_text_color"))
+        or band_graph_style_defaults["band_graph_label_text_color"]
+    )
+    product_data["band_graph_faded_opacity"] = (
+        product_data.get("band_graph_faded_opacity")
+        if product_data.get("band_graph_faded_opacity") is not None
+        else band_graph_style_defaults["band_graph_faded_opacity"]
+    )
+    product_data["band_graph_permissible_label_color"] = (
+        normalize_color_value(product_data.get("band_graph_permissible_label_color"))
+        or band_graph_style_defaults["band_graph_permissible_label_color"]
+    )
+    printed_template_id, online_template_id = resolve_template_pair(
+        "product",
+        product_data.get("template_id"),
+        product_data.get("printed_template_id"),
+        product_data.get("online_template_id"),
+    )
+    product_data["printed_template_id"] = printed_template_id or resolve_product_type_default_template_id(product_type, "printed")
+    product_data["online_template_id"] = online_template_id or resolve_product_type_default_template_id(product_type, "online")
+    product_data["template_id"] = product_data["online_template_id"] or product_data["printed_template_id"]
     product_data["product_type_id"] = product_type.id
     if series is not None and series.product_type_id != product_type.id:
         raise HTTPException(status_code=400, detail="Selected series does not belong to the chosen product type.")
@@ -2329,9 +2804,42 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     db.add(product)
     db.flush()
     sync_product_parameter_groups(product, parameter_groups)
+    created_rpm_lines: list[RpmLine] = []
+    for line_index, line in enumerate(rpm_line_presets or []):
+        line_model = RpmLine(
+            product_id=product.id,
+            rpm=line.get("rpm"),
+            band_color=normalize_color_value(line.get("band_color")) or None,
+        )
+        db.add(line_model)
+        db.flush()
+        created_rpm_lines.append(line_model)
+
+        for point in line.get("points") or []:
+            db.add(
+                RpmPoint(
+                    product_id=product.id,
+                    rpm_line_id=line_model.id,
+                    airflow=point.get("airflow"),
+                    pressure=point.get("pressure"),
+                )
+            )
+
+    for point_index, point in enumerate(efficiency_point_presets or []):
+        db.add(
+            EfficiencyPoint(
+                product_id=product.id,
+                airflow=point.get("airflow"),
+                efficiency_centre=point.get("efficiency_centre"),
+                efficiency_lower_end=point.get("efficiency_lower_end"),
+                efficiency_higher_end=point.get("efficiency_higher_end"),
+                permissible_use=point.get("permissible_use"),
+            )
+        )
+
     db.commit()
     db.refresh(product)
-    sync_graph_image(product, [], [])
+    sync_graph_image(product, created_rpm_lines or list(product.rpm_lines), list(product.efficiency_points))
     db.commit()
     db.refresh(product)
     return product
@@ -2366,19 +2874,28 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
         sync_product_series(product, series)
     if "parameter_groups" in updates:
         sync_product_parameter_groups(product, updates.pop("parameter_groups"))
+    if any(field in updates for field in ("template_id", "printed_template_id", "online_template_id")):
+        printed_template_id, online_template_id = resolve_template_pair(
+            "product",
+            updates.pop("template_id", None),
+            updates.pop("printed_template_id", None),
+            updates.pop("online_template_id", None),
+        )
+        if body.model_fields_set.intersection({"template_id", "printed_template_id"}):
+            product.printed_template_id = printed_template_id
+        if body.model_fields_set.intersection({"template_id", "online_template_id"}):
+            product.online_template_id = online_template_id
+        product.template_id = product.online_template_id or product.printed_template_id
     for k, v in updates.items():
         if k in {"band_graph_background_color", "band_graph_label_text_color", "band_graph_permissible_label_color"}:
             setattr(product, k, normalize_color_value(v))
         elif k == "band_graph_faded_opacity":
             setattr(product, k, None if v is None else max(0, min(1, float(v))))
-        elif k == "template_id":
-            setattr(product, k, validate_template_id(v, "product"))
         else:
             setattr(product, k, v)
     if product.series is not None:
         product.series_name = product.series.name
     sync_product_image_files(product)
-    sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
     db.commit()
     db.refresh(product)
     return product
@@ -2472,6 +2989,7 @@ def get_rpm_points(product_id: int, db: Session = Depends(get_db)):
     require_product(db, product_id)
     return (
         db.query(RpmPoint)
+        .options(joinedload(RpmPoint.rpm_line))
         .join(RpmLine, RpmPoint.rpm_line_id == RpmLine.id)
         .filter(RpmPoint.product_id == product_id)
         .order_by(RpmLine.rpm, RpmPoint.airflow)
@@ -2638,7 +3156,8 @@ def refresh_product_pdf(product_id: int, db: Session = Depends(get_db)):
     if product.product_type and product.product_type.supports_graph:
         refresh_graph_for_product(db, product)
     try:
-        generate_product_pdf(product)
+        generate_product_pdf(product, "printed")
+        generate_product_pdf(product, "online")
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate product PDF: {exc}") from exc
     db.commit()
@@ -2684,7 +3203,8 @@ def regenerate_all_product_pdfs(db: Session = Depends(get_db)):
     for product in products:
         if product.product_type and product.product_type.supports_graph:
             refresh_graph_for_product(db, product)
-        generate_product_pdf(product)
+        generate_product_pdf(product, "printed")
+        generate_product_pdf(product, "online")
         processed += 1
     db.commit()
     return PdfMaintenanceResponse(
@@ -2704,7 +3224,8 @@ def start_regenerate_all_product_pdfs_job():
                 progress(f"Generating PDF {index} of {total}: {product.model}", index, total)
                 if product.product_type and product.product_type.supports_graph:
                     refresh_graph_for_product(db, product)
-                generate_product_pdf(product)
+                generate_product_pdf(product, "printed")
+                generate_product_pdf(product, "online")
                 processed += 1
             db.commit()
         return {

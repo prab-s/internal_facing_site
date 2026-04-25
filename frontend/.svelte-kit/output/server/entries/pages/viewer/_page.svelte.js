@@ -1,32 +1,11 @@
-import { a9 as fallback, aa as attr_style, ab as bind_props, ac as stringify, s as store_get, h as head, b as attr_class, a as attr, d as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
-import { c as getProducts, d as getProduct, e as getProductChartData } from "../../../chunks/api.js";
-import { o as onDestroy } from "../../../chunks/index-server.js";
-import "echarts";
+import { s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
+import { d as getProducts, e as getProduct, f as getProductChartData } from "../../../chunks/api.js";
+import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../chunks/fullChart.js";
 import { t as theme } from "../../../chunks/config.js";
-import { g as getChartTheme, b as buildFullChartOption } from "../../../chunks/fullChart.js";
 function html(value) {
   var html2 = String(value ?? "");
   var open = "<!---->";
   return open + html2 + "<!---->";
-}
-function ECharts($$renderer, $$props) {
-  $$renderer.component(($$renderer2) => {
-    let option = fallback($$props["option"], () => ({}), true);
-    let height = fallback($$props["height"], "400px");
-    let on = fallback($$props["on"], () => ({}), true);
-    let onChartReady = fallback(
-      $$props["onChartReady"],
-      null
-      // (chart) => void
-    );
-    onDestroy(() => {
-      window.removeEventListener("resize", resize);
-    });
-    function resize() {
-    }
-    $$renderer2.push(`<div class="chart-container echart-host"${attr_style(`height: ${stringify(height)};`)}></div>`);
-    bind_props($$props, { option, height, on, onChartReady });
-  });
 }
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
@@ -295,7 +274,7 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfId === currentProduct.id, true)}>${escape_html(refreshingProductPdfId === currentProduct.id ? "Generating PDF..." : "Generate PDF")}</button> `);
+        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfId === currentProduct.id, true)}>${escape_html(refreshingProductPdfId === currentProduct.id ? "Generating PDFs..." : "Generate PDFs")}</button> `);
         if (currentProduct.graph_image_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.graph_image_url)} target="_blank" rel="noreferrer">Open Graph</a>`);
@@ -303,13 +282,23 @@ function _page($$renderer, $$props) {
           $$renderer2.push("<!--[-1-->");
         }
         $$renderer2.push(`<!--]--> `);
-        if (currentProduct.product_pdf_url) {
+        if (currentProduct.product_printed_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_printed_pdf_url)} target="_blank" rel="noreferrer">Open Printed PDF</a>`);
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Mounting</div> <div>${escape_html(currentProduct.mounting_style || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Discharge</div> <div>${escape_html(currentProduct.discharge_type || "—")}</div></div></div></div></div></div> <div class="row g-3"><div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description1</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description2</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description3</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Comments</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Grouped Specifications</h3> `);
+        $$renderer2.push(`<!--]--> `);
+        if (currentProduct.product_online_pdf_url) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_online_pdf_url)} target="_blank" rel="noreferrer">Open Online PDF</a>`);
+        } else if (currentProduct.product_pdf_url) {
+          $$renderer2.push("<!--[1-->");
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_pdf_url)} target="_blank" rel="noreferrer">Open Existing PDF</a>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div></div></div> <div class="row g-3"><div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description1</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description2</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description3</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Comments</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Grouped Specifications</h3> `);
         if ((currentProduct.parameter_groups?.length ?? 0) > 0) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3"><!--[-->`);
@@ -356,13 +345,30 @@ function _page($$renderer, $$props) {
           ECharts($$renderer2, { option: chartOption, height: "700px" });
           $$renderer2.push(`<!----></div>`);
         }
-        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Product PDF</h3> `);
-        if (currentProduct.product_pdf_url) {
+        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Product PDFs</h3> `);
+        if (currentProduct.product_printed_pdf_url || currentProduct.product_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="ratio ratio-16x9 mt-3"><iframe${attr("src", currentProduct.product_pdf_url)}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div>`);
+          $$renderer2.push(`<div class="vstack gap-3 mt-3">`);
+          if (currentProduct.product_printed_pdf_url) {
+            $$renderer2.push("<!--[0-->");
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Printed</div> <div class="ratio ratio-16x9"><iframe${attr("src", currentProduct.product_printed_pdf_url)}${attr("title", `${currentProduct.model} printed PDF preview`)}></iframe></div></div>`);
+          } else {
+            $$renderer2.push("<!--[-1-->");
+          }
+          $$renderer2.push(`<!--]--> `);
+          if (currentProduct.product_online_pdf_url) {
+            $$renderer2.push("<!--[0-->");
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Online</div> <div class="ratio ratio-16x9"><iframe${attr("src", currentProduct.product_online_pdf_url)}${attr("title", `${currentProduct.model} online PDF preview`)}></iframe></div></div>`);
+          } else if (currentProduct.product_pdf_url) {
+            $$renderer2.push("<!--[1-->");
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Existing</div> <div class="ratio ratio-16x9"><iframe${attr("src", currentProduct.product_pdf_url)}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div></div>`);
+          } else {
+            $$renderer2.push("<!--[-1-->");
+          }
+          $$renderer2.push(`<!--]--></div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
-          $$renderer2.push(`<p class="text-body-secondary mb-0">No product PDF generated yet.</p>`);
+          $$renderer2.push(`<p class="text-body-secondary mb-0">No product PDFs generated yet.</p>`);
         }
         $$renderer2.push(`<!--]--></div></div>`);
       } else {

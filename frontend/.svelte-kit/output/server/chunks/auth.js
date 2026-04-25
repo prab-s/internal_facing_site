@@ -1,5 +1,5 @@
 import { w as writable } from "./index.js";
-import { l as logout, a as login, b as getAuthSession } from "./api.js";
+import { l as logout, b as login, c as getAuthSession } from "./api.js";
 function createAuthStore() {
   const { subscribe, set, update } = writable({
     ready: false,

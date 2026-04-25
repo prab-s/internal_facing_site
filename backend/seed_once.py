@@ -50,21 +50,21 @@ def main():
             db,
             product_1,
             1000,
-            "#4F7EF7",
+            "#0066e3",
             [(0.2, 120), (0.5, 110), (1.0, 80)],
         )
         create_rpm_line_with_points(
             db,
             product_1,
             1500,
-            "#3BB273",
+            "#009760",
             [(0.3, 200), (0.6, 185), (1.2, 140)],
         )
         create_rpm_line_with_points(
             db,
             product_1,
             2000,
-            "#F59E0B",
+            "#e69100",
             [(0.4, 280), (0.7, 260), (1.3, 200)],
         )
 
@@ -72,21 +72,21 @@ def main():
             db,
             product_2,
             1200,
-            "#4F7EF7",
+            "#0066e3",
             [(0.2, 96), (0.5, 88), (1.0, 64)],
         )
         create_rpm_line_with_points(
             db,
             product_2,
             1800,
-            "#3BB273",
+            "#009760",
             [(0.3, 160), (0.6, 148), (1.2, 112)],
         )
         create_rpm_line_with_points(
             db,
             product_2,
             2400,
-            "#F59E0B",
+            "#e69100",
             [(0.4, 224), (0.7, 208), (1.3, 160)],
         )
 

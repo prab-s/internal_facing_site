@@ -11,8 +11,17 @@ class ProductTypeParameterPresetResponse(BaseModel):
     parameter_name: str
     sort_order: int
     preferred_unit: Optional[str] = None
+    value_string: Optional[str] = None
+    value_number: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypeParameterPresetUpdate(BaseModel):
+    parameter_name: str
+    preferred_unit: Optional[str] = None
+    value_string: Optional[str] = None
+    value_number: Optional[float] = None
 
 
 class ProductTypeParameterGroupPresetResponse(BaseModel):
@@ -22,6 +31,70 @@ class ProductTypeParameterGroupPresetResponse(BaseModel):
     parameter_presets: list[ProductTypeParameterPresetResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypeParameterGroupPresetUpdate(BaseModel):
+    group_name: str
+    parameters: list[ProductTypeParameterPresetUpdate] = Field(default_factory=list)
+
+
+class ProductTypeRpmPointPresetResponse(BaseModel):
+    id: int
+    airflow: float
+    pressure: float
+    sort_order: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypeRpmPointPresetUpdate(BaseModel):
+    airflow: float
+    pressure: float
+
+
+class ProductTypeRpmLinePresetResponse(BaseModel):
+    id: int
+    rpm: float
+    band_color: Optional[str] = None
+    sort_order: int
+    point_presets: list[ProductTypeRpmPointPresetResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypeRpmLinePresetUpdate(BaseModel):
+    rpm: float
+    band_color: Optional[str] = None
+    points: list[ProductTypeRpmPointPresetUpdate] = Field(default_factory=list)
+
+
+class ProductTypeEfficiencyPointPresetResponse(BaseModel):
+    id: int
+    airflow: float
+    efficiency_centre: Optional[float] = None
+    efficiency_lower_end: Optional[float] = None
+    efficiency_higher_end: Optional[float] = None
+    permissible_use: Optional[float] = None
+    sort_order: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypeEfficiencyPointPresetUpdate(BaseModel):
+    airflow: float
+    efficiency_centre: Optional[float] = None
+    efficiency_lower_end: Optional[float] = None
+    efficiency_higher_end: Optional[float] = None
+    permissible_use: Optional[float] = None
+
+
+class ProductTypePresetUpdate(BaseModel):
+    product_template_id: Optional[str] = None
+    printed_product_template_id: Optional[str] = None
+    online_product_template_id: Optional[str] = None
+    parameter_group_presets: list[ProductTypeParameterGroupPresetUpdate] = Field(default_factory=list)
+    rpm_line_presets: list[ProductTypeRpmLinePresetUpdate] = Field(default_factory=list)
+    efficiency_point_presets: list[ProductTypeEfficiencyPointPresetUpdate] = Field(default_factory=list)
 
 
 class ProductTypeResponse(BaseModel):
@@ -38,7 +111,16 @@ class ProductTypeResponse(BaseModel):
     graph_x_axis_unit: Optional[str] = None
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
+    product_template_id: Optional[str] = None
+    printed_product_template_id: Optional[str] = None
+    online_product_template_id: Optional[str] = None
+    band_graph_background_color: Optional[str] = None
+    band_graph_label_text_color: Optional[str] = None
+    band_graph_faded_opacity: Optional[float] = None
+    band_graph_permissible_label_color: Optional[str] = None
     parameter_group_presets: list[ProductTypeParameterGroupPresetResponse] = Field(default_factory=list)
+    rpm_line_presets: list[ProductTypeRpmLinePresetResponse] = Field(default_factory=list)
+    efficiency_point_presets: list[ProductTypeEfficiencyPointPresetResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,6 +138,13 @@ class ProductTypeCreate(BaseModel):
     graph_x_axis_unit: Optional[str] = None
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
+    product_template_id: Optional[str] = None
+    printed_product_template_id: Optional[str] = None
+    online_product_template_id: Optional[str] = None
+    band_graph_background_color: Optional[str] = None
+    band_graph_label_text_color: Optional[str] = None
+    band_graph_faded_opacity: Optional[float] = None
+    band_graph_permissible_label_color: Optional[str] = None
 
 
 class ProductTypeUpdate(BaseModel):
@@ -71,6 +160,13 @@ class ProductTypeUpdate(BaseModel):
     graph_x_axis_unit: Optional[str] = None
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
+    product_template_id: Optional[str] = None
+    printed_product_template_id: Optional[str] = None
+    online_product_template_id: Optional[str] = None
+    band_graph_background_color: Optional[str] = None
+    band_graph_label_text_color: Optional[str] = None
+    band_graph_faded_opacity: Optional[float] = None
+    band_graph_permissible_label_color: Optional[str] = None
 
 
 class TemplateDefinitionResponse(BaseModel):
@@ -114,8 +210,10 @@ class SeriesBase(BaseModel):
     description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
     description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
     description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
-    comments_html: Optional[str] = None
+    description4_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description4_html", "comments_html"))
     template_id: Optional[str] = None
+    printed_template_id: Optional[str] = None
+    online_template_id: Optional[str] = None
 
 
 class SeriesCreate(SeriesBase):
@@ -128,8 +226,10 @@ class SeriesUpdate(BaseModel):
     description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
     description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
     description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
-    comments_html: Optional[str] = None
+    description4_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description4_html", "comments_html"))
     template_id: Optional[str] = None
+    printed_template_id: Optional[str] = None
+    online_template_id: Optional[str] = None
 
 
 class SeriesResponse(BaseModel):
@@ -140,11 +240,15 @@ class SeriesResponse(BaseModel):
     description1_html: Optional[str] = None
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
-    comments_html: Optional[str] = None
+    description4_html: Optional[str] = None
     template_id: Optional[str] = None
+    printed_template_id: Optional[str] = None
+    online_template_id: Optional[str] = None
     product_count: int = 0
     series_graph_image_url: Optional[str] = None
     series_pdf_url: Optional[str] = None
+    series_printed_pdf_url: Optional[str] = None
+    series_online_pdf_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -189,8 +293,8 @@ class ProductBase(BaseModel):
     series_id: Optional[int] = None
     series_name: Optional[str] = None
     template_id: Optional[str] = None
-    mounting_style: Optional[str] = None
-    discharge_type: Optional[str] = None
+    printed_template_id: Optional[str] = None
+    online_template_id: Optional[str] = None
     description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
     description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
     description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
@@ -204,7 +308,8 @@ class ProductBase(BaseModel):
 
 
 class ProductCreate(ProductBase):
-    pass
+    rpm_lines: list["ProductRpmLineInput"] = Field(default_factory=list)
+    efficiency_points: list["ProductEfficiencyPointInput"] = Field(default_factory=list)
 
 
 class ProductUpdate(BaseModel):
@@ -213,8 +318,8 @@ class ProductUpdate(BaseModel):
     series_id: Optional[int] = None
     series_name: Optional[str] = None
     template_id: Optional[str] = None
-    mounting_style: Optional[str] = None
-    discharge_type: Optional[str] = None
+    printed_template_id: Optional[str] = None
+    online_template_id: Optional[str] = None
     description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
     description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
     description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
@@ -232,11 +337,32 @@ class ProductResponse(ProductBase):
     product_type_label: Optional[str] = None
     graph_image_url: Optional[str] = None
     product_pdf_url: Optional[str] = None
+    product_printed_pdf_url: Optional[str] = None
+    product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
     product_images: list["ProductImageResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProductRpmPointInput(BaseModel):
+    airflow: float
+    pressure: float
+
+
+class ProductRpmLineInput(BaseModel):
+    rpm: float
+    band_color: Optional[str] = None
+    points: list[ProductRpmPointInput] = Field(default_factory=list)
+
+
+class ProductEfficiencyPointInput(BaseModel):
+    airflow: float
+    efficiency_centre: Optional[float] = None
+    efficiency_lower_end: Optional[float] = None
+    efficiency_higher_end: Optional[float] = None
+    permissible_use: Optional[float] = None
 
 # --- RPM lines / points ---
 class RpmLineBase(BaseModel):
@@ -419,14 +545,16 @@ class CmsProductResponse(BaseModel):
     series_id: Optional[int] = None
     series_name: Optional[str] = None
     template_id: Optional[str] = None
-    mounting_style: Optional[str] = None
-    discharge_type: Optional[str] = None
+    printed_template_id: Optional[str] = None
+    online_template_id: Optional[str] = None
     description1_html: Optional[str] = None
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     graph_image_url: Optional[str] = None
     product_pdf_url: Optional[str] = None
+    product_printed_pdf_url: Optional[str] = None
+    product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
 
@@ -440,9 +568,9 @@ class CmsSeriesProductSummary(BaseModel):
     product_type_label: Optional[str] = None
     series_id: Optional[int] = None
     series_name: Optional[str] = None
-    mounting_style: Optional[str] = None
-    discharge_type: Optional[str] = None
     product_pdf_url: Optional[str] = None
+    product_printed_pdf_url: Optional[str] = None
+    product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -458,9 +586,13 @@ class CmsSeriesResponse(BaseModel):
     description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     template_id: Optional[str] = None
+    printed_template_id: Optional[str] = None
+    online_template_id: Optional[str] = None
     product_count: int = 0
     series_graph_image_url: Optional[str] = None
     series_pdf_url: Optional[str] = None
+    series_printed_pdf_url: Optional[str] = None
+    series_online_pdf_url: Optional[str] = None
     products: list[CmsSeriesProductSummary] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

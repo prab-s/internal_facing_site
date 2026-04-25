@@ -86,6 +86,19 @@ export async function updateProductType(id, body) {
   return r.json();
 }
 
+export async function updateProductTypePresets(id, body) {
+  const r = await apiFetch(`/product-types/${id}/parameter-group-presets`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function updateProductTypeParameterGroupPresets(id, body) {
+  return updateProductTypePresets(id, body);
+}
+
 export async function getTemplates() {
   const r = await apiFetch('/templates');
   return r.json();

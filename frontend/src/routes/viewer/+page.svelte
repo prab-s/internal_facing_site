@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import {
     getProductChartData,
     getProduct,
@@ -39,11 +40,53 @@
   let seriesTabSeriesId = '';
   let seriesTabOptions = [];
   let selectedSeriesRecord = null;
+  let viewerUrlStateReady = false;
 
   let refreshingProductGraphId = null;
   let refreshingProductPdfId = null;
   let refreshingSeriesGraphId = null;
   let refreshingSeriesPdfId = null;
+
+  function parseViewerStateFromUrl() {
+    if (!browser) return;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const product = params.get('product');
+    const series = params.get('series');
+
+    if (tab === 'product' || tab === 'series') {
+      activeViewerTab = tab;
+    }
+
+    if (product && !Number.isNaN(Number(product))) {
+      selectedProductId = Number(product);
+    }
+
+    if (series && !Number.isNaN(Number(series))) {
+      seriesTabSeriesId = String(Number(series));
+    }
+  }
+
+  function syncViewerUrl() {
+    if (!browser || !viewerUrlStateReady) return;
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete('product');
+    params.delete('series');
+    params.set('tab', activeViewerTab);
+
+    if (activeViewerTab === 'product' && selectedProductId) {
+      params.set('product', String(selectedProductId));
+    }
+
+    if (activeViewerTab === 'series' && seriesTabSeriesId) {
+      params.set('series', String(seriesTabSeriesId));
+    }
+
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }
 
   function getCurrentProductType() {
     return productTypes.find((item) => item.key === selectedProduct?.product_type_key) || null;
@@ -155,6 +198,12 @@
       } catch {
         seriesRecords = [];
       }
+      if (seriesTabSeriesId) {
+        const selectedSeries = seriesRecords.find((series) => Number(series.id) === Number(seriesTabSeriesId));
+        if (selectedSeries && !seriesTabProductTypeFilter) {
+          seriesTabProductTypeFilter = selectedSeries.product_type_key || '';
+        }
+      }
       if (!selectedProductId) {
         selectedProductId = products[0]?.id != null ? Number(products[0].id) : null;
       }
@@ -214,7 +263,7 @@
     try {
       await refreshProductPdf(product.id);
       await loadEverything();
-      success = `Generated PDF for ${product.model}.`;
+      success = `Generated printed and online PDFs for ${product.model}.`;
     } catch (e) {
       error = e.message;
     } finally {
@@ -244,7 +293,7 @@
     try {
       await refreshSeriesPdf(series.id);
       await loadEverything();
-      success = `Generated series PDF for ${series.name}.`;
+      success = `Generated printed and online PDFs for ${series.name}.`;
     } catch (e) {
       error = e.message;
     } finally {
@@ -259,6 +308,7 @@
   }
 
   function selectProduct(product) {
+    activeViewerTab = 'product';
     selectedProductId = product?.id != null ? Number(product.id) : null;
   }
 
@@ -394,11 +444,25 @@
   $: selectedSeriesRecord =
     seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
 
+  $: if (selectedSeriesRecord && activeViewerTab !== 'series' && seriesTabSeriesId) {
+    // Preserve explicit deep links to series records.
+  }
+
+  $: if (viewerUrlStateReady) {
+    activeViewerTab;
+    selectedProductId;
+    seriesTabSeriesId;
+    syncViewerUrl();
+  }
+
   onMount(async () => {
+    parseViewerStateFromUrl();
     await loadEverything();
     await loadSeriesOptions();
     await loadSeriesTabOptions();
     await loadFilteredProducts();
+    viewerUrlStateReady = true;
+    syncViewerUrl();
   });
 </script>
 
@@ -547,13 +611,18 @@
               {refreshingProductGraphId === currentProduct.id ? 'Generating Graph...' : 'Generate Graph'}
             </button>
             <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductPdf(currentProduct)} disabled={refreshingProductPdfId === currentProduct.id}>
-              {refreshingProductPdfId === currentProduct.id ? 'Generating PDF...' : 'Generate PDF'}
+              {refreshingProductPdfId === currentProduct.id ? 'Generating PDFs...' : 'Generate PDFs'}
             </button>
             {#if currentProduct.graph_image_url}
               <a class="btn btn-outline-secondary btn-sm" href={currentProduct.graph_image_url} target="_blank" rel="noreferrer">Open Graph</a>
             {/if}
-            {#if currentProduct.product_pdf_url}
-              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
+            {#if currentProduct.product_printed_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
+            {/if}
+            {#if currentProduct.product_online_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_online_pdf_url} target="_blank" rel="noreferrer">Open Online PDF</a>
+            {:else if currentProduct.product_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
             {/if}
           </div>
 
@@ -568,18 +637,6 @@
               <div class="viewer-metric">
                 <div class="viewer-metric-label">Series</div>
                 <div>{currentProduct.series_name || '—'}</div>
-              </div>
-            </div>
-            <div class="col-12 col-md-3">
-              <div class="viewer-metric">
-                <div class="viewer-metric-label">Mounting</div>
-                <div>{currentProduct.mounting_style || '—'}</div>
-              </div>
-            </div>
-            <div class="col-12 col-md-3">
-              <div class="viewer-metric">
-                <div class="viewer-metric-label">Discharge</div>
-                <div>{currentProduct.discharge_type || '—'}</div>
               </div>
             </div>
           </div>
@@ -684,13 +741,35 @@
 
       <div class="card shadow-sm">
         <div class="card-body">
-          <h3 class="h5">Product PDF</h3>
-          {#if currentProduct.product_pdf_url}
-            <div class="ratio ratio-16x9 mt-3">
-              <iframe src={currentProduct.product_pdf_url} title={`${currentProduct.model} PDF preview`}></iframe>
+          <h3 class="h5">Product PDFs</h3>
+          {#if currentProduct.product_printed_pdf_url || currentProduct.product_online_pdf_url}
+            <div class="vstack gap-3 mt-3">
+              {#if currentProduct.product_printed_pdf_url}
+                <div>
+                  <div class="small text-body-secondary mb-2">Printed</div>
+                  <div class="ratio ratio-16x9">
+                    <iframe src={currentProduct.product_printed_pdf_url} title={`${currentProduct.model} printed PDF preview`}></iframe>
+                  </div>
+                </div>
+              {/if}
+              {#if currentProduct.product_online_pdf_url}
+                <div>
+                  <div class="small text-body-secondary mb-2">Online</div>
+                  <div class="ratio ratio-16x9">
+                    <iframe src={currentProduct.product_online_pdf_url} title={`${currentProduct.model} online PDF preview`}></iframe>
+                  </div>
+                </div>
+              {:else if currentProduct.product_pdf_url}
+                <div>
+                  <div class="small text-body-secondary mb-2">Existing</div>
+                  <div class="ratio ratio-16x9">
+                    <iframe src={currentProduct.product_pdf_url} title={`${currentProduct.model} PDF preview`}></iframe>
+                  </div>
+                </div>
+              {/if}
             </div>
           {:else}
-            <p class="text-body-secondary mb-0">No product PDF generated yet.</p>
+            <p class="text-body-secondary mb-0">No product PDFs generated yet.</p>
           {/if}
           </div>
         </div>
@@ -742,13 +821,18 @@
                 {refreshingSeriesGraphId === selectedSeriesRecord.id ? 'Generating Graph...' : 'Generate Series Graph'}
               </button>
               <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesPdfAsset(selectedSeriesRecord)} disabled={refreshingSeriesPdfId === selectedSeriesRecord.id}>
-                {refreshingSeriesPdfId === selectedSeriesRecord.id ? 'Generating PDF...' : 'Generate Series PDF'}
+                {refreshingSeriesPdfId === selectedSeriesRecord.id ? 'Generating PDFs...' : 'Generate Series PDFs'}
               </button>
               {#if selectedSeriesRecord.series_graph_image_url}
                 <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_graph_image_url} target="_blank" rel="noreferrer">Open Series Graph</a>
               {/if}
-              {#if selectedSeriesRecord.series_pdf_url}
-                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_pdf_url} target="_blank" rel="noreferrer">Open Series PDF</a>
+              {#if selectedSeriesRecord.series_printed_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
+              {/if}
+              {#if selectedSeriesRecord.series_online_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_online_pdf_url} target="_blank" rel="noreferrer">Open Online PDF</a>
+              {:else if selectedSeriesRecord.series_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
               {/if}
             </div>
 
@@ -766,8 +850,8 @@
                 <div class="viewer-html">{@html selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
               </div>
               <div class="col-12 col-lg-6">
-                <h4 class="h6">Comments</h4>
-                <div class="viewer-html">{@html selectedSeriesRecord.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+                <h4 class="h6">Description4</h4>
+                <div class="viewer-html">{@html selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
               </div>
             </div>
           </div>
@@ -775,13 +859,35 @@
 
         <div class="card shadow-sm">
           <div class="card-body">
-            <h3 class="h5">Series PDF</h3>
-            {#if selectedSeriesRecord.series_pdf_url}
-              <div class="ratio ratio-16x9 mt-3">
-                <iframe src={selectedSeriesRecord.series_pdf_url} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>
+            <h3 class="h5">Series PDFs</h3>
+            {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_online_pdf_url}
+              <div class="vstack gap-3 mt-3">
+                {#if selectedSeriesRecord.series_printed_pdf_url}
+                  <div>
+                    <div class="small text-body-secondary mb-2">Printed</div>
+                    <div class="ratio ratio-16x9">
+                      <iframe src={selectedSeriesRecord.series_printed_pdf_url} title={`${selectedSeriesRecord.name} printed PDF preview`}></iframe>
+                    </div>
+                  </div>
+                {/if}
+                {#if selectedSeriesRecord.series_online_pdf_url}
+                  <div>
+                    <div class="small text-body-secondary mb-2">Online</div>
+                    <div class="ratio ratio-16x9">
+                      <iframe src={selectedSeriesRecord.series_online_pdf_url} title={`${selectedSeriesRecord.name} online PDF preview`}></iframe>
+                    </div>
+                  </div>
+                {:else if selectedSeriesRecord.series_pdf_url}
+                  <div>
+                    <div class="small text-body-secondary mb-2">Existing</div>
+                    <div class="ratio ratio-16x9">
+                      <iframe src={selectedSeriesRecord.series_pdf_url} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>
+                    </div>
+                  </div>
+                {/if}
               </div>
             {:else}
-              <p class="text-body-secondary mb-0">No series PDF generated yet.</p>
+              <p class="text-body-secondary mb-0">No series PDFs generated yet.</p>
             {/if}
           </div>
         </div>

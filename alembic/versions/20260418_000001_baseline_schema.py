@@ -40,6 +40,7 @@ def upgrade() -> None:
         sa.Column("graph_x_axis_unit", sa.String(length=64), nullable=True),
         sa.Column("graph_y_axis_label", sa.String(length=128), nullable=True),
         sa.Column("graph_y_axis_unit", sa.String(length=64), nullable=True),
+        sa.Column("product_template_id", sa.String(length=128), nullable=True),
         sa.Column("graph_secondary_axis_label", sa.String(length=128), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -60,8 +61,6 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("product_type_id", sa.Integer(), nullable=True),
         sa.Column("model", sa.String(length=255), nullable=False),
-        sa.Column("mounting_style", sa.String(length=255), nullable=True),
-        sa.Column("discharge_type", sa.String(length=255), nullable=True),
         sa.Column("description_html", sa.Text(), nullable=True),
         sa.Column("features_html", sa.Text(), nullable=True),
         sa.Column("specifications_html", sa.Text(), nullable=True),
@@ -149,6 +148,8 @@ def upgrade() -> None:
         sa.Column("parameter_name", sa.String(length=255), nullable=False),
         sa.Column("sort_order", sa.Integer(), nullable=False),
         sa.Column("preferred_unit", sa.String(length=64), nullable=True),
+        sa.Column("value_string", sa.Text(), nullable=True),
+        sa.Column("value_number", sa.Float(), nullable=True),
         sa.ForeignKeyConstraint(
             ["group_preset_id"],
             ["product_type_parameter_group_presets.id"],

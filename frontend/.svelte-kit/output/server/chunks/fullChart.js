@@ -1,3 +1,6 @@
+import { f as fallback, j as attr_style, d as bind_props, ad as stringify } from "./index2.js";
+import { o as onDestroy } from "./index-server.js";
+import "echarts";
 const LIGHT_CHART_THEME = {
   background: "#ffffff",
   text: "#1e293b",
@@ -5,7 +8,7 @@ const LIGHT_CHART_THEME = {
   accent: "#2563eb",
   efficiency: "#15803d",
   permissible: "#dc2626",
-  neutralLine: "#ffffff",
+  neutralLine: "#dddddd",
   fontFamily: "DejaVu Sans, Liberation Sans, Arial, sans-serif"
 };
 const DARK_CHART_THEME = {
@@ -15,13 +18,32 @@ const DARK_CHART_THEME = {
   accent: "#7aa2f7",
   efficiency: "#4ade80",
   permissible: "#f87171",
-  neutralLine: "#ffffff",
+  neutralLine: "#dddddd",
   fontFamily: "DejaVu Sans, Liberation Sans, Arial, sans-serif"
 };
 function getChartTheme(currentTheme) {
   return currentTheme === "light" ? LIGHT_CHART_THEME : DARK_CHART_THEME;
 }
-const RPM_BAND_FALLBACK_COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#22d3ee"];
+function ECharts($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let option = fallback($$props["option"], () => ({}), true);
+    let height = fallback($$props["height"], "400px");
+    let on = fallback($$props["on"], () => ({}), true);
+    let onChartReady = fallback(
+      $$props["onChartReady"],
+      null
+      // (chart) => void
+    );
+    onDestroy(() => {
+      window.removeEventListener("resize", resize);
+    });
+    function resize() {
+    }
+    $$renderer2.push(`<div class="chart-container echart-host"${attr_style(`height: ${stringify(height)};`)}></div>`);
+    bind_props($$props, { option, height, on, onChartReady });
+  });
+}
+const RPM_BAND_FALLBACK_COLORS = ["#0066e3", "#009760", "#e69100", "#ff399f", "#6e57b3", "#259eb0"];
 const CHART_STYLE = {
   rpmLineColor: "#0000ff",
   rpmBandFadedOpacity: 0.18,
@@ -39,30 +61,42 @@ const FULL_CHART_LINE_DEFINITIONS = [
     label: "Efficiency Centre",
     colorKey: "efficiency",
     tooltipLabel: "Efficiency centre",
-    lineWidth: 1
+    lineWidth: 2
   },
   {
     key: "efficiency_lower_end",
     label: "Efficiency Lower End",
     colorKey: "permissible",
     tooltipLabel: "Efficiency lower end",
-    lineWidth: 1
+    lineWidth: 2
   },
   {
     key: "efficiency_higher_end",
     label: "Efficiency Higher End",
     colorKey: "permissible",
     tooltipLabel: "Efficiency higher end",
-    lineWidth: 1
+    lineWidth: 2
   },
   {
     key: "permissible_use",
     label: "Permissible Use",
     colorKey: "neutralLine",
     tooltipLabel: "Permissible use",
-    lineWidth: 5
+    lineWidth: 3
   }
 ];
+const OVERLAY_LINE_DECORATION = {
+  outline: {
+    color: "#000000",
+    width: 2,
+    opacity: 0.35
+  },
+  glow: {
+    color: "#ffffff",
+    width: 4,
+    opacity: 0.18
+  }
+};
 const FLOW_EPSILON = 1e-6;
 const AXIS_NAME_FONT_SIZE = CHART_STYLE.axisNameFontSize;
 const AXIS_NAME_FONT_WEIGHT = CHART_STYLE.axisNameFontWeight;
@@ -124,9 +158,9 @@ function isDarkColor(color) {
   const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
   return luminance < 0.5;
 }
-function normalizeOpacity(value, fallback = CHART_STYLE.rpmBandFadedOpacity) {
+function normalizeOpacity(value, fallback2 = CHART_STYLE.rpmBandFadedOpacity) {
   const numeric = Number(value);
-  if (Number.isNaN(numeric)) return fallback;
+  if (Number.isNaN(numeric)) return fallback2;
   return clamp(numeric, 0, 1);
 }
 function formatAxisLabel(label, unit) {
@@ -575,7 +609,7 @@ function alignPolygonToBandStartPoints(polygon, upperLineData, lowerLineData) {
     bottomPoints
   };
 }
-function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permissibleBoundaryData, clipRpmAreaToPermissibleUse, maximumVisibleFlow = null, pressureAxisMax = null, fadedBandOpacity = RPM_BAND_FADED_OPACITY, graphConfig = DEFAULT_GRAPH_CONFIG) {
+function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permissibleBoundaryData, clipRpmAreaToPermissibleUse, maximumVisibleFlow = null, pressureAxisMax = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG) {
   if (!rpmCurveEntries.length) return [];
   const flows = buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData);
   if (!flows.length) return [];
@@ -680,7 +714,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
         emphasis: { disabled: true },
         tooltip: { show: false },
         silent: true,
-        z: rpmCurveEntries.length + 10 + index
+        z: -20 - index
       });
     }
     series.push({
@@ -727,12 +761,12 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
       emphasis: { disabled: true },
       tooltip: { show: false },
       silent: true,
-      z: Math.max(0, rpmCurveEntries.length - index - 1)
+      z: -10 - index
     });
     return series;
   });
 }
-function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = RPM_BAND_FADED_OPACITY, graphConfig = DEFAULT_GRAPH_CONFIG) {
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG) {
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
     let anchorEndIndex = lineData.length - 1;
@@ -821,7 +855,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           // x: negative = left, positive = right
           // y: negative = up, positive = down
           // Banded graph labels use the first pair; non-banded labels use the second.
-          offset: labelAtLineEnd ? [-108, 28] : [5, -10],
+          offset: labelAtLineEnd ? [-95, 28] : [5, -10],
           fontSize: CHART_STYLE.dragHandleFontSize,
           fontWeight: "normal"
         },
@@ -854,14 +888,16 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
         pointType: "rpm"
       })),
       symbol: "circle",
-      symbolSize: 10,
+      symbolSize: 14,
+      // Drag points: This is the interactive handle for RPM points, so it needs to be big enough to grab easily. The actual point is centered and smaller, with the rest of the area being transparent for easier interaction.
+      itemStyle: { borderColor: "#000000", borderWidth: 2 },
       draggable: true,
       showInLegend: false,
       emphasis: {
         focus: "series",
         scale: true,
         scaleSize: 1.2,
-        itemStyle: { borderColor: chartTheme.background, borderWidth: 2 }
+        itemStyle: { borderColor: "#000000", borderWidth: 2 }
       },
       z: idx * 2 + 1
     });
@@ -883,23 +919,101 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
   }
   return { series, rpmCurveEntries };
 }
+function buildDecoratedOverlayLineSeries({
+  name,
+  data,
+  color,
+  lineWidth,
+  smooth,
+  yAxisIndex = 1,
+  z = 999
+}) {
+  const outlineWidth = lineWidth + OVERLAY_LINE_DECORATION.outline.width;
+  const glowWidth = lineWidth + OVERLAY_LINE_DECORATION.glow.width;
+  return [
+    {
+      name: `${name} glow`,
+      type: "line",
+      smooth,
+      data,
+      showSymbol: false,
+      yAxisIndex,
+      itemStyle: {
+        color: OVERLAY_LINE_DECORATION.glow.color
+      },
+      lineStyle: {
+        width: glowWidth,
+        color: OVERLAY_LINE_DECORATION.glow.color,
+        opacity: OVERLAY_LINE_DECORATION.glow.opacity,
+        cap: "round",
+        join: "round"
+      },
+      emphasis: { disabled: true },
+      tooltip: { show: false },
+      silent: true,
+      z: z - 2
+    },
+    {
+      name: `${name} outline`,
+      type: "line",
+      smooth,
+      data,
+      showSymbol: false,
+      yAxisIndex,
+      itemStyle: {
+        color: OVERLAY_LINE_DECORATION.outline.color
+      },
+      lineStyle: {
+        width: outlineWidth,
+        color: OVERLAY_LINE_DECORATION.outline.color,
+        opacity: OVERLAY_LINE_DECORATION.outline.opacity,
+        cap: "round",
+        join: "round"
+      },
+      emphasis: { disabled: true },
+      tooltip: { show: false },
+      silent: true,
+      z: z - 1
+    },
+    {
+      name,
+      type: "line",
+      smooth,
+      data,
+      showSymbol: false,
+      yAxisIndex,
+      itemStyle: { color },
+      lineStyle: {
+        width: lineWidth,
+        color,
+        cap: "round",
+        join: "round"
+      },
+      emphasis: { disabled: true },
+      tooltip: { show: false },
+      silent: true,
+      z
+    }
+  ];
+}
 function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHandles, lineDefinitions, { permissibleLabelColor = null } = {}) {
   const series = [];
   for (const definition of lineDefinitions) {
     const lineData = points.filter((point) => point[definition.key] != null).map((point) => [point.airflow ?? 0, point[definition.key] ?? 0]).sort((a, b) => a[0] - b[0]);
     if (!lineData.length) continue;
     const color = chartTheme[definition.colorKey];
-    series.push({
-      name: definition.label,
-      type: "line",
-      smooth: lineData.length > 1 ? 0.18 : false,
-      data: lineData,
-      showSymbol: false,
-      yAxisIndex: 1,
-      itemStyle: { color },
-      lineStyle: { width: definition.lineWidth, color },
-      z: 999
-    });
+    const smooth = lineData.length > 1 ? 0.18 : false;
+    series.push(
+      ...buildDecoratedOverlayLineSeries({
+        name: definition.label,
+        data: lineData,
+        color,
+        lineWidth: definition.lineWidth,
+        smooth,
+        yAxisIndex: 1,
+        z: 999
+      })
+    );
     if (!includeDragHandles && definition.key === "permissible_use" && lineData.length >= 2) {
       const highestPoints = [...lineData].sort((a, b) => {
         if (b[1] !== a[1]) return b[1] - a[1];
@@ -939,8 +1053,8 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
           const segmentEnd2 = api.coord([api.value(4), api.value(5)]);
           const dx = segmentEnd2[0] - segmentStart2[0];
           const dy = segmentEnd2[1] - segmentStart2[1];
-          const rightOffsetPixels = -55;
-          const verticalOffsetPixels = 55;
+          const rightOffsetPixels = -40;
+          const verticalOffsetPixels = 60;
           const rotation = -Math.atan2(dy, dx);
           return {
             type: "text",
@@ -972,13 +1086,14 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
       })),
       draggable: true,
       showInLegend: false,
-      itemStyle: { color },
-      symbolSize: 10,
+      itemStyle: { borderColor: "#000000", borderWidth: 2 },
+      symbolSize: 14,
+      // Drag points: This is the interactive handle for efficiency/permissible points, so it needs to be big enough to grab easily. The actual point is centered and smaller, with the rest of the area being transparent for easier interaction.
       emphasis: {
         focus: "series",
         scale: true,
         scaleSize: 1.2,
-        itemStyle: { borderColor: chartTheme.background, borderWidth: 2 }
+        itemStyle: { borderColor: "#000000", borderWidth: 2 }
       },
       yAxisIndex: 1,
       z: 1e3
@@ -1028,7 +1143,7 @@ function buildFullChartOption({
   const bandGraphBackgroundColor = showRpmBandShading && resolvedGraphConfig.supports_band_graph_style ? normalizeOptionalColor(graphStyle?.band_graph_background_color) : null;
   const resolvedBandGraphBackgroundColor = adaptGraphBackgroundToTheme && bandGraphBackgroundColor && isDarkColor(chartTheme.background) ? invertHexColor(bandGraphBackgroundColor) : bandGraphBackgroundColor;
   const bandGraphLabelTextColor = showRpmBandShading && resolvedGraphConfig.supports_band_graph_style ? normalizeOptionalColor(graphStyle?.band_graph_label_text_color) : null;
-  const bandGraphFadedOpacity = showRpmBandShading && resolvedGraphConfig.supports_band_graph_style ? normalizeOpacity(graphStyle?.band_graph_faded_opacity) : RPM_BAND_FADED_OPACITY;
+  const bandGraphFadedOpacity = showRpmBandShading && resolvedGraphConfig.supports_band_graph_style ? normalizeOpacity(graphStyle?.band_graph_faded_opacity) : CHART_STYLE.rpmBandFadedOpacity;
   const permissibleLabelColor = resolvedGraphConfig.supports_band_graph_style ? normalizeOptionalColor(graphStyle?.band_graph_permissible_label_color) ?? bandGraphLabelTextColor ?? chartTheme.text : chartTheme.text;
   const rpmSeriesBundle = buildRpmSeries(
     rpmLines,
@@ -1057,7 +1172,7 @@ function buildFullChartOption({
       textStyle: { color: chartTheme.text, fontSize: CHART_STYLE.titleFontSize, fontFamily: chartFontFamily }
     },
     tooltip: tooltip ?? { trigger: "axis", formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions) },
-    grid: { left: "9%", right: "5%", top: "12%", bottom: "12%" },
+    grid: { left: "9%", right: "5%", top: "12%", bottom: "12%", z: -1 },
     xAxis: {
       type: "value",
       name: xAxisName,
@@ -1134,7 +1249,9 @@ function buildFullChartOption({
   };
 }
 export {
+  ECharts as E,
   FULL_CHART_LINE_DEFINITIONS as F,
+  RPM_BAND_FALLBACK_COLORS as R,
   buildFullChartOption as b,
   getChartTheme as g
 };

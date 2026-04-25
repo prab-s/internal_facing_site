@@ -37,6 +37,10 @@ async function getProducts(params = {}) {
   const r = await apiFetch("/products" + (sp ? "?" + sp : ""));
   return r.json();
 }
+async function getProductTypes() {
+  const r = await apiFetch("/product-types");
+  return r.json();
+}
 async function getProduct(id) {
   const r = await apiFetch(`/products/${id}`);
   return r.json();
@@ -66,11 +70,12 @@ async function getUsers() {
   return r.json();
 }
 export {
-  login as a,
-  getAuthSession as b,
-  getProducts as c,
-  getProduct as d,
-  getProductChartData as e,
+  getProductTypes as a,
+  login as b,
+  getAuthSession as c,
+  getProducts as d,
+  getProduct as e,
+  getProductChartData as f,
   getUsers as g,
   logout as l
 };
