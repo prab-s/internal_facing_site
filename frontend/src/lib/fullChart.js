@@ -76,6 +76,61 @@ function formatNumericValue(value) {
   return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2).replace(/\.?0+$/, '');
 }
 
+const AXIS_TICK_COMPARISON_DECIMALS = 3;
+const AXIS_TICK_COMPARISON_TOLERANCE = 10 ** -AXIS_TICK_COMPARISON_DECIMALS;
+
+function roundForAxisComparison(value, decimals = AXIS_TICK_COMPARISON_DECIMALS) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return numeric;
+  const factor = 10 ** decimals;
+  return Math.round(numeric * factor) / factor;
+}
+
+function getNiceAxisTickInterval(axisMax, targetTickCount = 5) {
+  const numericMax = Number(axisMax);
+  if (!Number.isFinite(numericMax) || numericMax <= 0) return null;
+
+  const rawInterval = numericMax / targetTickCount;
+  if (!Number.isFinite(rawInterval) || rawInterval <= 0) return null;
+
+  const exponent = Math.floor(Math.log10(rawInterval));
+  const magnitude = 10 ** exponent;
+  const normalized = rawInterval / magnitude;
+
+  let niceNormalized;
+  if (normalized <= 1) niceNormalized = 1;
+  else if (normalized <= 2) niceNormalized = 2;
+  else if (normalized <= 5) niceNormalized = 5;
+  else niceNormalized = 10;
+
+  return niceNormalized * magnitude;
+}
+
+function buildAxisLabelFormatter(axisMax, axisInterval) {
+  const roundedAxisMax = roundForAxisComparison(axisMax);
+  const roundedAxisInterval = roundForAxisComparison(axisInterval);
+
+  return (value) => {
+    const roundedValue = roundForAxisComparison(value);
+    if (!Number.isFinite(roundedValue)) return '';
+
+    const isBoundaryMax =
+      Number.isFinite(roundedAxisMax) &&
+      Math.abs(roundedValue - roundedAxisMax) <= AXIS_TICK_COMPARISON_TOLERANCE;
+
+    if (isBoundaryMax && Number.isFinite(roundedAxisInterval) && roundedAxisInterval > 0) {
+      const remainder = Math.abs(roundedValue % roundedAxisInterval);
+      const isAlignedToInterval =
+        remainder <= AXIS_TICK_COMPARISON_TOLERANCE ||
+        Math.abs(remainder - roundedAxisInterval) <= AXIS_TICK_COMPARISON_TOLERANCE;
+
+      if (!isAlignedToInterval) return '';
+    }
+
+    return formatNumericValue(roundedValue);
+  };
+}
+
 function normalizeOptionalColor(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
@@ -1529,6 +1584,8 @@ export function buildFullChartOption({
   const rawPressureMax = pressureValues.length ? Math.max(...pressureValues) : 0;
   const pressureAxisMax =
     pressureAxisMaxOverride ?? (rawPressureMax > 0 ? rawPressureMax * 1.05 : 100);
+  const flowAxisTickInterval = getNiceAxisTickInterval(flowAxisMax);
+  const pressureAxisTickInterval = getNiceAxisTickInterval(pressureAxisMax);
   const permissibleBoundaryData = efficiencyPoints
     .filter((point) => point.permissible_use != null)
     .map((point) => [point.airflow ?? 0, (Number(point.permissible_use) / 100) * pressureAxisMax])
@@ -1601,7 +1658,8 @@ export function buildFullChartOption({
         fontFamily: chartFontFamily,
         fontSize: AXIS_LABEL_FONT_SIZE,
         fontWeight: AXIS_LABEL_FONT_WEIGHT,
-        show: true
+        show: true,
+        formatter: buildAxisLabelFormatter(flowAxisMax, flowAxisTickInterval)
       },
       min: 0,
       max: flowAxisMax,
@@ -1622,7 +1680,8 @@ export function buildFullChartOption({
           fontFamily: chartFontFamily,
           fontSize: AXIS_LABEL_FONT_SIZE,
           fontWeight: AXIS_LABEL_FONT_WEIGHT,
-          show: true
+          show: true,
+          formatter: buildAxisLabelFormatter(pressureAxisMax, pressureAxisTickInterval)
         },
         min: 0,
         max: pressureAxisMax,
