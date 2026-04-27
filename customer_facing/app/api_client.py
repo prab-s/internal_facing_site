@@ -46,6 +46,14 @@ class CatalogueApi:
 
         return await self._get("/api/cms/products", params=params)
 
+    async def product_graph_values(self, **filters):
+        params = {k: v for k, v in filters.items() if v not in (None, "")}
+
+        if isinstance(params.get("parameter_filters"), dict):
+            params["parameter_filters"] = json.dumps(params["parameter_filters"])
+
+        return await self._get("/api/cms/product-graph-values", params=params)
+
     async def product(self, product_id):
         return await self._get(f"/api/cms/products/{product_id}")
 

@@ -1,4 +1,5 @@
 <script>
+  import { page } from '$app/stores';
   import ManagePageShell from '$lib/editor/ManagePageShell.svelte';
   import ProductWorkspace from '$lib/editor/ProductWorkspace.svelte';
 </script>
@@ -14,5 +15,8 @@
   backHref="/editor"
   backLabel="Back to Editor"
 >
-  <ProductWorkspace initialMode="editExisting" />
+  <ProductWorkspace
+    initialMode="editExisting"
+    initialProductId={$page.url.searchParams.get('product') ?? ''}
+  />
 </ManagePageShell>

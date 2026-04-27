@@ -88,6 +88,24 @@
     window.history.replaceState(window.history.state, '', nextUrl);
   }
 
+  function productEditorUrl(productId) {
+    const params = new URLSearchParams();
+    if (productId != null && productId !== '') {
+      params.set('product', String(productId));
+    }
+    const search = params.toString();
+    return `/editor/edit${search ? `?${search}` : ''}`;
+  }
+
+  function seriesEditorUrl(seriesId) {
+    const params = new URLSearchParams();
+    if (seriesId != null && seriesId !== '') {
+      params.set('series', String(seriesId));
+    }
+    const search = params.toString();
+    return `/editor/series/edit${search ? `?${search}` : ''}`;
+  }
+
   function getCurrentProductType() {
     return productTypes.find((item) => item.key === selectedProduct?.product_type_key) || null;
   }
@@ -613,6 +631,7 @@
             <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductPdf(currentProduct)} disabled={refreshingProductPdfId === currentProduct.id}>
               {refreshingProductPdfId === currentProduct.id ? 'Generating PDFs...' : 'Generate PDFs'}
             </button>
+            <a class="btn btn-outline-primary btn-sm" href={productEditorUrl(currentProduct.id)}>Open in Editor</a>
             {#if currentProduct.graph_image_url}
               <a class="btn btn-outline-secondary btn-sm" href={currentProduct.graph_image_url} target="_blank" rel="noreferrer">Open Graph</a>
             {/if}
@@ -817,6 +836,7 @@
             <div class="text-body-secondary small mb-3">{selectedSeriesRecord.name} · {selectedSeriesRecord.product_count} products</div>
             <div class="d-flex flex-wrap align-items-start gap-2 mb-3">
               <div class="me-auto"></div>
+              <a class="btn btn-outline-primary btn-sm" href={seriesEditorUrl(selectedSeriesRecord.id)}>Open in Editor</a>
               <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesGraph(selectedSeriesRecord)} disabled={refreshingSeriesGraphId === selectedSeriesRecord.id}>
                 {refreshingSeriesGraphId === selectedSeriesRecord.id ? 'Generating Graph...' : 'Generate Series Graph'}
               </button>

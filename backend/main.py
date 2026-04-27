@@ -53,6 +53,7 @@ from backend.models import (
 from backend.models import AppSettings
 from backend.schemas import (
     BandGraphStyleSettings,
+    CmsProductGraphValuesResponse,
     ProductCreate,
     ProductUpdate,
     ProductResponse,
@@ -93,6 +94,7 @@ from backend.schemas import (
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
+GRAPH_FILTER_GROUP_NAME = "__graph__"
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
@@ -1283,22 +1285,85 @@ def parse_parameter_filters(raw_filters: str | None) -> list[dict]:
     return normalized_filters
 
 
+def graph_filter_values(product: Product) -> dict[str, list[float]]:
+    rpm_values: set[float] = set()
+    airflow_values: set[float] = set()
+    pressure_values: set[float] = set()
+
+    for rpm_line in product.rpm_lines or []:
+        if rpm_line.rpm is not None:
+            rpm_values.add(float(rpm_line.rpm))
+        for point in rpm_line.points or []:
+            if point.airflow is not None:
+                airflow_values.add(float(point.airflow))
+            if point.pressure is not None:
+                pressure_values.add(float(point.pressure))
+
+    for point in product.efficiency_points or []:
+        if point.airflow is not None:
+            airflow_values.add(float(point.airflow))
+
+    return {
+        "rpm": sorted(rpm_values),
+        "airflow": sorted(airflow_values),
+        "pressure": sorted(pressure_values),
+    }
+
+
+def graph_filter_values_for_products(products: list[Product]) -> dict[str, list[float]]:
+    rpm_values: set[float] = set()
+    airflow_values: set[float] = set()
+    pressure_values: set[float] = set()
+
+    for product in products:
+        graph_values = graph_filter_values(product)
+        rpm_values.update(graph_values["rpm"])
+        airflow_values.update(graph_values["airflow"])
+        pressure_values.update(graph_values["pressure"])
+
+    return {
+        "rpm": sorted(rpm_values),
+        "airflow": sorted(airflow_values),
+        "pressure": sorted(pressure_values),
+    }
+
+
+def value_in_window(value: float, minimum: float | None, maximum: float | None) -> bool:
+    if minimum is not None and value < minimum:
+        return False
+    if maximum is not None and value > maximum:
+        return False
+    return True
+
+
 def product_matches_parameter_filters(product: Product, parameter_filters: list[dict]) -> bool:
     if not parameter_filters:
         return True
 
     grouped_parameters: dict[tuple[str, str], list[ProductParameter]] = {}
     for group in product.parameter_groups:
-        group_name = (group.group_name or "").strip().casefold()
-        for parameter in group.parameters:
-            parameter_name = (parameter.parameter_name or "").strip().casefold()
-            grouped_parameters.setdefault((group_name, parameter_name), []).append(parameter)
+            group_name = (group.group_name or "").strip().casefold()
+            for parameter in group.parameters:
+                parameter_name = (parameter.parameter_name or "").strip().casefold()
+                grouped_parameters.setdefault((group_name, parameter_name), []).append(parameter)
+
+    graph_values = graph_filter_values(product)
 
     for filter_item in parameter_filters:
         filter_key = (
             filter_item["group_name"].strip().casefold(),
             filter_item["parameter_name"].strip().casefold(),
         )
+        if filter_key[0] == GRAPH_FILTER_GROUP_NAME:
+            min_number = filter_item.get("min_number")
+            max_number = filter_item.get("max_number")
+            graph_metric_values = graph_values.get(filter_key[1], [])
+            if not graph_metric_values:
+                return False
+            if not any(value_in_window(metric_value, min_number, max_number) for metric_value in graph_metric_values):
+                return False
+            continue
+
         matching_parameters = grouped_parameters.get(filter_key, [])
         if not matching_parameters:
             return False
@@ -1318,13 +1383,9 @@ def product_matches_parameter_filters(product: Product, parameter_filters: list[
             if parameter.value_number is None:
                 continue
 
-            if min_number is not None and parameter.value_number < min_number:
-                continue
-            if max_number is not None and parameter.value_number > max_number:
-                continue
-
-            matched = True
-            break
+            if value_in_window(parameter.value_number, min_number, max_number):
+                matched = True
+                break
 
         if not matched:
             return False
@@ -2665,6 +2726,8 @@ def list_cms_products(
         joinedload(Product.series),
         selectinload(Product.product_images),
         selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+        selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+        selectinload(Product.efficiency_points),
     )
     if search:
         s = f"%{search}%"
@@ -2682,10 +2745,66 @@ def list_cms_products(
 @app.get("/api/cms/fans/{product_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], include_in_schema=False)
 @app.get("/api/cms/products/{product_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="Get one customer-facing product", description="Returns a single product record, including grouped specifications and media URLs, for the WordPress customer-facing site.")
 def get_cms_product(product_id: int, db: Session = Depends(get_db)):
-    product = db.get(Product, product_id)
+    product = (
+        db.query(Product)
+        .options(
+            joinedload(Product.product_type),
+            joinedload(Product.series),
+            selectinload(Product.product_images),
+            selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+            selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+            selectinload(Product.efficiency_points),
+        )
+        .filter(Product.id == product_id)
+        .first()
+    )
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
+
+
+@app.get(
+    "/api/cms/product-graph-values",
+    response_model=CmsProductGraphValuesResponse,
+    dependencies=[Depends(require_cms_token)],
+    tags=["Customer CMS"],
+    summary="Get customer-facing graph filter values",
+    description="Returns graph filter ranges for the current customer-facing finder filters.",
+)
+def get_cms_product_graph_values(
+    db: Session = Depends(get_db),
+    search: Optional[str] = Query(None),
+    product_type_key: Optional[str] = Query(None),
+    series_id: Optional[int] = Query(None),
+    parameter_filters: Optional[str] = Query(None),
+):
+    parsed_parameter_filters = parse_parameter_filters(parameter_filters)
+    q = db.query(Product).options(
+        joinedload(Product.product_type),
+        selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+        selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+        selectinload(Product.efficiency_points),
+    )
+    if search:
+        s = f"%{search}%"
+        q = q.filter(Product.model.ilike(s))
+    if product_type_key:
+        q = q.join(ProductType).filter(ProductType.key == product_type_key)
+    if series_id is not None:
+        q = q.filter(Product.series_id == series_id)
+
+    products = [
+        product
+        for product in q.order_by(Product.model).all()
+        if product_matches_parameter_filters(product, parsed_parameter_filters)
+    ]
+
+    graph_values = graph_filter_values_for_products(products)
+    return CmsProductGraphValuesResponse(
+        rpm=graph_values["rpm"],
+        airflow=graph_values["airflow"],
+        pressure=graph_values["pressure"],
+    )
 
 
 @app.get("/api/cms/series", response_model=list[CmsSeriesResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing series", description="Read-only series feed for the WordPress customer-facing site. Supports product type filtering.")
@@ -2922,7 +3041,13 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 @app.get("/api/products/{product_id}/rpm-lines", response_model=list[RpmLineResponse], dependencies=[Depends(get_current_user)], tags=["RPM Lines"])
 def get_rpm_lines(product_id: int, db: Session = Depends(get_db)):
     require_product(db, product_id)
-    return db.query(RpmLine).filter(RpmLine.product_id == product_id).order_by(RpmLine.rpm).all()
+    return (
+        db.query(RpmLine)
+        .options(selectinload(RpmLine.points))
+        .filter(RpmLine.product_id == product_id)
+        .order_by(RpmLine.rpm)
+        .all()
+    )
 
 
 @app.post("/api/fans/{product_id}/rpm-lines", response_model=RpmLineResponse, dependencies=[Depends(get_current_user)], tags=["RPM Lines"], include_in_schema=False)

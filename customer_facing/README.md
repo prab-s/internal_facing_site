@@ -10,7 +10,7 @@ This app does **not** own product data. It renders public HTML by calling the ex
 
 ```
 BACKEND_API_BASE_URL=https://p2.bitrep.nz
-PUBLIC_SITE_URL=http://localhost:8004
+PUBLIC_SITE_URL=http://0.0.0.0:8004
 SITE_NAME=Vent-tech catalogue
 REQUEST_TIMEOUT_SECONDS=10
 CMS_API_TOKEN=<same token used by the CMS consumer>
@@ -45,12 +45,13 @@ sudo ./install_service.sh
 
 This will:
 
+- refresh the installed service unit on each service start/restart
 - build the `vent-tech-catalogue:latest` image from `Containerfile`
 - install a `vent-tech-catalogue.service` unit under systemd
 - create `/etc/vent-tech-catalogue/vent-tech-catalogue.env` if it does not already exist
 - start the service immediately and on every later boot
 
-Edit `/etc/vent-tech-catalogue/vent-tech-catalogue.env` to set the real `PUBLIC_SITE_URL` and `CMS_API_TOKEN` for the host.
+Edit `/etc/vent-tech-catalogue/vent-tech-catalogue.env` to set the real `PUBLIC_SITE_URL`, `BACKEND_API_BASE_URL`, and `CMS_API_TOKEN` for the host.
 
 ---
 

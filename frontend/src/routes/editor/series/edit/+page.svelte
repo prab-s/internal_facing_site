@@ -1,4 +1,5 @@
 <script>
+  import { page } from '$app/stores';
   import ManagePageShell from '$lib/editor/ManagePageShell.svelte';
   import SeriesWorkspace from '$lib/editor/SeriesWorkspace.svelte';
 </script>
@@ -14,5 +15,8 @@
   backHref="/editor"
   backLabel="Back to Editor"
 >
-  <SeriesWorkspace initialMode="edit" />
+  <SeriesWorkspace
+    initialMode="edit"
+    initialSeriesId={$page.url.searchParams.get('series') ?? ''}
+  />
 </ManagePageShell>

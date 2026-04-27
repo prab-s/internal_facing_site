@@ -1,42 +1,18 @@
-:root,
-html[data-bs-theme="light"] {
-  color-scheme: light;
-  --catalogue-page-bg: #f3f4f6;
-  --catalogue-page-bg-2: #fafafa;
+:root {
   --catalogue-border: #d1d5db;
   --catalogue-border-strong: #9ca3af;
   --catalogue-ink: #1f2937;
   --catalogue-ink-muted: #6b7280;
   --catalogue-accent: #374151;
+  --catalogue-page-bg: #f3f4f6;
   --catalogue-surface: #ffffff;
-  --catalogue-surface-strong: #ffffff;
   --catalogue-surface-soft: #f9fafb;
-  --catalogue-nav-bg: rgba(255, 255, 255, 0.94);
-  --catalogue-footer-bg: #ffffff;
   --catalogue-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
   --catalogue-shadow-hover: 0 16px 36px rgba(15, 23, 42, 0.12);
 }
 
-html[data-bs-theme="dark"] {
-  color-scheme: dark;
-  --catalogue-page-bg: #111827;
-  --catalogue-page-bg-2: #0f172a;
-  --catalogue-border: #374151;
-  --catalogue-border-strong: #4b5563;
-  --catalogue-ink: #e5e7eb;
-  --catalogue-ink-muted: #9ca3af;
-  --catalogue-accent: #d1d5db;
-  --catalogue-surface: #1f2937;
-  --catalogue-surface-strong: #111827;
-  --catalogue-surface-soft: #1a2433;
-  --catalogue-nav-bg: rgba(17, 24, 39, 0.96);
-  --catalogue-footer-bg: #111827;
-  --catalogue-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
-  --catalogue-shadow-hover: 0 18px 40px rgba(0, 0, 0, 0.35);
-}
-
 body {
-  background: linear-gradient(180deg, var(--catalogue-page-bg-2), var(--catalogue-page-bg));
+  background: linear-gradient(180deg, #fafafa, var(--catalogue-page-bg));
   color: var(--catalogue-ink);
 }
 
@@ -50,7 +26,7 @@ body {
 }
 
 .navbar {
-  background: var(--catalogue-nav-bg);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--catalogue-border);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
@@ -64,10 +40,6 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath stroke='rgba%2831, 41, 55, 0.95%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
 }
 
-html[data-bs-theme="dark"] .navbar-toggler-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath stroke='rgba%28229, 231, 235, 0.95%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
-}
-
 .site-navbar .nav-link,
 .site-navbar .navbar-brand {
   color: var(--catalogue-ink);
@@ -76,31 +48,6 @@ html[data-bs-theme="dark"] .navbar-toggler-icon {
 .site-navbar .nav-link:hover,
 .site-navbar .nav-link:focus {
   color: var(--catalogue-accent);
-}
-
-.nav-actions {
-  margin-left: 1rem;
-}
-
-.theme-toggle-btn {
-  border-width: 1.5px;
-  border-color: var(--catalogue-border-strong);
-  color: var(--catalogue-ink);
-  background: var(--catalogue-surface-strong);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.theme-toggle-btn:hover,
-.theme-toggle-btn:focus {
-  border-color: var(--catalogue-accent);
-  color: var(--catalogue-accent);
-  background: var(--catalogue-surface-soft);
-}
-
-.theme-toggle-icon {
-  font-size: 0.95rem;
 }
 
 .card {
@@ -116,7 +63,7 @@ html[data-bs-theme="dark"] .navbar-toggler-icon {
 }
 
 .bg-white {
-  background-color: var(--catalogue-surface-strong) !important;
+  background-color: var(--catalogue-surface) !important;
 }
 
 .card.border-0 {
@@ -129,7 +76,7 @@ html[data-bs-theme="dark"] .navbar-toggler-icon {
 }
 
 .site-footer {
-  background: var(--catalogue-footer-bg);
+  background: #ffffff;
   border-color: var(--catalogue-border) !important;
 }
 
@@ -139,7 +86,7 @@ html[data-bs-theme="dark"] .navbar-toggler-icon {
 
 .form-control,
 .form-select {
-  background-color: var(--catalogue-surface-strong);
+  background-color: var(--catalogue-surface);
   border-color: var(--catalogue-border-strong);
   color: var(--catalogue-ink);
 }
@@ -189,10 +136,6 @@ html[data-bs-theme="dark"] .navbar-toggler-icon {
   font-weight: 600;
 }
 
-.pdf-block iframe {
-  background: var(--catalogue-surface-soft);
-}
-
 .filter-stack {
   display: grid;
   gap: 1rem;
@@ -207,7 +150,7 @@ html[data-bs-theme="dark"] .navbar-toggler-icon {
 }
 
 .alert {
-  background: var(--catalogue-surface-strong);
+  background: var(--catalogue-surface);
   border-color: var(--catalogue-border);
   color: var(--catalogue-ink);
 }

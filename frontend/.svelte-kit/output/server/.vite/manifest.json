@@ -34,7 +34,7 @@
       "_utils.js",
       "_root.js",
       "_state.svelte.js",
-      "_config.js",
+      "_api.js",
       "_fullChart.js"
     ],
     "css": [
@@ -52,7 +52,7 @@
     "file": "chunks/api.js",
     "name": "api",
     "imports": [
-      "_config.js"
+      "_index.js"
     ]
   },
   "_auth.js": {
@@ -61,13 +61,6 @@
     "imports": [
       "_index.js",
       "_api.js"
-    ]
-  },
-  "_config.js": {
-    "file": "chunks/config.js",
-    "name": "config",
-    "imports": [
-      "_index.js"
     ]
   },
   "_environment.js": {
@@ -142,6 +135,17 @@
       "_root.js"
     ]
   },
+  "_stores.js": {
+    "file": "chunks/stores.js",
+    "name": "stores",
+    "imports": [
+      "_index2.js",
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js"
+    ]
+  },
   "_utils.js": {
     "file": "chunks/utils.js",
     "name": "utils"
@@ -193,12 +197,9 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
-      "_exports.js",
-      "_utils.js",
-      "_root.js",
-      "_state.svelte.js",
+      "_stores.js",
       "_auth.js",
-      "_config.js"
+      "_api.js"
     ],
     "css": [
       "_app/immutable/assets/_layout.DgLIrzHR.css"
@@ -258,6 +259,7 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
+      "_stores.js",
       "_ManagePageShell.js",
       "_ProductWorkspace.js"
     ]
@@ -334,6 +336,7 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
+      "_stores.js",
       "_ManagePageShell.js",
       "_SeriesWorkspace.js"
     ]
@@ -373,7 +376,6 @@
       "_index2.js",
       "_index-server.js",
       "_auth.js",
-      "_config.js",
       "_api.js"
     ],
     "css": [
@@ -400,8 +402,7 @@
     "imports": [
       "_index2.js",
       "_api.js",
-      "_fullChart.js",
-      "_config.js"
+      "_fullChart.js"
     ],
     "css": [
       "_app/immutable/assets/_page.DO8j5OqU.css"

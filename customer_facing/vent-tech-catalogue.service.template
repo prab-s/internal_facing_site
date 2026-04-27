@@ -6,6 +6,7 @@ After=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=__ENV_FILE__
+ExecStartPre=/bin/sh -c 'if [ -x "__ROOT_DIR__/install_service.sh" ]; then "__ROOT_DIR__/install_service.sh" --refresh-only; fi'
 ExecStartPre=-/usr/bin/podman rm -f vent-tech-catalogue
 ExecStartPre=/usr/bin/podman build -t __IMAGE_NAME__ -f __ROOT_DIR__/Containerfile __ROOT_DIR__
 ExecStart=/usr/bin/podman run --name vent-tech-catalogue --replace --rm --publish 8004:8004 --env-file __ENV_FILE__ __IMAGE_NAME__

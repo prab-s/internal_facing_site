@@ -56,6 +56,6 @@ declare module "$app/types" {
 		};
 		Pathname(): "/" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | "/entry" | "/map" | "/setup" | "/template-builder" | "/viewer";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
-		Asset(): "/bg.jpg" | string & {};
+		Asset(): "/favicon.png" | string & {};
 	}
 }

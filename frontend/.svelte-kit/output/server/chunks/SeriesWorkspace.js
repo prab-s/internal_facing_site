@@ -2,6 +2,7 @@ import { f as fallback, h as head, i as ensure_array_like, e as escape_html, a a
 function SeriesWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let initialMode = fallback($$props["initialMode"], "create");
+    let initialSeriesId = fallback($$props["initialSeriesId"], "");
     let productTypes = [];
     let seriesRecords = [];
     let templateRegistry = { series_templates: [] };
@@ -22,6 +23,12 @@ function SeriesWorkspace($$renderer, $$props) {
       };
     }
     let seriesDraft = resetDraft();
+    if (initialSeriesId !== "" && String(selectedSeriesId) !== String(initialSeriesId)) {
+      selectedSeriesId = String(initialSeriesId);
+      if (mode !== "create") {
+        mode = "edit";
+      }
+    }
     head("plxnsv", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Series — Editor</title>`);
@@ -158,7 +165,7 @@ function SeriesWorkspace($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--> <button class="btn btn-outline-secondary">Cancel</button></div></div></div></div></div>`);
-    bind_props($$props, { initialMode });
+    bind_props($$props, { initialMode, initialSeriesId });
   });
 }
 export {

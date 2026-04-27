@@ -11,23 +11,11 @@
         {% for type in product_types %}
           <li class="nav-item">
             <a class="nav-link" href="{{ product_type_url(type) }}">
-              {{ type.label }}
+              {{ type.label }}s
             </a>
           </li>
         {% endfor %}
       </ul>
-    </div>
-
-    <div class="nav-actions d-flex align-items-center ms-auto">
-      <button
-        id="theme-toggle"
-        class="btn btn-outline-secondary btn-sm theme-toggle-btn"
-        type="button"
-        aria-pressed="false"
-      >
-        <span class="theme-toggle-icon" aria-hidden="true">☾</span>
-        <span class="theme-toggle-label">Dark mode</span>
-      </button>
     </div>
   </div>
 </nav>

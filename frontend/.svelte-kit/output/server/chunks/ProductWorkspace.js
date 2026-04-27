@@ -6,8 +6,8 @@ import "./utils.js";
 import "@sveltejs/kit/internal/server";
 import "./root.js";
 import "./state.svelte.js";
-import { t as theme, e as emptyProductForm, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
-import { g as getChartTheme, b as buildFullChartOption, E as ECharts, R as RPM_BAND_FALLBACK_COLORS, F as FULL_CHART_LINE_DEFINITIONS } from "./fullChart.js";
+import { t as theme, e as emptyProductForm, g as getProduct, a as getRpmLines, b as getRpmPoints, c as getEfficiencyPoints, G as GLOBAL_UNIT_OPTIONS } from "./api.js";
+import { F as FULL_CHART_LINE_DEFINITIONS, R as RPM_BAND_FALLBACK_COLORS, g as getChartTheme, b as buildFullChartOption, E as ECharts } from "./fullChart.js";
 function AccordionCard($$renderer, $$props) {
   let title = fallback($$props["title"], "");
   let description = fallback($$props["description"], "");
@@ -37,17 +37,23 @@ function ProductWorkspace($$renderer, $$props) {
     var $$store_subs;
     let productTemplateOptions;
     let initialMode = fallback($$props["initialMode"], "select");
+    let initialProductId = fallback($$props["initialProductId"], "");
     let products = [];
     let productTypes = [];
     let seriesRecords = [];
     let templateRegistry = { product_templates: [] };
     let selectedProductId = null;
+    let currentProduct = null;
     let rpmLines = [];
     let rpmPoints = [];
     let efficiencyPoints = [];
     let mapChartOption = {};
     let loading = false;
     let successMessages = [];
+    let productImages = [];
+    let chartAddTarget = "";
+    let originalRpmPointIds = [];
+    let originalEfficiencyPointIds = [];
     let nextTempPointId = -1;
     let nextTempRpmLineId = -1;
     let savingMapPoints = false;
@@ -111,6 +117,7 @@ function ProductWorkspace($$renderer, $$props) {
       }
     ];
     let productForm = emptyProductForm();
+    let rpmPointForm = { rpm_line_id: "", airflow: "", pressure: "" };
     function syncSpecificationGroupOpenState(groups, currentState) {
       const nextState = {};
       groups.forEach((_, index) => {
@@ -362,8 +369,63 @@ function ProductWorkspace($$renderer, $$props) {
     function applyRpmPointSort(points) {
       return points;
     }
+    function hydrateRpmPointsWithLineValues(points, lines) {
+      const rpmByLineId = new Map((lines ?? []).map((line) => [Number(line?.id), Number(line?.rpm)]).filter(([, rpm]) => Number.isFinite(rpm)));
+      return (points ?? []).map((point) => {
+        const rpm = Number(point?.rpm);
+        if (Number.isFinite(rpm)) {
+          return point;
+        }
+        const lineRpm = rpmByLineId.get(Number(point?.rpm_line_id));
+        return lineRpm == null ? point : { ...point, rpm: lineRpm };
+      });
+    }
     onDestroy(() => {
     });
+    async function loadProductData() {
+      if (!selectedProductId) return;
+      try {
+        const nextProduct = await getProduct(selectedProductId);
+        currentProduct = nextProduct;
+        const nextProductType = productTypes.find((item) => item.key === (nextProduct?.product_type_key || "fan")) || null;
+        const overlayDefinitions = nextProductType?.supports_graph_overlays === false ? [] : FULL_CHART_LINE_DEFINITIONS;
+        const [rpmLinesResult, rpmPointsResult, efficiencyPointsResult] = await Promise.allSettled([
+          getRpmLines(selectedProductId),
+          getRpmPoints(selectedProductId),
+          getEfficiencyPoints(selectedProductId)
+        ]);
+        const nextRpmLines = rpmLinesResult.status === "fulfilled" ? rpmLinesResult.value : [];
+        const nextRpmPoints = rpmPointsResult.status === "fulfilled" ? rpmPointsResult.value : [];
+        const nextEfficiencyPoints = efficiencyPointsResult.status === "fulfilled" ? efficiencyPointsResult.value : [];
+        rpmLines = nextRpmLines.map((line, index) => ({
+          ...line,
+          band_color: normalizeOptionalColor(line.band_color) || RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+        }));
+        rpmPoints = applyRpmPointSort(hydrateRpmPointsWithLineValues(nextRpmPoints, rpmLines));
+        efficiencyPoints = nextEfficiencyPoints;
+        originalRpmPointIds = nextRpmPoints.map((point) => point.id);
+        originalEfficiencyPointIds = nextEfficiencyPoints.map((point) => point.id);
+        graphStyleForm = {
+          band_graph_background_color: normalizeOptionalColor(nextProduct?.band_graph_background_color) || "#ffffff",
+          band_graph_label_text_color: normalizeOptionalColor(nextProduct?.band_graph_label_text_color) || "#000000",
+          band_graph_faded_opacity: nextProduct?.band_graph_faded_opacity != null && !Number.isNaN(Number(nextProduct.band_graph_faded_opacity)) ? Number(nextProduct.band_graph_faded_opacity) : 0.18,
+          band_graph_permissible_label_color: normalizeOptionalColor(nextProduct?.band_graph_permissible_label_color) || normalizeOptionalColor(nextProduct?.band_graph_label_text_color) || "#000000"
+        };
+        productImages = currentProduct.product_images || [];
+        const validTargets = /* @__PURE__ */ new Set([
+          ...nextRpmLines.map((line) => `rpm:${line.id}`),
+          ...overlayDefinitions.map((definition) => `efficiency:${definition.key}`)
+        ]);
+        if (!chartAddTarget || !validTargets.has(chartAddTarget)) {
+          chartAddTarget = "off";
+        }
+        if (!rpmPointForm.rpm_line_id && nextRpmLines.length) {
+          rpmPointForm = { ...rpmPointForm, rpm_line_id: String(nextRpmLines[0].id) };
+        }
+      } catch (e) {
+        e.message;
+      }
+    }
     function buildMapChartOption() {
       const chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
       const overlayDefinitions = currentOverlayLineDefinitions();
@@ -397,11 +459,20 @@ function ProductWorkspace($$renderer, $$props) {
     }
     specificationGroupOpenState = syncSpecificationGroupOpenState(parameterGroups, specificationGroupOpenState);
     productTemplateOptions = templateRegistry.product_templates ?? [];
+    if (initialProductId !== "" && Number(initialProductId) !== Number(selectedProductId)) {
+      selectedProductId = Number(initialProductId);
+      if (mode !== "create") {
+        mode = "editExisting";
+      }
+    }
     if (mode === "create" && productForm.product_type_key && productTypes.length > 0 && templateRegistry) {
       applyCreateTypePresets(productForm.product_type_key);
       applyCreateTemplateDefault(productForm.product_type_key);
     }
     allAccordionsOpen = mode === "create" ? createCoreDetailsOpen && createProductAttributesOpen && createGroupedSpecificationsOpen && allSpecificationGroupsOpen() : false;
+    if (selectedProductId) {
+      loadProductData();
+    }
     {
       store_get($$store_subs ??= {}, "$theme", theme);
       buildMapChartOption();
@@ -927,7 +998,7 @@ function ProductWorkspace($$renderer, $$props) {
     } while (!$$settled);
     $$renderer2.subsume($$inner_renderer);
     if ($$store_subs) unsubscribe_stores($$store_subs);
-    bind_props($$props, { initialMode });
+    bind_props($$props, { initialMode, initialProductId });
   });
 }
 export {

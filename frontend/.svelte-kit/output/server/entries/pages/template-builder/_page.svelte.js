@@ -111,7 +111,7 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<p class="text-body-secondary mb-0">Load a template to inspect its file paths and edit it.</p>`);
     }
-    $$renderer2.push(`<!--]--></div></div></div></div> <div class="col-12 col-xxl-9"><div class="card shadow-sm mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h2 class="h5 mb-1">Source Editors</h2> <p class="text-body-secondary mb-0">These fields are the real saved template source. Save here to preserve your handcrafted layout.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", true, true)}>Refresh visual preview</button></div> <div class="row g-3"><div class="col-12 col-xl-7"><label class="form-label" for="template-html-source">HTML</label> <textarea id="template-html-source" class="form-control font-monospace" rows="22" spellcheck="false"${attr("disabled", true, true)}>`);
+    $$renderer2.push(`<!--]--></div></div></div></div> <div class="col-12 col-xxl-9"><div class="card shadow-sm mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h2 class="h5 mb-1">Source Editors</h2> <p class="text-body-secondary mb-0">These fields show the saved template source. Sandbox edits are folded back into this source when you click Save.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", true, true)}>Refresh visual preview</button></div> <div class="row g-3"><div class="col-12 col-xl-7"><label class="form-label" for="template-html-source">HTML</label> <textarea id="template-html-source" class="form-control font-monospace" rows="22" spellcheck="false"${attr("disabled", true, true)}>`);
     const $$body = escape_html(rawHtmlContent);
     if ($$body) {
       $$renderer2.push(`${$$body}`);
@@ -121,7 +121,7 @@ function _page($$renderer, $$props) {
     if ($$body_1) {
       $$renderer2.push(`${$$body_1}`);
     }
-    $$renderer2.push(`</textarea></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h2 class="h5 mb-1">Visual Preview Sandbox</h2> <p class="text-body-secondary mb-0">Drag-and-drop here to experiment, but use the source editors above for the final saved version.</p></div></div> <div class="template-editor-host border rounded overflow-hidden svelte-yl845"></div></div></div></div></div>`);
+    $$renderer2.push(`</textarea></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h2 class="h5 mb-1">Visual Preview Sandbox</h2> <p class="text-body-secondary mb-0">Drag-and-drop here to experiment. Save captures the current sandbox HTML and CSS, then writes them back into the source editors.</p></div></div> <div class="template-editor-host border rounded overflow-hidden svelte-yl845"></div></div></div></div></div>`);
   });
 }
 export {

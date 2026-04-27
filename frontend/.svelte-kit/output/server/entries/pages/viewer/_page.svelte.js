@@ -1,7 +1,6 @@
 import { s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
-import { d as getProducts, e as getProduct, f as getProductChartData } from "../../../chunks/api.js";
+import { t as theme, j as getProducts, g as getProduct, k as getProductChartData } from "../../../chunks/api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../chunks/fullChart.js";
-import { t as theme } from "../../../chunks/config.js";
 function html(value) {
   var html2 = String(value ?? "");
   var open = "<!---->";
@@ -31,6 +30,14 @@ function _page($$renderer, $$props) {
     let seriesTabOptions = [];
     let refreshingProductGraphId = null;
     let refreshingProductPdfId = null;
+    function productEditorUrl(productId) {
+      const params = new URLSearchParams();
+      if (productId != null && productId !== "") {
+        params.set("product", String(productId));
+      }
+      const search2 = params.toString();
+      return `/editor/edit${search2 ? `?${search2}` : ""}`;
+    }
     function getCurrentProductType() {
       return productTypes.find((item) => item.key === selectedProduct?.product_type_key) || null;
     }
@@ -274,7 +281,7 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfId === currentProduct.id, true)}>${escape_html(refreshingProductPdfId === currentProduct.id ? "Generating PDFs..." : "Generate PDFs")}</button> `);
+        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfId === currentProduct.id, true)}>${escape_html(refreshingProductPdfId === currentProduct.id ? "Generating PDFs..." : "Generate PDFs")}</button> <a class="btn btn-outline-primary btn-sm"${attr("href", productEditorUrl(currentProduct.id))}>Open in Editor</a> `);
         if (currentProduct.graph_image_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.graph_image_url)} target="_blank" rel="noreferrer">Open Graph</a>`);

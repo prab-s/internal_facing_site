@@ -65,23 +65,39 @@
     };
   }
 
-  function applyTemplatePreviewSubstitutions(htmlContent, templateKind) {
-    const imagePlaceholder =
+  function createPreviewPlaceholder(label) {
+    return (
       'data:image/svg+xml;charset=UTF-8,' +
       encodeURIComponent(
         `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
           <rect width="100%" height="100%" fill="#e9ecef"/>
           <rect x="24" y="24" width="912" height="492" rx="18" fill="#f8f9fa" stroke="#ced4da" stroke-width="4"/>
           <text x="50%" y="50%" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" fill="#6c757d">
-            ${templateKind === 'series' ? 'Series asset preview' : 'Product asset preview'}
+            ${label}
           </text>
         </svg>`
-      );
+      )
+    );
+  }
 
-    return htmlContent
-      .replaceAll('{{product.primary_product_image_url}}', imagePlaceholder)
-      .replaceAll('{{product.graph_image_url}}', imagePlaceholder)
-      .replaceAll('{{series.graph_image_url}}', imagePlaceholder);
+  const previewTokenMap = {
+    '{{product.primary_product_image_url}}': createPreviewPlaceholder('Product primary image preview'),
+    '{{product.graph_image_url}}': createPreviewPlaceholder('Product graph preview'),
+    '{{series.graph_image_url}}': createPreviewPlaceholder('Series graph preview')
+  };
+
+  function applyTemplatePreviewSubstitutions(htmlContent) {
+    return Object.entries(previewTokenMap).reduce(
+      (content, [token, placeholder]) => content.replaceAll(token, placeholder),
+      htmlContent
+    );
+  }
+
+  function restoreTemplatePreviewSubstitutions(htmlContent) {
+    return Object.entries(previewTokenMap).reduce(
+      (content, [token, placeholder]) => content.replaceAll(placeholder, token),
+      htmlContent
+    );
   }
 
   function rebuildTemplateHtmlFromSource() {
@@ -98,6 +114,24 @@
     bodySuffix = parsed.bodySuffix;
     editor.setComponents(applyTemplatePreviewSubstitutions(parsed.bodyHtml, templateType));
     editor.setStyle(rawCssContent || '');
+  }
+
+  function buildTemplateHtmlForSave() {
+    if (editor) {
+      const parsed = extractEditableSections(rawHtmlContent || loadedTemplate?.html_content || '');
+      const bodyHtml = restoreTemplatePreviewSubstitutions(editor.getHtml());
+      const savedHtml = parsed.headPrefix || parsed.bodySuffix ? `${parsed.headPrefix}\n${bodyHtml}\n${parsed.bodySuffix}` : bodyHtml;
+      const savedCss = editor.getCss();
+      return {
+        html_content: savedHtml,
+        css_content: savedCss
+      };
+    }
+
+    return {
+      html_content: rebuildTemplateHtmlFromSource(),
+      css_content: rawCssContent
+    };
   }
 
   function setupBlocksResizer(blocksContainer) {
@@ -293,10 +327,7 @@
     loadError = '';
     statusMessage = '';
     try {
-      const body = {
-        html_content: rebuildTemplateHtmlFromSource(),
-        css_content: rawCssContent
-      };
+      const body = buildTemplateHtmlForSave();
       loadedTemplate = await updateTemplateFiles(templateType, templateId, body);
       rawHtmlContent = loadedTemplate.html_content || '';
       rawCssContent = loadedTemplate.css_content || '';
@@ -495,7 +526,7 @@
               <dt class="col-4">CSS</dt>
               <dd class="col-8 text-break">{loadedTemplate.css_path || 'template.css'}</dd>
               <dt class="col-4">Mode</dt>
-              <dd class="col-8">Source-first save, visual preview only</dd>
+              <dd class="col-8">Source editors stay visible, and sandbox edits are included on save</dd>
             </dl>
             <hr />
             <button class="btn btn-outline-secondary btn-sm me-2" type="button" on:click={refreshPreviewFromSource}>
@@ -518,7 +549,7 @@
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
           <div>
             <h2 class="h5 mb-1">Source Editors</h2>
-            <p class="text-body-secondary mb-0">These fields are the real saved template source. Save here to preserve your handcrafted layout.</p>
+            <p class="text-body-secondary mb-0">These fields show the saved template source. Sandbox edits are folded back into this source when you click Save.</p>
           </div>
           <button class="btn btn-outline-secondary btn-sm" type="button" on:click={refreshPreviewFromSource} disabled={!loadedTemplate}>
             Refresh visual preview
@@ -556,7 +587,7 @@
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
           <div>
             <h2 class="h5 mb-1">Visual Preview Sandbox</h2>
-            <p class="text-body-secondary mb-0">Drag-and-drop here to experiment, but use the source editors above for the final saved version.</p>
+            <p class="text-body-secondary mb-0">Drag-and-drop here to experiment. Save captures the current sandbox HTML and CSS, then writes them back into the source editors.</p>
           </div>
         </div>
         <div bind:this={editorHost} class="template-editor-host border rounded overflow-hidden"></div>

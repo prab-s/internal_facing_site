@@ -381,6 +381,7 @@ class RpmLineUpdate(BaseModel):
 
 class RpmLineResponse(RpmLineBase):
     id: int
+    points: list["RpmPointResponse"] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     product_id: int = Field(
         ...,
@@ -443,6 +444,14 @@ class EfficiencyPointResponse(EfficiencyPointBase):
     )
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class CmsProductGraphValuesResponse(BaseModel):
+    rpm: list[float] = Field(default_factory=list)
+    airflow: list[float] = Field(default_factory=list)
+    pressure: list[float] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProductImageResponse(BaseModel):
@@ -557,6 +566,8 @@ class CmsProductResponse(BaseModel):
     product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
+    rpm_lines: list[RpmLineResponse] = Field(default_factory=list)
+    efficiency_points: list[EfficiencyPointResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -599,3 +610,4 @@ class CmsSeriesResponse(BaseModel):
 
 ProductResponse.model_rebuild()
 ProductParameterGroupResponse.model_rebuild()
+RpmLineResponse.model_rebuild()

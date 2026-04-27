@@ -62,4 +62,36 @@
   </section>
 </div>
 
+<template id="finder-select-field-template">
+  <div class="mb-3">
+    <label class="form-label"></label>
+    <select class="form-select finder-filter-input">
+      <option value="">-- select option --</option>
+    </select>
+  </div>
+</template>
+
+<template id="finder-series-field-template">
+  <div class="mb-3">
+    <label class="form-label">Series</label>
+    <select class="form-select finder-filter-series">
+      <option value="">-- select option --</option>
+    </select>
+  </div>
+</template>
+
+<template id="finder-range-field-template">
+  <div class="mb-3">
+    <label class="form-label"></label>
+    <div class="row g-2">
+      <div class="col-6">
+        <input class="form-control finder-filter-min" type="number" step="any" inputmode="decimal">
+      </div>
+      <div class="col-6">
+        <input class="form-control finder-filter-max" type="number" step="any" inputmode="decimal">
+      </div>
+    </div>
+  </div>
+</template>
+
 {% endblock %}

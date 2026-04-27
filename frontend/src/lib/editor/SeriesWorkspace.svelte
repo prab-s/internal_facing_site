@@ -3,6 +3,7 @@
   import { createSeries, deleteSeries, getProductTypes, getSeries, getTemplates, updateSeries } from '$lib/api.js';
 
   export let initialMode = 'create';
+  export let initialSeriesId = '';
 
   let productTypes = [];
   let seriesRecords = [];
@@ -28,6 +29,13 @@
   }
 
   let seriesDraft = resetDraft();
+
+  $: if (initialSeriesId !== '' && String(selectedSeriesId) !== String(initialSeriesId)) {
+    selectedSeriesId = String(initialSeriesId);
+    if (mode !== 'create') {
+      mode = 'edit';
+    }
+  }
 
   function startCreate() {
     mode = 'create';
@@ -56,6 +64,12 @@
   async function loadData() {
     try {
       [productTypes, seriesRecords, templateRegistry] = await Promise.all([getProductTypes(), getSeries(), getTemplates()]);
+      if (selectedSeriesId && mode === 'edit') {
+        const selected = seriesRecords.find((item) => String(item.id) === String(selectedSeriesId));
+        if (selected) {
+          seriesDraft = resetDraft(selected);
+        }
+      }
     } catch (e) {
       error = e.message;
     }
@@ -121,7 +135,16 @@
     }
   }
 
-  onMount(loadData);
+  onMount(async () => {
+    await loadData();
+    if (selectedSeriesId) {
+      const selected = seriesRecords.find((item) => String(item.id) === String(selectedSeriesId));
+      if (selected) {
+        mode = 'edit';
+        seriesDraft = resetDraft(selected);
+      }
+    }
+  });
 </script>
 
 <svelte:head>

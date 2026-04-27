@@ -4,13 +4,12 @@ const seriesFilterHost = document.querySelector("#series-filter");
 const mainFiltersHost = document.querySelector("#main-filters");
 const advancedFiltersHost = document.querySelector("#advanced-filters");
 const advancedToggle = document.querySelector("#advanced-toggle");
-const themeToggle = document.querySelector("#theme-toggle");
 const productTypeSelect = form?.querySelector('[name="product_type_key"]') || null;
+const GRAPH_FILTER_GROUP_NAME = "__graph__";
 
 let advancedOpen = false;
 let filterMetadata = { groups: [] };
 let activeRefreshToken = 0;
-const themeStorageKey = "customerFacingTheme";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -21,59 +20,19 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function getPreferredTheme() {
-  try {
-    const storedTheme = window.localStorage.getItem(themeStorageKey);
-    if (storedTheme === "dark" || storedTheme === "light") {
-      return storedTheme;
-    }
-  } catch (_error) {
-    // Ignore localStorage errors and fall back to a light default.
+function cloneTemplate(id) {
+  const template = document.getElementById(id);
+  if (!template || !(template instanceof HTMLTemplateElement)) {
+    return null;
   }
 
-  return "light";
-}
-
-function updateThemeToggle(theme) {
-  if (!themeToggle) return;
-
-  const isDark = theme === "dark";
-  const icon = themeToggle.querySelector(".theme-toggle-icon");
-  const label = themeToggle.querySelector(".theme-toggle-label");
-
-  document.documentElement.dataset.bsTheme = isDark ? "dark" : "light";
-  themeToggle.setAttribute("aria-pressed", String(isDark));
-
-  if (icon) {
-    icon.textContent = isDark ? "☀" : "☾";
-  }
-
-  if (label) {
-    label.textContent = isDark ? "Light mode" : "Dark mode";
-  }
-}
-
-function setTheme(theme, persist = true) {
-  const nextTheme = theme === "dark" ? "dark" : "light";
-  updateThemeToggle(nextTheme);
-
-  if (!persist) return;
-
-  try {
-    window.localStorage.setItem(themeStorageKey, nextTheme);
-  } catch (_error) {
-    // Ignore storage errors; the theme still applies for the current session.
-  }
+  return template.content.firstElementChild?.cloneNode(true) || null;
 }
 
 function getSelectedProductType() {
   if (!form) return null;
   const selectedKey = productTypeSelect?.value || "";
   return selectedKey;
-}
-
-function getGroupOrder(groupName) {
-  return (groupName || "").trim().toLowerCase() === "main" ? 0 : 1;
 }
 
 function groupParameters(group) {
@@ -90,9 +49,20 @@ function groupParameters(group) {
   return Array.from(grouped.entries()).map(([parameterName, parameters]) => ({ parameterName, parameters }));
 }
 
+function isGraphGroup(group) {
+  return String(group?.group_name || "").trim().toLowerCase() === GRAPH_FILTER_GROUP_NAME;
+}
+
+function groupTitle(group) {
+  if (isGraphGroup(group)) {
+    return "Graph ranges";
+  }
+  return group?.group_name || "Filters";
+}
+
 function buildSelectField(groupName, parameterName, label, values, metadata = {}) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "mb-3";
+  const wrapper = cloneTemplate("finder-select-field-template") || document.createElement("div");
+  wrapper.className = wrapper.className || "mb-3";
   wrapper.dataset.groupName = groupName;
   wrapper.dataset.parameterName = parameterName;
   wrapper.dataset.filterKind = metadata.kind || "select";
@@ -102,20 +72,32 @@ function buildSelectField(groupName, parameterName, label, values, metadata = {}
     ? values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")
     : '<option value="" disabled>No options available</option>';
 
-  wrapper.innerHTML = `
-    <label class="form-label">${escapeHtml(label)}</label>
-    <select class="form-select finder-filter-input">
+  const labelNode = wrapper.querySelector("label");
+  const selectNode = wrapper.querySelector("select");
+  if (labelNode) {
+    labelNode.textContent = label;
+  }
+  if (selectNode) {
+    selectNode.innerHTML = `
       <option value="">${escapeHtml(placeholder)}</option>
       ${options}
-    </select>
-  `;
+    `;
+  } else {
+    wrapper.innerHTML = `
+      <label class="form-label">${escapeHtml(label)}</label>
+      <select class="form-select finder-filter-input">
+        <option value="">${escapeHtml(placeholder)}</option>
+        ${options}
+      </select>
+    `;
+  }
 
   return wrapper;
 }
 
 function buildSeriesField(seriesOptions) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "mb-3";
+  const wrapper = cloneTemplate("finder-series-field-template") || document.createElement("div");
+  wrapper.className = wrapper.className || "mb-3";
   wrapper.dataset.groupName = "";
   wrapper.dataset.parameterName = "series_id";
   wrapper.dataset.filterKind = "series";
@@ -124,48 +106,89 @@ function buildSeriesField(seriesOptions) {
     .map((series) => `<option value="${escapeHtml(series.id)}">${escapeHtml(series.name)}${series.product_count ? ` (${series.product_count})` : ""}</option>`)
     .join("");
 
-  wrapper.innerHTML = `
-    <label class="form-label">Series</label>
-    <select class="form-select finder-filter-series">
+  const selectNode = wrapper.querySelector("select");
+  if (selectNode) {
+    selectNode.innerHTML = `
       <option value="">-- select option --</option>
       ${options || '<option value="" disabled>No series available</option>'}
-    </select>
-  `;
+    `;
+  } else {
+    wrapper.innerHTML = `
+      <label class="form-label">Series</label>
+      <select class="form-select finder-filter-series">
+        <option value="">-- select option --</option>
+        ${options || '<option value="" disabled>No series available</option>'}
+      </select>
+    `;
+  }
 
   return wrapper;
 }
 
-function buildRangeField(groupName, parameterName, label, unit) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "mb-3";
+function buildRangeField(groupName, parameterName, label, unit, rangePlaceholder = {}) {
+  const wrapper = cloneTemplate("finder-range-field-template") || document.createElement("div");
+  wrapper.className = wrapper.className || "mb-3";
   wrapper.dataset.groupName = groupName;
   wrapper.dataset.parameterName = parameterName;
   wrapper.dataset.filterKind = "range";
 
   const minLabel = unit ? `Minimum (${escapeHtml(unit)})` : "Minimum";
   const maxLabel = unit ? `Maximum (${escapeHtml(unit)})` : "Maximum";
+  const minPlaceholder = rangePlaceholder.min ?? "";
+  const maxPlaceholder = rangePlaceholder.max ?? "";
 
-  wrapper.innerHTML = `
-    <label class="form-label">${escapeHtml(label)}${unit ? ` <span class="text-muted">(${escapeHtml(unit)})</span>` : ""}</label>
-    <div class="row g-2">
-      <div class="col-6">
-        <select class="form-select finder-filter-min">
-          <option value="">${escapeHtml(minLabel)}</option>
-        </select>
+  const labelNode = wrapper.querySelector("label");
+  const minInput = wrapper.querySelector(".finder-filter-min");
+  const maxInput = wrapper.querySelector(".finder-filter-max");
+  if (labelNode) {
+    labelNode.innerHTML = `${escapeHtml(label)}${unit ? ` <span class="text-muted">(${escapeHtml(unit)})</span>` : ""}`;
+  }
+  if (minInput) {
+    if (minPlaceholder !== "") {
+      minInput.value = minPlaceholder;
+    }
+    minInput.placeholder = minLabel;
+  }
+  if (maxInput) {
+    if (maxPlaceholder !== "") {
+      maxInput.value = maxPlaceholder;
+    }
+    maxInput.placeholder = maxLabel;
+  }
+  if (!labelNode || !minInput || !maxInput) {
+    wrapper.innerHTML = `
+      <label class="form-label">${escapeHtml(label)}${unit ? ` <span class="text-muted">(${escapeHtml(unit)})</span>` : ""}</label>
+      <div class="row g-2">
+        <div class="col-6">
+          <input
+            class="form-control finder-filter-min"
+            type="number"
+            step="any"
+            inputmode="decimal"
+            placeholder="${escapeHtml(minPlaceholder || minLabel)}"
+          />
+        </div>
+        <div class="col-6">
+          <input
+            class="form-control finder-filter-max"
+            type="number"
+            step="any"
+            inputmode="decimal"
+            placeholder="${escapeHtml(maxPlaceholder || maxLabel)}"
+          />
+        </div>
       </div>
-      <div class="col-6">
-        <select class="form-select finder-filter-max">
-          <option value="">${escapeHtml(maxLabel)}</option>
-        </select>
-      </div>
-    </div>
-  `;
+    `;
+  }
 
   return wrapper;
 }
 
 function buildField(groupName, parameterName, parameters) {
   const label = parameterName;
+  const kinds = new Set(
+    parameters.map((parameter) => String(parameter.kind || "").trim().toLowerCase()).filter(Boolean),
+  );
   const stringValues = Array.from(
     new Set(
       parameters
@@ -180,26 +203,18 @@ function buildField(groupName, parameterName, parameters) {
     ),
   ).sort((a, b) => a - b);
   const unit = parameters.find((parameter) => (parameter.unit || "").trim())?.unit?.trim() || "";
-  const sortedNumericValues = numericValues.map((value) => String(value));
+  const rangeMin = parameters.find((parameter) => parameter.range_min !== undefined && parameter.range_min !== null)?.range_min;
+  const rangeMax = parameters.find((parameter) => parameter.range_max !== undefined && parameter.range_max !== null)?.range_max;
 
-  if (numericValues.length > 0 && stringValues.length === 0) {
-    const field = buildRangeField(groupName, parameterName, label, unit);
-    const minSelect = field.querySelector(".finder-filter-min");
-    const maxSelect = field.querySelector(".finder-filter-max");
-
-    for (const value of sortedNumericValues) {
-      const minOption = document.createElement("option");
-      minOption.value = value;
-      minOption.textContent = value;
-      minSelect?.appendChild(minOption);
-
-      const maxOption = document.createElement("option");
-      maxOption.value = value;
-      maxOption.textContent = value;
-      maxSelect?.appendChild(maxOption);
-    }
-
-    return field;
+  if (kinds.has("range") || numericValues.length > 0) {
+    return buildRangeField(groupName, parameterName, label, unit, {
+      min: rangeMin !== undefined && rangeMin !== null
+        ? String(rangeMin)
+        : (numericValues[0] !== undefined ? String(numericValues[0]) : ""),
+      max: rangeMax !== undefined && rangeMax !== null
+        ? String(rangeMax)
+        : (numericValues[numericValues.length - 1] !== undefined ? String(numericValues[numericValues.length - 1]) : ""),
+    });
   }
 
   if (stringValues.length > 0) {
@@ -228,7 +243,7 @@ function buildGroupSection(group, isAdvanced = false) {
 
   section.innerHTML = `
     <div class="${isAdvanced ? "card-body" : ""}">
-      <h3 class="h6 mb-3">${escapeHtml(group.group_name || "Filters")}</h3>
+      <h3 class="h6 mb-3">${escapeHtml(groupTitle(group))}</h3>
       ${groupedFields}
     </div>
   `;
@@ -240,9 +255,11 @@ function getSelectedProductTypeData() {
   const productType = productTypeSelect?.value || "";
   const groups = filterMetadata?.groups || [];
   const mainGroup = groups.find((group) => (group.group_name || "").trim().toLowerCase() === "main");
+  const graphGroup = groups.find((group) => isGraphGroup(group));
   const advancedGroups = groups.filter((group) => (group.group_name || "").trim().toLowerCase() !== "main");
+  const visibleAdvancedGroups = advancedGroups.filter((group) => !isGraphGroup(group));
 
-  return { productType, mainGroup, advancedGroups, series: filterMetadata?.series || [] };
+  return { productType, mainGroup, graphGroup, advancedGroups: visibleAdvancedGroups, series: filterMetadata?.series || [] };
 }
 
 function captureFilterState() {
@@ -311,7 +328,7 @@ function restoreFilterState(state) {
 function renderFilterControls() {
   if (!seriesFilterHost || !mainFiltersHost || !advancedFiltersHost || !advancedToggle) return;
 
-  const { productType, mainGroup, advancedGroups, series } = getSelectedProductTypeData();
+  const { productType, mainGroup, graphGroup, advancedGroups, series } = getSelectedProductTypeData();
 
   seriesFilterHost.innerHTML = "";
   mainFiltersHost.innerHTML = "";
@@ -338,6 +355,10 @@ function renderFilterControls() {
     mainFiltersHost.appendChild(mainSection);
   } else {
     mainFiltersHost.innerHTML = '<p class="text-muted small mb-0">No main filters available for this product type.</p>';
+  }
+
+  if (graphGroup) {
+    mainFiltersHost.appendChild(buildGroupSection(graphGroup, false));
   }
 
   if (advancedGroups.length > 0) {
@@ -399,15 +420,6 @@ function serializeParameterFilters() {
 
 function getSeriesId() {
   return form?.querySelector(".finder-filter-series")?.value?.trim() || "";
-}
-
-setTheme(document.documentElement.dataset.bsTheme || getPreferredTheme(), false);
-
-if (themeToggle) {
-  themeToggle.addEventListener("click", () => {
-    const currentTheme = document.documentElement.dataset.bsTheme === "dark" ? "dark" : "light";
-    setTheme(currentTheme === "dark" ? "light" : "dark");
-  });
 }
 
 async function updateResults() {

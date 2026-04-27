@@ -3,45 +3,19 @@
     <h2 class="h5">Downloads</h2>
 
     {% if product is defined %}
-      {% set pdf_items = [] %}
-      {% if product.product_online_pdf_url %}
-        {% set _ = pdf_items.append({"label": "Online PDF", "url": product.product_online_pdf_url}) %}
-      {% endif %}
-      {% if product.product_printed_pdf_url %}
-        {% set _ = pdf_items.append({"label": "Printed PDF", "url": product.product_printed_pdf_url}) %}
-      {% endif %}
-      {% if not pdf_items and product.product_pdf_url %}
-        {% set _ = pdf_items.append({"label": "PDF", "url": product.product_pdf_url}) %}
-      {% endif %}
+      {% set pdf_url = product.product_online_pdf_url %}
     {% elif series is defined %}
-      {% set pdf_items = [] %}
-      {% if series.series_online_pdf_url %}
-        {% set _ = pdf_items.append({"label": "Online PDF", "url": series.series_online_pdf_url}) %}
-      {% endif %}
-      {% if series.series_printed_pdf_url %}
-        {% set _ = pdf_items.append({"label": "Printed PDF", "url": series.series_printed_pdf_url}) %}
-      {% endif %}
-      {% if not pdf_items and series.series_pdf_url %}
-        {% set _ = pdf_items.append({"label": "PDF", "url": series.series_pdf_url}) %}
-      {% endif %}
+      {% set pdf_url = series.series_online_pdf_url %}
     {% else %}
-      {% set pdf_items = [] %}
+      {% set pdf_url = None %}
     {% endif %}
 
-    {% if pdf_items %}
-      {% for item in pdf_items %}
-        <div class="pdf-block{% if not loop.last %} mb-4{% endif %}">
-          <a class="btn btn-primary w-100 mb-3" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">
-            {{ item.label }}
-          </a>
-
-          <div class="ratio ratio-4x3 border rounded overflow-hidden">
-            <iframe src="{{ media_url(item.url) }}" title="{{ item.label }} preview"></iframe>
-          </div>
-        </div>
-      {% endfor %}
+    {% if pdf_url %}
+      <a class="btn btn-primary w-100" href="{{ media_url(pdf_url) }}" target="_blank" rel="noopener">
+        Open Online PDF
+      </a>
     {% else %}
-      <p class="text-muted mb-0">No PDF available.</p>
+      <p class="text-muted mb-0">No online PDF available.</p>
     {% endif %}
   </div>
 </div>

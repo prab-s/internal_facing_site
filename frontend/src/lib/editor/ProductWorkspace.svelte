@@ -44,6 +44,7 @@
   import { buildFullChartOption, FULL_CHART_LINE_DEFINITIONS, RPM_BAND_FALLBACK_COLORS } from '$lib/fullChart.js';
 
   export let initialMode = 'select';
+  export let initialProductId = '';
 
   let products = [];
   let productTypes = [];
@@ -1638,8 +1639,18 @@
     loadProductData();
   }
 
+  $: if (initialProductId !== '' && Number(initialProductId) !== Number(selectedProductId)) {
+    selectedProductId = Number(initialProductId);
+    if (mode !== 'create') {
+      mode = 'editExisting';
+    }
+  }
+
   onMount(async () => {
     await Promise.all([loadProducts(), loadProductTypes(), loadSeries(), loadTemplates()]);
+    if (selectedProductId) {
+      await openSelectedExistingProduct(selectedProductId);
+    }
   });
 
   async function saveProduct() {
