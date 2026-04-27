@@ -5,10 +5,12 @@
     getProductChartData,
     getProduct,
     getProducts,
+    getProductTypePdfContext,
     getProductTypes,
     getSeries,
     refreshGraphImage,
     refreshProductPdf,
+    refreshProductTypePdf,
     refreshSeriesGraphImage,
     refreshSeriesPdf
   } from '$lib/api.js';
@@ -37,6 +39,8 @@
   let seriesOptions = [];
   let selectedProduct = null;
   let activeViewerTab = 'product';
+  let selectedProductTypeId = '';
+  let selectedProductTypeContext = null;
   let seriesTabProductTypeFilter = '';
   let seriesTabSeriesId = '';
   let seriesTabOptions = [];
@@ -45,6 +49,7 @@
 
   let refreshingProductGraphId = null;
   let refreshingProductPdfId = null;
+  let refreshingProductTypePdfId = null;
   let refreshingSeriesGraphId = null;
   let refreshingSeriesPdfId = null;
 
@@ -53,14 +58,19 @@
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
     const product = params.get('product');
+    const productType = params.get('product_type');
     const series = params.get('series');
 
-    if (tab === 'product' || tab === 'series') {
+    if (tab === 'product' || tab === 'series' || tab === 'product-type') {
       activeViewerTab = tab;
     }
 
     if (product && !Number.isNaN(Number(product))) {
       selectedProductId = Number(product);
+    }
+
+    if (productType && !Number.isNaN(Number(productType))) {
+      selectedProductTypeId = String(Number(productType));
     }
 
     if (series && !Number.isNaN(Number(series))) {
@@ -73,11 +83,16 @@
 
     const params = new URLSearchParams(window.location.search);
     params.delete('product');
+    params.delete('product_type');
     params.delete('series');
     params.set('tab', activeViewerTab);
 
     if (activeViewerTab === 'product' && selectedProductId) {
       params.set('product', String(selectedProductId));
+    }
+
+    if (activeViewerTab === 'product-type' && selectedProductTypeId) {
+      params.set('product_type', String(selectedProductTypeId));
     }
 
     if (activeViewerTab === 'series' && seriesTabSeriesId) {
@@ -105,6 +120,15 @@
     }
     const search = params.toString();
     return `/editor/series/edit${search ? `?${search}` : ''}`;
+  }
+
+  function productTypeEditorUrl(productTypeId) {
+    const params = new URLSearchParams();
+    if (productTypeId != null && productTypeId !== '') {
+      params.set('product_type', String(productTypeId));
+    }
+    const search = params.toString();
+    return `/editor/product-types/edit${search ? `?${search}` : ''}`;
   }
 
   function getCurrentProductType() {
@@ -290,6 +314,22 @@
     }
   }
 
+  async function regenerateProductTypePdf(productType) {
+    refreshingProductTypePdfId = productType.id;
+    error = '';
+    success = '';
+    try {
+      await refreshProductTypePdf(productType.id);
+      await loadEverything();
+      await loadProductTypeContext();
+      success = `Generated product type PDF for ${productType.label}.`;
+    } catch (e) {
+      error = e.message;
+    } finally {
+      refreshingProductTypePdfId = null;
+    }
+  }
+
   async function regenerateSeriesGraph(series) {
     refreshingSeriesGraphId = series.id;
     error = '';
@@ -367,6 +407,19 @@
       seriesTabSeriesId = '';
     }
 
+  }
+
+  async function loadProductTypeContext() {
+    if (!selectedProductTypeId) {
+      selectedProductTypeContext = null;
+      return;
+    }
+
+    try {
+      selectedProductTypeContext = await getProductTypePdfContext(selectedProductTypeId);
+    } catch {
+      selectedProductTypeContext = null;
+    }
   }
 
   async function loadFilteredProducts() {
@@ -463,8 +516,16 @@
   $: selectedSeriesRecord =
     seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
 
+  $: selectedProductTypeRecord =
+    productTypes.find((productType) => Number(productType.id) === Number(selectedProductTypeId)) || null;
+
   $: if (selectedSeriesRecord && activeViewerTab !== 'series' && seriesTabSeriesId) {
     // Preserve explicit deep links to series records.
+  }
+
+  $: if (selectedProductTypeId) {
+    selectedProductTypeId;
+    loadProductTypeContext();
   }
 
   $: if (viewerUrlStateReady) {
@@ -527,6 +588,16 @@
         on:click={() => (activeViewerTab = 'series')}
       >
         Series
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        class:active={activeViewerTab === 'product-type'}
+        class="nav-link"
+        type="button"
+        on:click={() => (activeViewerTab = 'product-type')}
+      >
+        Product Types
       </button>
     </li>
   </ul>
@@ -811,6 +882,106 @@
         </div>
       {/if}
         </div>
+      </div>
+    </div>
+  {:else if activeViewerTab === 'product-type'}
+    <div class="row g-3 align-items-start">
+      <div class="col-12 col-xxl-4">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <label class="form-label" for="viewer-product-type-select">Product type</label>
+            <select class="form-select" id="viewer-product-type-select" bind:value={selectedProductTypeId}>
+              <option value="">-- Choose option --</option>
+              {#each productTypes as productType}
+                <option value={productType.id}>{productType.label}</option>
+              {/each}
+            </select>
+            <div class="d-grid gap-2 mt-3">
+              <button class="btn btn-outline-secondary" type="button" on:click={() => regenerateProductTypePdf(selectedProductTypeRecord)} disabled={!selectedProductTypeRecord || refreshingProductTypePdfId === selectedProductTypeRecord.id}>
+                {refreshingProductTypePdfId === selectedProductTypeRecord?.id ? 'Generating PDF...' : 'Generate Product Type PDF'}
+              </button>
+              {#if selectedProductTypeRecord?.product_type_pdf_url}
+                <a class="btn btn-outline-primary" href={selectedProductTypeRecord.product_type_pdf_url} target="_blank" rel="noreferrer">Open Product Type PDF</a>
+              {/if}
+              {#if selectedProductTypeRecord}
+                <a class="btn btn-outline-secondary" href={productTypeEditorUrl(selectedProductTypeRecord.id)}>Open in Editor</a>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-xxl-8">
+        {#if selectedProductTypeRecord}
+          <div class="vstack gap-3">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-start gap-2">
+                  <div class="me-auto">
+                    <h2 class="h4 mb-1">{selectedProductTypeRecord.label}</h2>
+                    <div class="text-body-secondary">{selectedProductTypeRecord.key}</div>
+                  </div>
+                </div>
+                <div class="row g-3 mt-1">
+                  <div class="col-12 col-md-4">
+                    <div class="viewer-metric">
+                      <div class="viewer-metric-label">Series</div>
+                      <div>{selectedProductTypeRecord.series_names?.length || 0}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <div class="viewer-metric">
+                      <div class="viewer-metric-label">PDF</div>
+                      <div>{selectedProductTypeRecord.product_type_pdf_url ? 'Available' : 'Not generated yet'}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  <SeriesNamesBadgeList
+                    seriesNames={selectedProductTypeRecord.series_names || []}
+                    title={`Series names for ${selectedProductTypeRecord.label}`}
+                    emptyLabel="This product type has no linked series yet."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h3 class="h5 mb-3">PDF context</h3>
+                {#if selectedProductTypeContext}
+                  <div class="small text-body-secondary mb-3">
+                    Intro pages: {selectedProductTypeContext.intro_page_count} · Total pages: {selectedProductTypeContext.page_count}
+                  </div>
+                  <div class="vstack gap-3">
+                    {#each selectedProductTypeContext.series as series}
+                      <div class="border rounded p-3">
+                        <div class="d-flex justify-content-between gap-2 flex-wrap">
+                          <div class="fw-semibold">{series.name}</div>
+                          <div class="small text-body-secondary">Pages {series.page_start} to {series.page_end}</div>
+                        </div>
+                        <div class="small text-body-secondary mb-2">{series.product_count} products</div>
+                        <SeriesNamesBadgeList
+                          seriesNames={series.products?.map((product) => product.model) || []}
+                          title="Products"
+                          emptyLabel="No products in this series yet."
+                        />
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="text-body-secondary mb-0">No PDF context available yet.</p>
+                {/if}
+              </div>
+            </div>
+          </div>
+        {:else}
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <p class="text-body-secondary mb-0">Select a product type to inspect its PDF data and generation state.</p>
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
   {:else}

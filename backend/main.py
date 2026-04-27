@@ -26,12 +26,16 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session, selectinload, joinedload
+from pypdf import PdfReader, PdfWriter
+from reportlab.lib.colors import Color, HexColor
+from reportlab.pdfgen import canvas
 
 from backend.database import (
     DEFAULT_DATA_DIR,
     SessionLocal,
     get_db,
     init_db,
+    allocate_series_tab_color,
 )
 from backend.models import (
     Product,
@@ -91,6 +95,7 @@ from backend.schemas import (
     TemplateFileResponse,
     TemplateFileUpdateRequest,
     TemplateRegistryResponse,
+    ProductTypePdfResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -98,6 +103,7 @@ GRAPH_FILTER_GROUP_NAME = "__graph__"
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
+PRODUCT_TYPE_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
 SERIES_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "series_graphs"
 SERIES_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "series_pdfs"
 BACKUP_OUTPUT_DIR = Path(DEFAULT_DATA_DIR) / "backups"
@@ -109,6 +115,7 @@ ECHARTS_RENDER_SCRIPT = FRONTEND_DIR / "scripts" / "render_product_graph.mjs"
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
+PRODUCT_TYPE_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
@@ -339,14 +346,15 @@ def build_product_type_efficiency_point_presets(product_type: ProductType) -> li
 
 def load_template_registry() -> dict:
     if not TEMPLATE_REGISTRY_PATH.exists():
-        return {"product_templates": [], "series_templates": []}
+        return {"product_templates": [], "series_templates": [], "product_type_templates": []}
     with TEMPLATE_REGISTRY_PATH.open("r", encoding="utf-8") as handle:
         registry = json.load(handle)
     if not isinstance(registry, dict):
-        return {"product_templates": [], "series_templates": []}
+        return {"product_templates": [], "series_templates": [], "product_type_templates": []}
     return {
         "product_templates": list(registry.get("product_templates") or []),
         "series_templates": list(registry.get("series_templates") or []),
+        "product_type_templates": list(registry.get("product_type_templates") or []),
     }
 
 
@@ -355,17 +363,24 @@ def save_template_registry(registry: dict):
     TEMPLATE_REGISTRY_PATH.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
 
 
+def template_collection_name(template_type: str) -> str:
+    normalized = (template_type or "").strip().lower()
+    if normalized not in {"product", "series", "product_type"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product', 'series', or 'product_type'.")
+    return f"{normalized}_templates"
+
+
 def template_type_directory(template_type: str) -> Path:
     normalized = (template_type or "").strip().lower()
-    if normalized not in {"product", "series"}:
-        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+    if normalized not in {"product", "series", "product_type"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product', 'series', or 'product_type'.")
     directory = TEMPLATES_DIR / normalized
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
 def infer_template_label_from_slug(template_type: str, slug: str) -> str:
-    prefix = "Product" if template_type == "product" else "Series"
+    prefix = "Product" if template_type == "product" else "Series" if template_type == "series" else "Product Type"
     readable = slug.replace("_", " ").replace("-", " ").strip()
     readable = " ".join(word.capitalize() for word in readable.split()) or "Template"
     return f"{prefix} {readable}"
@@ -373,10 +388,10 @@ def infer_template_label_from_slug(template_type: str, slug: str) -> str:
 
 def sync_template_registry_with_disk() -> dict:
     registry = load_template_registry()
-    synchronized: dict[str, list[dict]] = {"product_templates": [], "series_templates": []}
+    synchronized: dict[str, list[dict]] = {"product_templates": [], "series_templates": [], "product_type_templates": []}
 
-    for template_type in ("product", "series"):
-        collection_name = f"{template_type}_templates"
+    for template_type in ("product", "series", "product_type"):
+        collection_name = template_collection_name(template_type)
         existing_by_path = {}
         existing_by_id = {}
         for item in registry.get(collection_name, []):
@@ -444,6 +459,24 @@ def scaffold_blank_template(template_type: str, destination_dir: Path):
   </body>
 </html>
 """
+    elif template_type == "product_type":
+        html_content = """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{product_type.label}} | Product Type PDF</title>
+    <link rel="stylesheet" href="./template.css" />
+  </head>
+  <body>
+    <main class="sheet">
+      <h1>{{product_type.label}}</h1>
+      <div>{{product_type.series_names}}</div>
+      <div>{{product_type.contents_html}}</div>
+    </main>
+  </body>
+</html>
+"""
     else:
         html_content = """<!DOCTYPE html>
 <html lang="en">
@@ -474,7 +507,7 @@ def validate_template_id(template_id: str | None, template_type: str) -> str | N
     if normalized is None:
         return None
     registry = sync_template_registry_with_disk()
-    collection_name = "product_templates" if template_type == "product" else "series_templates"
+    collection_name = template_collection_name(template_type)
     valid_ids = {
         str(item.get("id")).strip()
         for item in registry.get(collection_name, [])
@@ -490,7 +523,7 @@ def get_template_definition(template_id: str | None, template_type: str) -> dict
     if normalized is None:
         return None
     registry = sync_template_registry_with_disk()
-    collection_name = "product_templates" if template_type == "product" else "series_templates"
+    collection_name = template_collection_name(template_type)
     for item in registry.get(collection_name, []):
         if isinstance(item, dict) and str(item.get("id")).strip() == normalized:
             return item
@@ -556,6 +589,14 @@ def series_pdf_path(series: Series, variant: str) -> Path:
     return SERIES_PDFS_DIR / series_pdf_file_name(series, variant)
 
 
+def product_type_pdf_file_name(product_type: ProductType, variant: str) -> str:
+    return f"product_type_{variant}_{sanitize_name(product_type.key or product_type.label or 'unknown')}.pdf"
+
+
+def product_type_pdf_path(product_type: ProductType, variant: str) -> Path:
+    return PRODUCT_TYPE_PDFS_DIR / product_type_pdf_file_name(product_type, variant)
+
+
 def image_file_path(file_name: str) -> Path:
     return PRODUCT_IMAGES_DIR / file_name
 
@@ -574,6 +615,171 @@ def normalize_color_value(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+SERIES_TAB_FALLBACK_COLOR = "#64748b"
+SERIES_TAB_TEXT_COLOR = "#ffffff"
+SERIES_TAB_STRIP_WIDTH = 25
+SERIES_TAB_OUTER_MARGIN_TOP = 2
+SERIES_TAB_OUTER_MARGIN_BOTTOM = 2
+SERIES_TAB_SLOT_GAP = 3
+SERIES_TAB_SLOT_FILL_RATIO = 0.9
+SERIES_TAB_MAX_LABEL_CHARS = 26
+SERIES_TAB_CORNER_RADIUS = 4
+
+
+def series_tab_color_for_identity(identity: int | str | None) -> str:
+    if identity in (None, ""):
+        return SERIES_TAB_FALLBACK_COLOR
+    digest = hashlib.sha1(str(identity).encode("utf-8")).digest()
+    hue = int.from_bytes(digest[:2], "big") / 65535.0
+    saturation = 0.62 + (digest[2] / 255.0) * 0.18
+    lightness = 0.44 + (digest[3] / 255.0) * 0.08
+
+    import colorsys
+
+    red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
+    return "#{:02x}{:02x}{:02x}".format(int(red * 255), int(green * 255), int(blue * 255))
+
+
+def _shorten_tab_label(label: str) -> str:
+    value = " ".join((label or "").split()).strip()
+    if len(value) <= SERIES_TAB_MAX_LABEL_CHARS:
+        return value
+    return value[: SERIES_TAB_MAX_LABEL_CHARS - 1].rstrip() + "…"
+
+
+def _hex_to_rgb(value: str) -> tuple[float, float, float]:
+    text = (value or "").strip().lstrip("#")
+    if len(text) != 6:
+        return (0.39, 0.47, 0.53)
+    return tuple(int(text[index : index + 2], 16) / 255.0 for index in (0, 2, 4))
+
+
+def _series_tab_layout(page_height: float, tab_count: int) -> list[tuple[float, float]]:
+    count = max(int(tab_count), 1)
+    usable_height = max(page_height - SERIES_TAB_OUTER_MARGIN_TOP - SERIES_TAB_OUTER_MARGIN_BOTTOM, 0)
+    total_slot_gap = SERIES_TAB_SLOT_GAP * max(count - 1, 0)
+    slot_height = (usable_height - total_slot_gap) / count if count else usable_height
+    slot_height = max(slot_height, 1)
+    tab_height = max(slot_height * SERIES_TAB_SLOT_FILL_RATIO, 1)
+    positions: list[tuple[float, float]] = []
+
+    for index in range(count):
+        slot_top = page_height - SERIES_TAB_OUTER_MARGIN_TOP - (index * (slot_height + SERIES_TAB_SLOT_GAP))
+        y_position = slot_top - tab_height
+        positions.append((y_position, tab_height))
+
+    return positions
+
+
+def render_pdf_from_html(html_content: str, output_path: Path) -> None:
+    browser_binary = find_chromium_binary()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="pdf-render-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        html_path = temp_dir / "document.html"
+        html_path.write_text(html_content, encoding="utf-8")
+
+        result = subprocess.run(
+            [
+                browser_binary,
+                "--headless",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--allow-file-access-from-files",
+                "--print-to-pdf-no-header",
+                f"--print-to-pdf={output_path}",
+                html_path.as_uri(),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not output_path.is_file():
+            raise RuntimeError((result.stderr or result.stdout or "Chromium failed to render the PDF.").strip())
+
+
+def merge_pdf_files(source_paths: list[Path], output_path: Path) -> None:
+    writer = PdfWriter()
+    for source_path in source_paths:
+        reader = PdfReader(str(source_path))
+        for page in reader.pages:
+            writer.add_page(page)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as handle:
+        writer.write(handle)
+
+
+def _build_pdf_overlay(page_width: float, page_height: float, page_number: int, tabs: list[dict]) -> PdfReader:
+    from io import BytesIO
+
+    buffer = BytesIO()
+    overlay = canvas.Canvas(buffer, pagesize=(page_width, page_height))
+    tab_items = tabs or []
+    tab_x = page_width - SERIES_TAB_STRIP_WIDTH
+    tab_layout = _series_tab_layout(page_height, len(tab_items))
+
+    for index, tab in enumerate(tab_items or [{}]):
+        tab_label = str(tab.get("tab_label") or "")
+        tab_color = str(tab.get("tab_color") or SERIES_TAB_FALLBACK_COLOR)
+        tab_opacity = float(tab.get("tab_opacity") if tab.get("tab_opacity") is not None else 1.0)
+        y_position, tab_height = tab_layout[index] if index < len(tab_layout) else (0.0, page_height)
+        red, green, blue = _hex_to_rgb(tab_color)
+        fill_alpha = max(0.05, min(1.0, tab_opacity))
+        fill_color = Color(red, green, blue, alpha=fill_alpha)
+        border_color = Color(max(0.0, red * 0.72), max(0.0, green * 0.72), max(0.0, blue * 0.72), alpha=min(0.9, fill_alpha))
+        overlay.saveState()
+        overlay.setFillColor(fill_color)
+        overlay.setStrokeColor(border_color)
+        overlay.setLineWidth(0.5)
+        overlay.roundRect(tab_x, y_position, SERIES_TAB_STRIP_WIDTH, tab_height, SERIES_TAB_CORNER_RADIUS, stroke=1, fill=1)
+        overlay.restoreState()
+
+        overlay.saveState()
+        overlay.translate(page_width - (SERIES_TAB_STRIP_WIDTH / 2), y_position + (tab_height / 2))
+        overlay.rotate(90)
+        overlay.setFillColor(HexColor(SERIES_TAB_TEXT_COLOR))
+        overlay.setFont("Helvetica-Bold", 8.25)
+        overlay.drawCentredString(0, -3, _shorten_tab_label(tab_label))
+        overlay.restoreState()
+
+    overlay.setFillColor(HexColor("#000000"))
+    overlay.setFont("Helvetica", 9)
+    overlay.drawRightString(page_width - SERIES_TAB_STRIP_WIDTH - 10, 10, str(page_number))
+    overlay.showPage()
+    overlay.save()
+    buffer.seek(0)
+    return PdfReader(buffer)
+
+
+def stamp_pdf_file(input_path: Path, output_path: Path, page_decorations: list[dict]) -> None:
+    reader = PdfReader(str(input_path))
+    writer = PdfWriter()
+    for index, page in enumerate(reader.pages):
+        decoration = page_decorations[index] if index < len(page_decorations) else {}
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+        overlay_tabs = decoration.get("tabs")
+        if overlay_tabs is None:
+            overlay_tabs = [
+                {
+                    "tab_label": str(decoration.get("tab_label") or ""),
+                    "tab_color": str(decoration.get("tab_color") or SERIES_TAB_FALLBACK_COLOR),
+                    "tab_opacity": float(decoration.get("tab_opacity") if decoration.get("tab_opacity") is not None else 1.0),
+                }
+            ]
+        overlay_reader = _build_pdf_overlay(page_width, page_height, index + 1, list(overlay_tabs))
+        page.merge_page(overlay_reader.pages[0])
+        writer.add_page(page)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as handle:
+        writer.write(handle)
+
+
+def pdf_page_count(pdf_path: Path) -> int:
+    return len(PdfReader(str(pdf_path)).pages)
 
 
 def get_product_type_by_key(db: Session, product_type_key: str | None) -> ProductType:
@@ -597,6 +803,23 @@ def sync_product_series(product: Product, series: Series | None) -> None:
     product.series = series
     product.series_id = series.id if series else None
     product.series_name = series.name if series else None
+
+
+def ensure_series_tab_color(db: Session, series: Series) -> str:
+    existing_color = (series.series_tab_color or "").strip()
+    if existing_color:
+        return existing_color
+
+    used_colors = {
+        str(value[0]).strip().lower()
+        for value in db.query(Series.series_tab_color)
+        .filter(Series.series_tab_color.isnot(None), Series.id != series.id)
+        .all()
+        if value[0]
+    }
+    seed = series.id if series.id is not None else f"{series.product_type_id}:{series.name}"
+    series.series_tab_color = allocate_series_tab_color(seed, used_colors)
+    return series.series_tab_color
 
 
 def sync_product_parameter_groups(product: Product, groups_payload: list[dict]):
@@ -951,32 +1174,26 @@ def build_product_pdf_html(product: Product, variant: str) -> str:
 
 
 def generate_product_pdf(product: Product, variant: str) -> Path:
-    browser_binary = find_chromium_binary()
     output_path = product_pdf_path(product, variant)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    html_content = build_product_pdf_html(product, variant)
-
     with tempfile.TemporaryDirectory(prefix="product-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        html_path = temp_dir / "document.html"
-        html_path.write_text(html_content, encoding="utf-8")
-
-        result = subprocess.run(
-            [
-                browser_binary,
-                "--headless",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--allow-file-access-from-files",
-                "--print-to-pdf-no-header",
-                f"--print-to-pdf={output_path}",
-                html_path.as_uri(),
-            ],
-            capture_output=True,
-            text=True,
+        base_path = temp_dir / f"product_{variant}_{product_slug(product)}_base.pdf"
+        render_pdf_from_html(build_product_pdf_html(product, variant), base_path)
+        series_color = (
+            (product.series.series_tab_color if product.series else None)
+            or series_tab_color_for_identity(product.series_id or product.series_name_value or product.id)
         )
-        if result.returncode != 0 or not output_path.is_file():
-            raise RuntimeError((result.stderr or result.stdout or "Chromium failed to render the PDF.").strip())
+        stamp_pdf_file(
+            base_path,
+            output_path,
+            [
+                {
+                    "tab_label": product.series_name_value or product.product_type_label or product.model or "Product",
+                    "tab_color": series_color,
+                }
+                for _ in range(pdf_page_count(base_path))
+            ],
+        )
 
     return output_path
 
@@ -1181,34 +1398,251 @@ def build_series_pdf_html(series: Series, variant: str) -> str:
     return rendered
 
 
-def generate_series_pdf(series: Series, variant: str) -> Path:
-    browser_binary = find_chromium_binary()
-    output_path = series_pdf_path(series, variant)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    html_content = build_series_pdf_html(series, variant)
+def build_series_pdf_base(series: Series, variant: str, temp_dir: Path) -> tuple[Path, int]:
+    cover_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_cover.pdf"
+    render_pdf_from_html(build_series_pdf_html(series, variant), cover_base_path)
 
+    product_base_paths: list[Path] = []
+    for product in sorted(series.products or [], key=lambda item: (item.model or "").casefold()):
+        product_base_path = temp_dir / f"product_{variant}_{product_slug(product)}_series_base.pdf"
+        render_pdf_from_html(build_product_pdf_html(product, variant), product_base_path)
+        product_base_paths.append(product_base_path)
+
+    merged_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_base.pdf"
+    merge_pdf_files([cover_base_path, *product_base_paths], merged_base_path)
+    return merged_base_path, pdf_page_count(merged_base_path)
+
+
+def generate_series_pdf(series: Series, variant: str) -> Path:
+    output_path = series_pdf_path(series, variant)
     with tempfile.TemporaryDirectory(prefix="series-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        html_path = temp_dir / "document.html"
-        html_path.write_text(html_content, encoding="utf-8")
-
-        result = subprocess.run(
+        base_path, page_count = build_series_pdf_base(series, variant, temp_dir)
+        stamp_pdf_file(
+            base_path,
+            output_path,
             [
-                browser_binary,
-                "--headless",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--allow-file-access-from-files",
-                "--print-to-pdf-no-header",
-                f"--print-to-pdf={output_path}",
-                html_path.as_uri(),
+                {
+                    "tab_label": series.name or "Series",
+                    "tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
+                }
+                for _ in range(page_count)
             ],
-            capture_output=True,
-            text=True,
         )
-        if result.returncode != 0 or not output_path.is_file():
-            raise RuntimeError((result.stderr or result.stdout or "Chromium failed to render the PDF.").strip())
 
+    return output_path
+
+
+def product_primary_image_uri(product: Product) -> str:
+    ordered_images = sorted(product.product_images or [], key=lambda img: (img.sort_order, img.id))
+    if not ordered_images:
+        return ""
+    first_image_path = image_file_path(ordered_images[0].file_name)
+    if not first_image_path.is_file():
+        return ""
+    return first_image_path.as_uri()
+
+
+def build_product_type_series_legend_html(series_summaries: list[dict]) -> str:
+    if not series_summaries:
+        return '<p class="placeholder">No series are linked to this product type yet.</p>'
+
+    items = []
+    for summary in series_summaries:
+        series_name = html.escape(str(summary.get("name") or "Series"))
+        series_color = html.escape(str(summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR))
+        page_range = ""
+        page_start = summary.get("page_start")
+        page_end = summary.get("page_end")
+        if page_start and page_end:
+            page_range = f"Pages {page_start} to {page_end}"
+        elif page_start:
+            page_range = f"Starts at page {page_start}"
+        product_count = int(summary.get("product_count") or 0)
+        items.append(
+            '<li class="series-legend__item">'
+            f'<span class="series-legend__swatch" style="background:{series_color};"></span>'
+            '<div class="series-legend__text">'
+            f'<div class="series-legend__name">{series_name}</div>'
+            f'<div class="series-legend__meta">{product_count} products{(" · " + html.escape(page_range)) if page_range else ""}</div>'
+            "</div></li>"
+        )
+
+    return '<ul class="series-legend">' + "".join(items) + "</ul>"
+
+
+def build_product_type_contents_html(product_type: ProductType, series_summaries: list[dict]) -> str:
+    if not series_summaries:
+        return '<p class="placeholder">No series are linked to this product type yet.</p>'
+
+    parts: list[str] = ['<div class="product-type-contents">']
+    for summary in series_summaries:
+        series_name = html.escape(str(summary.get("name") or "Series"))
+        series_color = html.escape(str(summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR))
+        product_count = int(summary.get("product_count") or 0)
+        product_cards: list[str] = []
+        for product in summary.get("products") or []:
+            product_name = html.escape(str(product.get("model") or "Product"))
+            image_uri = html.escape(str(product.get("primary_product_image_uri") or ""))
+            image_html = (
+                f'<img src="{image_uri}" alt="{product_name}" class="product-card__image" />'
+                if image_uri
+                else '<div class="product-card__placeholder">No image</div>'
+            )
+            product_cards.append(
+                '<article class="product-card">'
+                f"{image_html}"
+                f'<div class="product-card__name">{product_name}</div>'
+                "</article>"
+            )
+
+        parts.append(
+            '<section class="series-group" '
+            f'style="--series-accent: {series_color};">'
+            '<div class="series-group__header">'
+            f'<h3 class="series-group__title">{series_name}</h3>'
+            f'<div class="series-group__meta">{product_count} products</div>'
+            "</div>"
+            '<div class="series-group__grid">'
+            + "".join(product_cards)
+            + "</div></section>"
+        )
+
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def build_product_type_pdf_html(product_type: ProductType, contents_html: str, series_legend_html: str) -> str:
+    template_definition = get_template_definition("product_type-default", "product_type")
+    if template_definition is None:
+        raise RuntimeError("No product type PDF template is configured.")
+
+    project_root = Path(__file__).resolve().parents[1]
+    template_path = project_root / template_definition["path"]
+    stylesheet_path = project_root / template_definition.get("stylesheet", "")
+    if not template_path.is_file():
+        raise RuntimeError(f"Product type template file is missing: {template_path}")
+
+    html_template = template_path.read_text(encoding="utf-8")
+    stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
+    html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
+
+    replacements = {
+        "{{product_type.key}}": html.escape(product_type.key or ""),
+        "{{product_type.label}}": html.escape(product_type.label or ""),
+        "{{product_type.series_names}}": html.escape(", ".join(product_type.series_names or [])),
+        "{{product_type.series_legend_html}}": series_legend_html,
+        "{{product_type.contents_html}}": contents_html,
+    }
+
+    rendered = html_template
+    for token, value in replacements.items():
+        rendered = rendered.replace(token, value)
+    return rendered
+
+
+def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tuple[Path, dict]:
+    ordered_series = sorted(product_type.series or [], key=lambda item: (item.name or "").casefold())
+    series_summaries: list[dict] = []
+    series_base_paths: list[Path] = []
+
+    for series in ordered_series:
+        series_base_path, series_page_count = build_series_pdf_base(series, "printed", temp_dir)
+        series_base_paths.append(series_base_path)
+        series_summaries.append(
+            {
+                "id": series.id,
+                "name": series.name,
+                "series_tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
+                "page_count": series_page_count,
+                "product_count": len(series.products or []),
+                "products": [
+                    {
+                        "id": product.id,
+                        "model": product.model,
+                        "series_id": product.series_id,
+                        "series_name": product.series_name_value,
+                        "product_type_key": product.product_type_key,
+                        "product_type_label": product.product_type_label,
+                        "primary_product_image_uri": product_primary_image_uri(product),
+                    }
+                    for product in sorted(series.products or [], key=lambda item: (item.model or "").casefold())
+                ],
+            }
+        )
+
+    contents_html = build_product_type_contents_html(product_type, series_summaries)
+    series_legend_html = build_product_type_series_legend_html(series_summaries)
+    intro_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
+    render_pdf_from_html(build_product_type_pdf_html(product_type, contents_html, series_legend_html), intro_base_path)
+    intro_page_count = pdf_page_count(intro_base_path)
+
+    page_start = intro_page_count + 1
+    for summary in series_summaries:
+        page_end = page_start + summary["page_count"] - 1
+        summary["page_start"] = page_start
+        summary["page_end"] = page_end
+        page_start = page_end + 1
+
+    merged_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_base.pdf"
+    merge_pdf_files([intro_base_path, *series_base_paths], merged_base_path)
+    return merged_base_path, {
+        "intro_page_count": intro_page_count,
+        "page_count": pdf_page_count(merged_base_path),
+        "series_summaries": series_summaries,
+        "contents_html": contents_html,
+        "series_legend_html": series_legend_html,
+    }
+
+
+def build_product_type_page_decorations(metadata: dict) -> list[dict]:
+    decorations: list[dict] = []
+    series_summaries = metadata.get("series_summaries") or []
+    series_tabs = [
+        {
+            "series_id": summary.get("id"),
+            "tab_label": summary.get("name") or "Series",
+            "tab_color": summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR,
+        }
+        for summary in series_summaries
+    ]
+
+    for _ in range(int(metadata.get("intro_page_count") or 0)):
+        decorations.append(
+            {
+                "tabs": [
+                    {**tab, "tab_opacity": 0.2}
+                    for tab in series_tabs
+                ]
+            }
+        )
+
+    for active_summary in series_summaries:
+        active_id = active_summary.get("id")
+        page_count = int(active_summary.get("page_count") or 0)
+        for _ in range(page_count):
+            decorations.append(
+                {
+                    "tabs": [
+                        {
+                            **tab,
+                            "tab_opacity": 1.0 if tab.get("series_id") == active_id else 0.2,
+                        }
+                        for tab in series_tabs
+                    ]
+                }
+            )
+
+    return decorations
+
+
+def generate_product_type_pdf(product_type: ProductType) -> Path:
+    output_path = product_type_pdf_path(product_type, "printed")
+    with tempfile.TemporaryDirectory(prefix="product-type-pdf-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        base_path, metadata = build_product_type_pdf_base(product_type, temp_dir)
+        page_decorations = build_product_type_page_decorations(metadata)
+        stamp_pdf_file(base_path, output_path, page_decorations)
     return output_path
 
 
@@ -1816,6 +2250,7 @@ def create_backup_bundle(progress_callback=None) -> Path:
                     "- data/product_images : uploaded product images (if present)",
                     "- data/product_graphs : generated graph images (if present)",
                     "- data/product_pdfs : generated product PDF assets (if present)",
+                    "- data/product_type_pdfs : generated product type PDF assets (if present)",
                     "- data/series_graphs : generated series graph images (if present)",
                     "- data/series_pdfs : generated series PDF assets (if present)",
                     "- wordpress_dump.sql : WordPress MariaDB dump (if present)",
@@ -1912,7 +2347,10 @@ def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
             with tarfile.open(wordpress_content_tar, "r") as tar:
                 tar.extractall(WORDPRESS_SITE_DIR)
 
-        for offset, media_dir in enumerate(["product_images", "product_graphs", "product_pdfs", "series_graphs", "series_pdfs"], start=4):
+        for offset, media_dir in enumerate(
+            ["product_images", "product_graphs", "product_pdfs", "product_type_pdfs", "series_graphs", "series_pdfs"],
+            start=4,
+        ):
             if progress_callback:
                 progress_callback(f"Restoring {media_dir}", min(offset, restore_stages_total - 1), restore_stages_total)
             source_dir = staging_dir / "data" / media_dir
@@ -2254,6 +2692,94 @@ def update_product_type_parameter_group_presets(
     return product_type
 
 
+@app.get(
+    "/api/product-types/{product_type_id}/pdf-context",
+    response_model=ProductTypePdfResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Product Types"],
+    summary="Inspect the product type PDF data context",
+)
+def get_product_type_pdf_context(product_type_id: int, db: Session = Depends(get_db)):
+    product_type = (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.series)
+            .selectinload(Series.products)
+            .selectinload(Product.product_images),
+            selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
+            selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+        )
+        .filter(ProductType.id == product_type_id)
+        .first()
+    )
+    if not product_type:
+        raise HTTPException(status_code=404, detail="Product type not found.")
+
+    with tempfile.TemporaryDirectory(prefix="product-type-context-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        _, metadata = build_product_type_pdf_base(product_type, temp_dir)
+
+    return ProductTypePdfResponse(
+        id=product_type.id,
+        key=product_type.key,
+        label=product_type.label,
+        series_names=product_type.series_names,
+        contents_html=metadata["contents_html"],
+        intro_page_count=metadata["intro_page_count"],
+        page_count=metadata["page_count"],
+        product_type_pdf_url=product_type.product_type_pdf_url,
+        product_type_printed_pdf_url=product_type.product_type_printed_pdf_url,
+        series=metadata["series_summaries"],
+    )
+
+
+@app.post(
+    "/api/product-types/{product_type_id}/pdf/refresh",
+    response_model=ProductTypePdfResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Product Types"],
+    summary="Generate the product type PDF",
+)
+def refresh_product_type_pdf(product_type_id: int, db: Session = Depends(get_db)):
+    product_type = (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.series)
+            .selectinload(Series.products)
+            .selectinload(Product.product_images),
+            selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
+            selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+        )
+        .filter(ProductType.id == product_type_id)
+        .first()
+    )
+    if not product_type:
+        raise HTTPException(status_code=404, detail="Product type not found.")
+
+    try:
+        generate_product_type_pdf(product_type)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to generate product type PDF: {exc}") from exc
+
+    with tempfile.TemporaryDirectory(prefix="product-type-context-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        _, metadata = build_product_type_pdf_base(product_type, temp_dir)
+
+    db.refresh(product_type)
+    return ProductTypePdfResponse(
+        id=product_type.id,
+        key=product_type.key,
+        label=product_type.label,
+        series_names=product_type.series_names,
+        contents_html=metadata["contents_html"],
+        intro_page_count=metadata["intro_page_count"],
+        page_count=metadata["page_count"],
+        product_type_pdf_url=product_type.product_type_pdf_url,
+        product_type_printed_pdf_url=product_type.product_type_printed_pdf_url,
+        series=metadata["series_summaries"],
+    )
+
+
 @app.get("/api/templates", response_model=TemplateRegistryResponse, dependencies=[Depends(get_current_user)], tags=["Templates"], summary="List available templates")
 def list_templates():
     return sync_template_registry_with_disk()
@@ -2269,7 +2795,7 @@ def create_template(body: TemplateCreateRequest):
     template_type = (body.template_type or "").strip().lower()
     template_dir = template_type_directory(template_type)
     registry = sync_template_registry_with_disk()
-    collection_name = f"{template_type}_templates"
+    collection_name = template_collection_name(template_type)
     existing_ids = {str(item.get("id")).strip() for item in registry.get(collection_name, []) if isinstance(item, dict)}
 
     label = (body.label or "").strip()
@@ -2312,7 +2838,7 @@ def create_template(body: TemplateCreateRequest):
 def delete_template(template_type: str, template_id: str, db: Session = Depends(get_db)):
     normalized_type = (template_type or "").strip().lower()
     registry = sync_template_registry_with_disk()
-    collection_name = f"{normalized_type}_templates"
+    collection_name = template_collection_name(normalized_type)
     entry = next(
         (
             item
@@ -2351,8 +2877,10 @@ def delete_template(template_type: str, template_id: str, db: Session = Depends(
             )
             .count()
         )
+    elif normalized_type == "product_type":
+        in_use = 1 if template_id == "product_type-default" else 0
     else:
-        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+        raise HTTPException(status_code=400, detail="Template type must be 'product', 'series', or 'product_type'.")
 
     if in_use:
         raise HTTPException(status_code=400, detail="Template is still assigned. Reassign records before deleting it.")
@@ -2380,8 +2908,8 @@ def delete_template(template_type: str, template_id: str, db: Session = Depends(
 )
 def get_template_files(template_type: str, template_id: str):
     normalized_type = (template_type or "").strip().lower()
-    if normalized_type not in {"product", "series"}:
-        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+    if normalized_type not in {"product", "series", "product_type"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product', 'series', or 'product_type'.")
 
     template_definition = require_template_definition(template_id, normalized_type)
     template_path = Path(__file__).resolve().parents[1] / str(template_definition.get("path") or "")
@@ -2413,8 +2941,8 @@ def get_template_files(template_type: str, template_id: str):
 )
 def update_template_files(template_type: str, template_id: str, body: TemplateFileUpdateRequest):
     normalized_type = (template_type or "").strip().lower()
-    if normalized_type not in {"product", "series"}:
-        raise HTTPException(status_code=400, detail="Template type must be 'product' or 'series'.")
+    if normalized_type not in {"product", "series", "product_type"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product', 'series', or 'product_type'.")
 
     template_definition = require_template_definition(template_id, normalized_type)
     template_path = Path(__file__).resolve().parents[1] / str(template_definition.get("path") or "")
@@ -2429,7 +2957,7 @@ def update_template_files(template_type: str, template_id: str, body: TemplateFi
     stylesheet_path.write_text(body.css_content or "", encoding="utf-8")
 
     registry = sync_template_registry_with_disk()
-    collection_name = f"{normalized_type}_templates"
+    collection_name = template_collection_name(normalized_type)
     for item in registry.get(collection_name, []):
         if isinstance(item, dict) and str(item.get("id") or "").strip() == template_id:
             item["stylesheet"] = str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1]))
@@ -2491,6 +3019,8 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
     )
     series.product_type = product_type
     db.add(series)
+    db.flush()
+    ensure_series_tab_color(db, series)
     db.commit()
     db.refresh(series)
     return series
@@ -2539,6 +3069,7 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
         series.template_id = series.online_template_id or series.printed_template_id
     for product in series.products:
         product.series_name = series.name
+    ensure_series_tab_color(db, series)
     db.commit()
     db.refresh(series)
     return series
@@ -3576,6 +4107,14 @@ def serve_product_pdf(file_name: str):
     return FileResponse(file_path, media_type="application/pdf")
 
 
+@app.get("/api/media/product_type_pdfs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_product_type_pdf(file_name: str):
+    file_path = PRODUCT_TYPE_PDFS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Product type PDF not found")
+    return FileResponse(file_path, media_type="application/pdf")
+
+
 @app.get("/api/media/series_graphs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
 def serve_series_graph(file_name: str):
     file_path = SERIES_GRAPHS_DIR / file_name
@@ -3628,6 +4167,19 @@ def serve_cms_product_pdf(file_name: str):
     file_path = PRODUCT_PDFS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product PDF not found")
+    return FileResponse(file_path, media_type="application/pdf")
+
+
+@app.get(
+    "/api/cms/media/product_type_pdfs/{file_name}",
+    tags=["Customer Media"],
+    summary="Get a public customer product type PDF",
+    description="Public product type PDF endpoint intended for customer-facing downloads.",
+)
+def serve_cms_product_type_pdf(file_name: str):
+    file_path = PRODUCT_TYPE_PDFS_DIR / file_name
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Product type PDF not found")
     return FileResponse(file_path, media_type="application/pdf")
 
 

@@ -1,4 +1,6 @@
 import os
+import hashlib
+import colorsys
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -36,6 +38,29 @@ def _get_product_table_name(inspector):
     return None
 
 
+def _hex_from_hsl(hue: float, saturation: float, lightness: float) -> str:
+    red, green, blue = colorsys.hls_to_rgb(hue % 1.0, lightness, saturation)
+    return "#{:02x}{:02x}{:02x}".format(int(red * 255), int(green * 255), int(blue * 255))
+
+
+def allocate_series_tab_color(seed: int | str, used_colors: set[str] | None = None) -> str:
+    normalized_used = {str(color).strip().lower() for color in (used_colors or set()) if str(color).strip()}
+    digest = hashlib.sha1(str(seed).encode("utf-8")).digest()
+    base_hue = int.from_bytes(digest[:2], "big") / 65535.0
+    base_saturation = 0.64 + (digest[2] / 255.0) * 0.12
+    base_lightness = 0.46 + (digest[3] / 255.0) * 0.08
+
+    for offset in range(720):
+        hue = (base_hue + (offset * 0.61803398875)) % 1.0
+        saturation = min(0.82, base_saturation + ((offset % 5) * 0.01))
+        lightness = min(0.58, base_lightness + ((offset % 7) * 0.008))
+        candidate = _hex_from_hsl(hue, saturation, lightness)
+        if candidate.lower() not in normalized_used:
+            return candidate
+
+    raise RuntimeError("Unable to allocate a unique series tab color.")
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -56,6 +81,7 @@ def init_db():
     _ensure_product_platform_columns(engine)
     _ensure_series_template_columns(engine)
     _rename_series_comments_column(engine)
+    _ensure_series_tab_color_column(engine)
     _ensure_product_type_columns(engine)
     _ensure_product_type_parameter_preset_columns(engine)
     _remove_deprecated_product_type_secondary_axis_label(engine)
@@ -169,6 +195,45 @@ def _rename_series_comments_column(target_engine):
 
     with target_engine.begin() as connection:
         connection.execute(text("ALTER TABLE series RENAME COLUMN comments_html TO description4_html"))
+
+
+def _ensure_series_tab_color_column(target_engine):
+    inspector = inspect(target_engine)
+    if "series" not in set(inspector.get_table_names()):
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("series")}
+    if "series_tab_color" not in existing_columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE series ADD COLUMN series_tab_color VARCHAR(32)"))
+
+    with target_engine.begin() as connection:
+        rows = connection.execute(text("SELECT id, series_tab_color FROM series ORDER BY id")).mappings().all()
+        counts: dict[str, int] = {}
+        for row in rows:
+            color = row.get("series_tab_color")
+            normalized_color = str(color).strip().lower() if color else ""
+            if normalized_color:
+                counts[normalized_color] = counts.get(normalized_color, 0) + 1
+
+        used_colors: set[str] = set()
+        rows_needing_color: list[dict] = []
+        for row in rows:
+            color = row.get("series_tab_color")
+            normalized_color = str(color).strip().lower() if color else ""
+            if normalized_color and counts.get(normalized_color, 0) == 1 and normalized_color not in used_colors:
+                used_colors.add(normalized_color)
+                continue
+            rows_needing_color.append(row)
+
+        for row in rows_needing_color:
+            series_id = row["id"]
+            next_color = allocate_series_tab_color(series_id, used_colors)
+            used_colors.add(next_color.lower())
+            connection.execute(
+                text("UPDATE series SET series_tab_color = :series_tab_color WHERE id = :id"),
+                {"series_tab_color": next_color, "id": series_id},
+            )
 
 
 def _ensure_product_type_columns(target_engine):

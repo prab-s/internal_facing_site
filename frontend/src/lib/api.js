@@ -99,6 +99,18 @@ export async function updateProductTypeParameterGroupPresets(id, body) {
   return updateProductTypePresets(id, body);
 }
 
+export async function getProductTypePdfContext(id) {
+  const r = await apiFetch(`/product-types/${id}/pdf-context`);
+  return r.json();
+}
+
+export async function refreshProductTypePdf(id) {
+  const r = await apiFetch(`/product-types/${id}/pdf/refresh`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function getTemplates() {
   const r = await apiFetch('/templates');
   return r.json();

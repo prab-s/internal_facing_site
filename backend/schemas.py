@@ -102,6 +102,8 @@ class ProductTypeResponse(BaseModel):
     key: str
     label: str
     series_names: list[str] = Field(default_factory=list)
+    product_type_pdf_url: Optional[str] = None
+    product_type_printed_pdf_url: Optional[str] = None
     supports_graph: bool
     graph_kind: Optional[str] = None
     supports_graph_overlays: bool = False
@@ -181,6 +183,7 @@ class TemplateDefinitionResponse(BaseModel):
 class TemplateRegistryResponse(BaseModel):
     product_templates: list[TemplateDefinitionResponse] = Field(default_factory=list)
     series_templates: list[TemplateDefinitionResponse] = Field(default_factory=list)
+    product_type_templates: list[TemplateDefinitionResponse] = Field(default_factory=list)
 
 
 class TemplateCreateRequest(BaseModel):
@@ -250,6 +253,7 @@ class SeriesResponse(BaseModel):
     series_pdf_url: Optional[str] = None
     series_printed_pdf_url: Optional[str] = None
     series_online_pdf_url: Optional[str] = None
+    series_tab_color: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -605,7 +609,48 @@ class CmsSeriesResponse(BaseModel):
     series_pdf_url: Optional[str] = None
     series_printed_pdf_url: Optional[str] = None
     series_online_pdf_url: Optional[str] = None
+    series_tab_color: Optional[str] = None
     products: list[CmsSeriesProductSummary] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypePdfProductResponse(BaseModel):
+    id: int
+    model: str
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    primary_product_image_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypePdfSeriesResponse(BaseModel):
+    id: int
+    name: str
+    series_tab_color: Optional[str] = None
+    page_start: int = 0
+    page_end: int = 0
+    page_count: int = 0
+    product_count: int = 0
+    products: list[ProductTypePdfProductResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductTypePdfResponse(BaseModel):
+    id: int
+    key: str
+    label: str
+    series_names: list[str] = Field(default_factory=list)
+    contents_html: str = ""
+    intro_page_count: int = 0
+    page_count: int = 0
+    product_type_pdf_url: Optional[str] = None
+    product_type_printed_pdf_url: Optional[str] = None
+    series: list[ProductTypePdfSeriesResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

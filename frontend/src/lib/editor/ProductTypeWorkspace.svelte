@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { createProductType, getProductTypes, updateProductType } from '$lib/api.js';
+  import { createProductType, getProductTypes, refreshProductTypePdf, updateProductType } from '$lib/api.js';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
 
   export let initialMode = 'create';
@@ -8,6 +8,7 @@
   let productTypes = [];
   let selectedProductTypeId = '';
   let saving = false;
+  let refreshingPdfId = null;
   let error = '';
   let success = '';
   let mode = initialMode;
@@ -71,6 +72,15 @@
     }
   }
 
+  function selectProductTypeFromUrl() {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const requestedId = params.get('product_type');
+    if (requestedId) {
+      selectedProductTypeId = requestedId;
+    }
+  }
+
   async function saveProductType() {
     error = '';
     success = '';
@@ -120,7 +130,26 @@
     }
   }
 
-  onMount(loadProductTypes);
+  async function generateProductTypePdf() {
+    if (!selectedProductType?.id) return;
+    refreshingPdfId = selectedProductType.id;
+    error = '';
+    success = '';
+    try {
+      await refreshProductTypePdf(selectedProductType.id);
+      await loadProductTypes();
+      success = 'Product type PDF generated.';
+    } catch (e) {
+      error = e.message;
+    } finally {
+      refreshingPdfId = null;
+    }
+  }
+
+  onMount(async () => {
+    selectProductTypeFromUrl();
+    await loadProductTypes();
+  });
 </script>
 
 <svelte:head>
@@ -253,6 +282,16 @@
               title={`Series names for ${selectedProductType.label}`}
               emptyLabel="This product type does not have any series yet."
             />
+          </div>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <button class="btn btn-outline-secondary btn-sm" type="button" on:click={generateProductTypePdf} disabled={refreshingPdfId === selectedProductType.id}>
+              {refreshingPdfId === selectedProductType.id ? 'Generating...' : 'Generate Product Type PDF'}
+            </button>
+            {#if selectedProductType.product_type_pdf_url}
+              <a class="btn btn-outline-primary btn-sm" href={selectedProductType.product_type_pdf_url} target="_blank" rel="noreferrer">
+                Open Product Type PDF
+              </a>
+            {/if}
           </div>
         {/if}
 

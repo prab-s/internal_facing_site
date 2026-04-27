@@ -5,6 +5,7 @@
     createTemplate,
     deleteTemplate,
     getTemplateFiles,
+    getProductTypePdfContext,
     getProductTypes,
     getTemplates,
     refreshTemplates,
@@ -15,11 +16,12 @@
   let grapesModule = null;
   let editorHost;
   let editor = null;
-  let templates = { product_templates: [], series_templates: [] };
+  let templates = { product_templates: [], series_templates: [], product_type_templates: [] };
   let productTypes = [];
   let templateType = '';
   let templateId = '';
   let previewProductTypeKey = '';
+  let previewProductTypeContext = null;
   let loadedTemplate = null;
   let headPrefix = '';
   let bodySuffix = '';
@@ -38,12 +40,18 @@
   let blocksResizeCleanup = null;
 
   function templateCollection(type) {
-    return type === 'series' ? templates.series_templates ?? [] : templates.product_templates ?? [];
+    if (type === 'series') return templates.series_templates ?? [];
+    if (type === 'product_type') return templates.product_type_templates ?? [];
+    return templates.product_templates ?? [];
   }
 
   $: availableTemplates = templateCollection(templateType);
   $: createSourceTemplates = templateCollection(createType);
   $: previewProductType = productTypes.find((item) => item.key === previewProductTypeKey) || null;
+  $: if (previewProductType) {
+    previewProductType;
+    loadPreviewProductTypeContext();
+  }
 
   function extractEditableSections(htmlContent) {
     if (typeof window === 'undefined') {
@@ -85,21 +93,37 @@
     );
   }
 
-  const previewTokenMap = {
-    '{{product.primary_product_image_url}}': createPreviewPlaceholder('Product primary image preview'),
-    '{{product.graph_image_url}}': createPreviewPlaceholder('Product graph preview'),
-    '{{series.graph_image_url}}': createPreviewPlaceholder('Series graph preview')
-  };
+  function buildPreviewTokenMap() {
+    return {
+      '{{product.primary_product_image_url}}': createPreviewPlaceholder('Product primary image preview'),
+      '{{product.graph_image_url}}': createPreviewPlaceholder('Product graph preview'),
+      '{{series.graph_image_url}}': createPreviewPlaceholder('Series graph preview'),
+      '{{product_type.label}}': previewProductType?.label || 'Product Type',
+      '{{product_type.key}}': previewProductType?.key || 'product-type',
+      '{{product_type.series_names}}': previewProductType?.series_names?.length
+        ? previewProductType.series_names.join(', ')
+        : 'Series A, Series B',
+      '{{product_type.series_legend_html}}': previewProductType?.series_names?.length
+        ? previewProductType.series_names
+            .map((seriesName) => `<span class="badge text-bg-light border me-1">${seriesName}</span>`)
+            .join('')
+        : '<span class="badge text-bg-light border">Series A</span>',
+      '{{product_type.contents_html}}': previewProductTypeContext?.contents_html || '<div style="padding:1rem; border:1px dashed #9ca3af;">Product type contents preview</div>',
+      '{{product_type.series_groups}}': previewProductTypeContext?.series?.length
+        ? previewProductTypeContext.series.map((series) => `<div>${series.name}</div>`).join('')
+        : '<div>Series group preview</div>'
+    };
+  }
 
   function applyTemplatePreviewSubstitutions(htmlContent) {
-    return Object.entries(previewTokenMap).reduce(
+    return Object.entries(buildPreviewTokenMap()).reduce(
       (content, [token, placeholder]) => content.replaceAll(token, placeholder),
       htmlContent
     );
   }
 
   function restoreTemplatePreviewSubstitutions(htmlContent) {
-    return Object.entries(previewTokenMap).reduce(
+    return Object.entries(buildPreviewTokenMap()).reduce(
       (content, [token, placeholder]) => content.replaceAll(placeholder, token),
       htmlContent
     );
@@ -193,6 +217,19 @@
     productTypes = types;
     if (!previewProductTypeKey && productTypes.length > 0) {
       previewProductTypeKey = productTypes[0].key;
+    }
+  }
+
+  async function loadPreviewProductTypeContext() {
+    if (!previewProductType) {
+      previewProductTypeContext = null;
+      return;
+    }
+
+    try {
+      previewProductTypeContext = await getProductTypePdfContext(previewProductType.id);
+    } catch {
+      previewProductTypeContext = null;
     }
   }
 
@@ -383,7 +420,7 @@
       });
       templateType = createType;
       templateId = templateCollection(createType).at(-1)?.id ?? '';
-      if (createType === 'product' && !previewProductTypeKey && productTypes.length > 0) {
+      if ((createType === 'product' || createType === 'product_type') && !previewProductTypeKey && productTypes.length > 0) {
         previewProductTypeKey = productTypes[0].key;
       }
       createLabel = '';
@@ -482,6 +519,7 @@
                 <option value="">-- Choose option --</option>
                 <option value="product">Product</option>
                 <option value="series">Series</option>
+                <option value="product_type">Product Type</option>
               </select>
             </div>
             <div>
@@ -510,6 +548,7 @@
                 <option value="">-- Choose option --</option>
                 <option value="product">Product</option>
                 <option value="series">Series</option>
+                <option value="product_type">Product Type</option>
               </select>
             </div>
             <div>
@@ -557,7 +596,7 @@
         </div>
       </div>
 
-      {#if templateType === 'product' && productTypes.length > 0}
+      {#if (templateType === 'product' || templateType === 'product_type') && productTypes.length > 0}
         <div class="card shadow-sm">
           <div class="card-body">
             <h2 class="h5 mb-3">Preview data context</h2>
@@ -574,6 +613,16 @@
                 title={`Series names for ${previewProductType.label}`}
                 emptyLabel="This product type does not have any series yet."
               />
+              {#if templateType === 'product_type' && previewProductTypeContext}
+                <div class="mt-3">
+                  <div class="small text-body-secondary mb-2">Product type PDF context</div>
+                  <div class="border rounded p-3 bg-body-tertiary small">
+                    <div>Intro pages: {previewProductTypeContext.intro_page_count}</div>
+                    <div>Total pages: {previewProductTypeContext.page_count}</div>
+                    <div class="mt-2">Series groups and page ranges are available from the context endpoint.</div>
+                  </div>
+                </div>
+              {/if}
             {:else}
               <p class="text-body-secondary mb-0">Choose a product type to inspect its linked series names.</p>
             {/if}

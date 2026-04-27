@@ -3,11 +3,22 @@ SQLAlchemy models for the internal product catalogue.
 """
 import os
 import re
+import hashlib
+import colorsys
 
 from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from backend.database import Base
+
+
+def _stable_hex_color(identity: str | int) -> str:
+    digest = hashlib.sha1(str(identity).encode("utf-8")).digest()
+    hue = int.from_bytes(digest[:2], "big") / 65535.0
+    saturation = 0.62 + (digest[2] / 255.0) * 0.18
+    lightness = 0.44 + (digest[3] / 255.0) * 0.08
+    red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
+    return "#{:02x}{:02x}{:02x}".format(int(red * 255), int(green * 255), int(blue * 255))
 
 
 class User(Base):
@@ -71,6 +82,27 @@ class ProductType(Base):
             key=lambda item: (item.name or "").casefold(),
         )
         return [series.name for series in series_items if series.name]
+
+    @property
+    def product_type_pdf_url(self):
+        return self.product_type_printed_pdf_url
+
+    @property
+    def product_type_printed_pdf_url(self):
+        safe_key = re.sub(r"[^a-z0-9]+", "_", (self.key or "").strip().lower()).strip("_")
+        file_name = f"product_type_printed_{safe_key or 'unknown'}.pdf"
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs", file_name)
+        if not os.path.isfile(file_path):
+            return None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/product_type_pdfs/{file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/product_type_pdfs/{file_name}"
+        )
 
 
 class ProductTypeParameterGroupPreset(Base):
@@ -162,6 +194,7 @@ class Series(Base):
     template_id = Column(String(128), nullable=True)
     printed_template_id = Column(String(128), nullable=True)
     online_template_id = Column(String(128), nullable=True)
+    series_tab_color = Column(String(32), nullable=True)
 
     product_type = relationship("ProductType", back_populates="series")
     products = relationship("Product", back_populates="series")

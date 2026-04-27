@@ -156,6 +156,7 @@ def _apply_compatibility_schema(engine: Engine) -> None:
         Base,
         _ensure_fan_columns,
         _ensure_product_platform_columns,
+        _ensure_series_tab_color_column,
         _ensure_product_type_columns,
         _ensure_product_type_parameter_preset_columns,
         _ensure_rpm_line_columns,
@@ -175,6 +176,7 @@ def _apply_compatibility_schema(engine: Engine) -> None:
     _remove_deprecated_fan_notes_column(engine)
     _remove_deprecated_product_optional_columns(engine)
     _ensure_product_platform_columns(engine)
+    _ensure_series_tab_color_column(engine)
     _ensure_product_type_columns(engine)
     _ensure_product_type_parameter_preset_columns(engine)
     _remove_deprecated_product_type_secondary_axis_label(engine)

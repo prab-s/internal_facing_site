@@ -44,5 +44,14 @@
       "path": "templates/series/default/template.html",
       "stylesheet": "templates/series/default/template.css"
     }
+  ],
+  "product_type_templates": [
+    {
+      "id": "product_type-default",
+      "label": "Product Type Default",
+      "type": "product_type",
+      "path": "templates/product_type/default/template.html",
+      "stylesheet": "templates/product_type/default/template.css"
+    }
   ]
 }

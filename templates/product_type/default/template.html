@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{product_type.label}} | Product Type PDF</title>
+    <link rel="stylesheet" href="./template.css" />
+  </head>
+  <body class="product-type-template vt-sheet-body">
+    <main class="page">
+      <section class="cover-panel">
+        <div class="cover-panel__eyebrow">Product Type PDF</div>
+        <h1 class="cover-panel__title">{{product_type.label}}</h1>
+        <p class="cover-panel__summary">This template holds the shared cover and contents structure for all series in this product type.</p>
+      </section>
+
+      <section class="company-panel">
+        <h2>Company information</h2>
+        <div class="company-panel__content">
+          <!-- Hard-code company information here -->
+        </div>
+      </section>
+
+      <section class="series-legend-panel">
+        <h2>Series colours</h2>
+        <div class="series-legend-panel__content">{{product_type.series_legend_html}}</div>
+      </section>
+
+      <section class="series-panel">
+        <h2>Series names</h2>
+        <div class="series-panel__content">{{product_type.series_names}}</div>
+      </section>
+
+      <section class="contents-panel">
+        <h2>Contents</h2>
+        <div class="contents-panel__content">{{product_type.contents_html}}</div>
+      </section>
+    </main>
+  </body>
+</html>
