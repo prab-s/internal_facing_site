@@ -21,7 +21,8 @@
     "file": "chunks/ProductTypeWorkspace.js",
     "name": "ProductTypeWorkspace",
     "imports": [
-      "_index2.js"
+      "_index2.js",
+      "_SeriesNamesBadgeList.js"
     ]
   },
   "_ProductWorkspace.js": {
@@ -35,10 +36,18 @@
       "_root.js",
       "_state.svelte.js",
       "_api.js",
-      "_fullChart.js"
+      "_fullChart.js",
+      "_SeriesNamesBadgeList.js"
     ],
     "css": [
       "_app/immutable/assets/ProductWorkspace.Cdp6zMrW.css"
+    ]
+  },
+  "_SeriesNamesBadgeList.js": {
+    "file": "chunks/SeriesNamesBadgeList.js",
+    "name": "SeriesNamesBadgeList",
+    "imports": [
+      "_index2.js"
     ]
   },
   "_SeriesWorkspace.js": {
@@ -402,7 +411,8 @@
     "imports": [
       "_index2.js",
       "_api.js",
-      "_fullChart.js"
+      "_fullChart.js",
+      "_SeriesNamesBadgeList.js"
     ],
     "css": [
       "_app/immutable/assets/_page.DO8j5OqU.css"

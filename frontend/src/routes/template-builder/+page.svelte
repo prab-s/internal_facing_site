@@ -5,17 +5,21 @@
     createTemplate,
     deleteTemplate,
     getTemplateFiles,
+    getProductTypes,
     getTemplates,
     refreshTemplates,
     updateTemplateFiles
   } from '$lib/api.js';
+  import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
 
   let grapesModule = null;
   let editorHost;
   let editor = null;
   let templates = { product_templates: [], series_templates: [] };
+  let productTypes = [];
   let templateType = '';
   let templateId = '';
+  let previewProductTypeKey = '';
   let loadedTemplate = null;
   let headPrefix = '';
   let bodySuffix = '';
@@ -39,6 +43,7 @@
 
   $: availableTemplates = templateCollection(templateType);
   $: createSourceTemplates = templateCollection(createType);
+  $: previewProductType = productTypes.find((item) => item.key === previewProductTypeKey) || null;
 
   function extractEditableSections(htmlContent) {
     if (typeof window === 'undefined') {
@@ -180,7 +185,15 @@
   }
 
   async function loadRegistry() {
-    templates = await getTemplates();
+    const [registry, types] = await Promise.all([
+      getTemplates(),
+      getProductTypes().catch(() => [])
+    ]);
+    templates = registry;
+    productTypes = types;
+    if (!previewProductTypeKey && productTypes.length > 0) {
+      previewProductTypeKey = productTypes[0].key;
+    }
   }
 
   async function ensureEditor() {
@@ -370,6 +383,9 @@
       });
       templateType = createType;
       templateId = templateCollection(createType).at(-1)?.id ?? '';
+      if (createType === 'product' && !previewProductTypeKey && productTypes.length > 0) {
+        previewProductTypeKey = productTypes[0].key;
+      }
       createLabel = '';
       statusMessage = 'Template created.';
       await loadTemplate();
@@ -540,6 +556,30 @@
           {/if}
         </div>
       </div>
+
+      {#if templateType === 'product' && productTypes.length > 0}
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h2 class="h5 mb-3">Preview data context</h2>
+            <label class="form-label" for="preview-product-type">Product type</label>
+            <select id="preview-product-type" class="form-select mb-3" bind:value={previewProductTypeKey}>
+              {#each productTypes as productType}
+                <option value={productType.key}>{productType.label}</option>
+              {/each}
+            </select>
+
+            {#if previewProductType}
+              <SeriesNamesBadgeList
+                seriesNames={previewProductType.series_names || []}
+                title={`Series names for ${previewProductType.label}`}
+                emptyLabel="This product type does not have any series yet."
+              />
+            {:else}
+              <p class="text-body-secondary mb-0">Choose a product type to inspect its linked series names.</p>
+            {/if}
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 

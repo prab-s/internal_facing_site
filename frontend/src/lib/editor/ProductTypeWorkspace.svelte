@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { createProductType, getProductTypes, updateProductType } from '$lib/api.js';
+  import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
 
   export let initialMode = 'create';
 
@@ -35,6 +36,8 @@
   }
 
   let productTypeDraft = resetDraft();
+
+  $: selectedProductType = productTypes.find((item) => String(item.id) === String(selectedProductTypeId)) || null;
 
   function startCreate() {
     mode = 'create';
@@ -242,6 +245,16 @@
             <input class="form-control" id="product-type-y-unit" bind:value={productTypeDraft.graph_y_axis_unit} />
           </div>
         </div>
+
+        {#if selectedProductType}
+          <div class="mt-4">
+            <SeriesNamesBadgeList
+              seriesNames={selectedProductType.series_names || []}
+              title={`Series names for ${selectedProductType.label}`}
+              emptyLabel="This product type does not have any series yet."
+            />
+          </div>
+        {/if}
 
         <div class="d-flex flex-wrap gap-2 mt-3">
           <button class="btn btn-primary" on:click={saveProductType} disabled={saving}>{saving ? 'Saving...' : 'Save Product Type'}</button>

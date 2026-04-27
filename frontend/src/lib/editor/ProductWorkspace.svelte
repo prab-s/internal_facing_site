@@ -35,6 +35,7 @@
   import ECharts from '$lib/ECharts.svelte';
   import AccordionCard from '$lib/editor/AccordionCard.svelte';
   import ProductMediaPanel from '$lib/editor/ProductMediaPanel.svelte';
+  import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
   import {
     GLOBAL_UNIT_OPTIONS,
     emptyProductForm,
@@ -591,6 +592,8 @@
   function getCurrentProductType() {
     return productTypes.find((item) => item.key === productForm.product_type_key) || null;
   }
+
+  $: currentProductTypeForForm = getCurrentProductType();
 
   function productSupportsGraph() {
     return getCurrentProductType()?.supports_graph ?? true;
@@ -2635,6 +2638,15 @@
               {/each}
             </select>
           </div>
+          {#if currentProductTypeForForm}
+            <div class="col-12">
+              <SeriesNamesBadgeList
+                seriesNames={currentProductTypeForForm.series_names || []}
+                title={`Series names for ${currentProductTypeForForm.label}`}
+                emptyLabel="This product type does not have any series yet."
+              />
+            </div>
+          {/if}
           <div class="col-12 col-md-6">
             <label class="form-label" for="create-series">Series</label>
             <select class="form-select" id="create-series" bind:value={productForm.series_id} disabled={!productForm.product_type_key}>
@@ -3052,6 +3064,15 @@
                 {/each}
               </select>
             </div>
+            {#if currentProductTypeForForm}
+              <div class="col-12">
+                <SeriesNamesBadgeList
+                  seriesNames={currentProductTypeForForm.series_names || []}
+                  title={`Series names for ${currentProductTypeForForm.label}`}
+                  emptyLabel="This product type does not have any series yet."
+                />
+              </div>
+            {/if}
             <div class="col-12 col-md-6">
               <label class="form-label" for="edit-series">Series</label>
               <select class="form-select" id="edit-series" bind:value={productForm.series_id} disabled={!productForm.product_type_key}>

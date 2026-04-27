@@ -740,8 +740,21 @@ cat > "$ROOT_DIR/app/templates/product_type.html" <<'EOF'
 
 <div class="mb-4">
   <h1 class="h2">{{ selected_type.label }}</h1>
-  <p class="text-muted">Browse available series and products.</p>
+  <p class="text-muted">Browse available series and products for this category.</p>
 </div>
+
+{% if selected_type.series_names %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Series names</h2>
+    <div class="d-flex flex-wrap gap-2">
+      {% for series_name in selected_type.series_names %}
+        <span class="badge text-bg-light border">{{ series_name }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <h2 class="h4 mb-3">Series</h2>
 

@@ -15,6 +15,7 @@
   import ECharts from '$lib/ECharts.svelte';
   import { getChartTheme, theme } from '$lib/config.js';
   import { buildFullChartOption } from '$lib/fullChart.js';
+  import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
 
   let products = [];
   let productTypes = [];
@@ -645,22 +646,32 @@
             {/if}
           </div>
 
-          <div class="row g-3 mt-1">
-            <div class="col-12 col-md-3">
-              <div class="viewer-metric">
-                <div class="viewer-metric-label">Product Type</div>
-                <div>{currentProduct.product_type_label || currentProduct.product_type_key || '—'}</div>
-              </div>
-            </div>
-            <div class="col-12 col-md-3">
-              <div class="viewer-metric">
-                <div class="viewer-metric-label">Series</div>
-                <div>{currentProduct.series_name || '—'}</div>
-              </div>
-            </div>
+      <div class="row g-3 mt-1">
+        <div class="col-12 col-md-3">
+          <div class="viewer-metric">
+            <div class="viewer-metric-label">Product Type</div>
+            <div>{currentProduct.product_type_label || currentProduct.product_type_key || '—'}</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-3">
+          <div class="viewer-metric">
+            <div class="viewer-metric-label">Series</div>
+            <div>{currentProduct.series_name || '—'}</div>
           </div>
         </div>
       </div>
+
+      {#if getCurrentProductType()}
+        <div class="mt-3">
+          <SeriesNamesBadgeList
+            seriesNames={getCurrentProductType()?.series_names || []}
+            title={`Series names for ${getCurrentProductType()?.label || 'this product type'}`}
+            emptyLabel="This product type has no linked series yet."
+          />
+        </div>
+      {/if}
+    </div>
+  </div>
 
       <div class="row g-3">
         <div class="col-12 col-lg-6">

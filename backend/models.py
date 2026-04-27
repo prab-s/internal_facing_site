@@ -64,6 +64,14 @@ class ProductType(Base):
     series = relationship("Series", back_populates="product_type", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="product_type")
 
+    @property
+    def series_names(self):
+        series_items = sorted(
+            self.series or [],
+            key=lambda item: (item.name or "").casefold(),
+        )
+        return [series.name for series in series_items if series.name]
+
 
 class ProductTypeParameterGroupPreset(Base):
     __tablename__ = "product_type_parameter_group_presets"

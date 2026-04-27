@@ -8,6 +8,7 @@ import "./root.js";
 import "./state.svelte.js";
 import { t as theme, e as emptyProductForm, g as getProduct, a as getRpmLines, b as getRpmPoints, c as getEfficiencyPoints, G as GLOBAL_UNIT_OPTIONS } from "./api.js";
 import { F as FULL_CHART_LINE_DEFINITIONS, R as RPM_BAND_FALLBACK_COLORS, g as getChartTheme, b as buildFullChartOption, E as ECharts } from "./fullChart.js";
+import { S as SeriesNamesBadgeList } from "./SeriesNamesBadgeList.js";
 function AccordionCard($$renderer, $$props) {
   let title = fallback($$props["title"], "");
   let description = fallback($$props["description"], "");
@@ -35,7 +36,7 @@ function AccordionCard($$renderer, $$props) {
 function ProductWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
-    let productTemplateOptions;
+    let productTemplateOptions, currentProductTypeForForm;
     let initialMode = fallback($$props["initialMode"], "select");
     let initialProductId = fallback($$props["initialProductId"], "");
     let products = [];
@@ -469,6 +470,7 @@ function ProductWorkspace($$renderer, $$props) {
       applyCreateTypePresets(productForm.product_type_key);
       applyCreateTemplateDefault(productForm.product_type_key);
     }
+    currentProductTypeForForm = getCurrentProductType();
     allAccordionsOpen = mode === "create" ? createCoreDetailsOpen && createProductAttributesOpen && createGroupedSpecificationsOpen && allSpecificationGroupsOpen() : false;
     if (selectedProductId) {
       loadProductData();
@@ -566,7 +568,20 @@ function ProductWorkspace($$renderer, $$props) {
                 $$renderer5.push(`<!--]-->`);
               }
             );
-            $$renderer4.push(`</div> <div class="col-12 col-md-6"><label class="form-label" for="create-series">Series</label> `);
+            $$renderer4.push(`</div> `);
+            if (currentProductTypeForForm) {
+              $$renderer4.push("<!--[0-->");
+              $$renderer4.push(`<div class="col-12">`);
+              SeriesNamesBadgeList($$renderer4, {
+                seriesNames: currentProductTypeForForm.series_names || [],
+                title: `Series names for ${currentProductTypeForForm.label}`,
+                emptyLabel: "This product type does not have any series yet."
+              });
+              $$renderer4.push(`<!----></div>`);
+            } else {
+              $$renderer4.push("<!--[-1-->");
+            }
+            $$renderer4.push(`<!--]--> <div class="col-12 col-md-6"><label class="form-label" for="create-series">Series</label> `);
             $$renderer4.select(
               {
                 class: "form-select",

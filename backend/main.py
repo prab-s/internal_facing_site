@@ -2059,6 +2059,7 @@ def list_product_types(db: Session = Depends(get_db)):
     return (
         db.query(ProductType)
         .options(
+            selectinload(ProductType.series),
             selectinload(ProductType.parameter_group_presets).selectinload(
                 ProductTypeParameterGroupPreset.parameter_presets
             ),
@@ -2082,6 +2083,7 @@ def list_cms_product_types(db: Session = Depends(get_db)):
     return (
         db.query(ProductType)
         .options(
+            selectinload(ProductType.series),
             selectinload(ProductType.parameter_group_presets).selectinload(
                 ProductTypeParameterGroupPreset.parameter_presets
             ),

@@ -1,6 +1,7 @@
 import { s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
 import { t as theme, j as getProducts, g as getProduct, k as getProductChartData } from "../../../chunks/api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../chunks/fullChart.js";
+import { S as SeriesNamesBadgeList } from "../../../chunks/SeriesNamesBadgeList.js";
 function html(value) {
   var html2 = String(value ?? "");
   var open = "<!---->";
@@ -305,7 +306,20 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div></div></div> <div class="row g-3"><div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description1</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description2</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description3</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Comments</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Grouped Specifications</h3> `);
+        $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div> `);
+        if (getCurrentProductType()) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<div class="mt-3">`);
+          SeriesNamesBadgeList($$renderer2, {
+            seriesNames: getCurrentProductType()?.series_names || [],
+            title: `Series names for ${getCurrentProductType()?.label || "this product type"}`,
+            emptyLabel: "This product type has no linked series yet."
+          });
+          $$renderer2.push(`<!----></div>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]--></div></div> <div class="row g-3"><div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description1</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description2</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description3</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Comments</h3> <div class="viewer-html svelte-1470g8z">${html(currentProduct.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Grouped Specifications</h3> `);
         if ((currentProduct.parameter_groups?.length ?? 0) > 0) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3"><!--[-->`);

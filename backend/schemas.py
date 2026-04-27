@@ -101,6 +101,7 @@ class ProductTypeResponse(BaseModel):
     id: int
     key: str
     label: str
+    series_names: list[str] = Field(default_factory=list)
     supports_graph: bool
     graph_kind: Optional[str] = None
     supports_graph_overlays: bool = False
