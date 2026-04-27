@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <h1 class="h2">{{ product.model }}</h1>
+
+    <p class="text-muted">
+      {{ product.product_type_label }}
+      {% if product.series_name %}
+        · {{ product.series_name }}
+      {% endif %}
+    </p>
+
+    {% if product.primary_product_image_url %}
+      <img
+        class="img-fluid rounded border mb-4 product-main-image"
+        src="{{ media_url(product.primary_product_image_url) }}"
+        alt="{{ product.model }}"
+      >
+    {% endif %}
+
+    {% for section in product_sections %}
+      <section class="content-section mb-4">
+        <h2 class="h4">{{ section.title }}</h2>
+        <div class="content-block">
+          {{ section.html | safe }}
+        </div>
+      </section>
+    {% endfor %}
+
+    {% if product.graph_image_url %}
+      <div class="card my-4">
+        <div class="card-header fw-semibold">Performance graph</div>
+        <div class="card-body">
+          <img class="img-fluid" src="{{ media_url(product.graph_image_url) }}" alt="{{ product.model }} graph">
+        </div>
+      </div>
+    {% endif %}
+
+    {% if product.parameter_groups %}
+      <h2 class="h4 mt-4">Specifications</h2>
+      {% include "partials/specs_table.html" %}
+    {% endif %}
+  </div>
+
+  <aside class="col-lg-4">
+    {% include "partials/pdf_panel.html" %}
+  </aside>
+</div>
+
+{% endblock %}

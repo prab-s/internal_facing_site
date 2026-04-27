@@ -1,5 +1,5 @@
 # ---------- Frontend build stage ----------
-FROM docker.io/library/node:22-bookworm-slim AS frontend-builder
+FROM docker.io/library/node:25-bookworm-slim AS frontend-builder
 
 WORKDIR /app/frontend
 

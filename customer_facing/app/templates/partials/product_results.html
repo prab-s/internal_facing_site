@@ -1,0 +1,39 @@
+{% if series %}
+  <div class="mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h2 class="h5 mb-0">Series match</h2>
+      <span class="text-muted small">{{ series|length }} series</span>
+    </div>
+
+    <div class="row g-3 mb-4">
+      {% for series_item in series %}
+        <div class="col-md-6 col-xl-4">
+          {% set series = series_item %}
+          {% include "partials/series_card.html" %}
+        </div>
+      {% else %}
+        <div class="col-12">
+          <div class="alert alert-light border mb-0">No series match these filters.</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+<div class="mb-3 fw-semibold">
+  {{ products|length }} products match
+</div>
+
+<div class="row g-3">
+  {% for product in products %}
+    <div class="col-md-6 col-xl-4">
+      {% include "partials/product_card.html" %}
+    </div>
+  {% else %}
+    <div class="col-12">
+      <div class="alert alert-light border">
+        No products match these filters.
+      </div>
+    </div>
+  {% endfor %}
+</div>

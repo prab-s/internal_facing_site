@@ -1,0 +1,30 @@
+{% for group in product.parameter_groups %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">
+      {{ group.group_name }}
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for param in group.parameters %}
+            <tr>
+              <th class="w-50">{{ param.parameter_name }}</th>
+              <td>
+                {% if param.value_string %}
+                  {{ param.value_string }}
+                {% elif param.value_number is not none %}
+                  {{ param.value_number }}
+                {% endif %}
+
+                {% if param.unit %}
+                  {{ param.unit }}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endfor %}

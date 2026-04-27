@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="mb-4">
+  <h1 class="h2">{{ selected_type.label }}</h1>
+  <p class="text-muted">Browse available series and products for this category.</p>
+</div>
+
+<h2 class="h4 mb-3">Series</h2>
+
+<div class="row g-3 mb-5">
+  {% for series in series %}
+    <div class="col-md-6 col-xl-4">
+      {% include "partials/series_card.html" %}
+    </div>
+  {% else %}
+    <p class="text-muted">No series found for this product type.</p>
+  {% endfor %}
+</div>
+
+<h2 class="h4 mb-3">Products</h2>
+
+<div class="row g-3">
+  {% for product in products %}
+    <div class="col-md-6 col-xl-4">
+      {% include "partials/product_card.html" %}
+    </div>
+  {% else %}
+    <p class="text-muted">No products found for this product type.</p>
+  {% endfor %}
+</div>
+
+{% endblock %}

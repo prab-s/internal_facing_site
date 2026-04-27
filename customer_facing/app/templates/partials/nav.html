@@ -1,0 +1,33 @@
+<nav class="navbar navbar-expand-lg site-navbar sticky-top">
+  <div class="container site-shell">
+    <a class="navbar-brand fw-semibold" href="/">{{ site_name }}</a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div id="mainNav" class="collapse navbar-collapse">
+      <ul class="navbar-nav ms-lg-auto">
+        {% for type in product_types %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ product_type_url(type) }}">
+              {{ type.label }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="nav-actions d-flex align-items-center ms-auto">
+      <button
+        id="theme-toggle"
+        class="btn btn-outline-secondary btn-sm theme-toggle-btn"
+        type="button"
+        aria-pressed="false"
+      >
+        <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+        <span class="theme-toggle-label">Dark mode</span>
+      </button>
+    </div>
+  </div>
+</nav>

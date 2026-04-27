@@ -53,6 +53,22 @@ services:
       - ./data:/app/data:Z
       - fan_graphs_wordpress_data:/app/wordpress_site:Z
 
+  customer_facing:
+    profiles: ["catalogue"]
+    build:
+      context: ./customer_facing
+    image: vent-tech-catalogue
+    container_name: vent-tech-catalogue
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      BACKEND_API_BASE_URL: ${PUBLIC_CATALOGUE_BACKEND_API_BASE_URL:-https://p2.bitrep.nz}
+      PUBLIC_SITE_URL: ${PUBLIC_CATALOGUE_SITE_URL:-http://localhost:8004}
+      SITE_NAME: ${PUBLIC_CATALOGUE_SITE_NAME:-Vent-tech catalogue}
+      REQUEST_TIMEOUT_SECONDS: ${PUBLIC_CATALOGUE_REQUEST_TIMEOUT_SECONDS:-10}
+      CMS_API_TOKEN: ${CMS_API_TOKEN}
+
   wordpress_db:
     profiles: ["wordpress"]
     image: docker.io/library/mariadb:11

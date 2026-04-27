@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <h1 class="h2">{{ series.name }}</h1>
+    <p class="text-muted">{{ series.product_type_label }}</p>
+
+    {% for section in series_sections %}
+      <section class="content-section mb-4">
+        <h2 class="h4">{{ section.title }}</h2>
+        <div class="content-block">
+          {{ section.html | safe }}
+        </div>
+      </section>
+    {% endfor %}
+
+    {% if series.series_graph_image_url %}
+      <div class="card my-4">
+        <div class="card-header fw-semibold">Performance graph</div>
+        <div class="card-body">
+          <img class="img-fluid" src="{{ media_url(series.series_graph_image_url) }}" alt="{{ series.name }} graph">
+        </div>
+      </div>
+    {% endif %}
+
+    <h2 class="h4 mt-4">Products in this series</h2>
+
+    <div class="row g-3">
+      {% for product in series.products %}
+        <div class="col-md-6">
+          {% include "partials/product_card.html" %}
+        </div>
+      {% else %}
+        <div class="col-12">
+          <div class="alert alert-light border mb-0">No products are linked to this series yet.</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <aside class="col-lg-4">
+    {% include "partials/pdf_panel.html" %}
+  </aside>
+</div>
+
+{% endblock %}

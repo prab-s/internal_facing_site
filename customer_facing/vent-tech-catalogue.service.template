@@ -1,0 +1,18 @@
+[Unit]
+Description=Vent-tech catalogue
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=__ENV_FILE__
+ExecStartPre=-/usr/bin/podman rm -f vent-tech-catalogue
+ExecStartPre=/usr/bin/podman build -t __IMAGE_NAME__ -f __ROOT_DIR__/Containerfile __ROOT_DIR__
+ExecStart=/usr/bin/podman run --name vent-tech-catalogue --replace --rm --publish 8004:8004 --env-file __ENV_FILE__ __IMAGE_NAME__
+ExecStop=-/usr/bin/podman stop -t 10 vent-tech-catalogue
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

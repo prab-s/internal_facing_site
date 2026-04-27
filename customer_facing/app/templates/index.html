@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="mb-4">
+  <h1 class="h2 mb-2">Product Finder</h1>
+  <p class="text-muted mb-0">
+    Filter the catalogue by product type and key engineering parameters.
+  </p>
+</div>
+
+<div class="row g-4">
+  <aside class="col-lg-3">
+    <form id="finder-form" class="card shadow-sm border-0">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Filter products</h2>
+
+        <label class="form-label">Product type</label>
+        <select class="form-select mb-3" name="product_type_key">
+          <option value="" selected>-- select option --</option>
+          {% for type in product_types %}
+            <option value="{{ type.key }}">{{ type.label }}</option>
+          {% endfor %}
+        </select>
+
+        <label class="form-label">Search</label>
+        <input class="form-control" name="search" placeholder="Model or keyword">
+
+        <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
+          <p class="text-muted small mb-0">Choose a product type to reveal the available engineering filters.</p>
+          <button
+            type="button"
+            id="advanced-toggle"
+            class="btn btn-sm btn-outline-secondary d-none"
+          >
+            Advanced
+          </button>
+        </div>
+
+        <div id="series-filter" class="d-none"></div>
+        <div id="main-filters" class="filter-stack"></div>
+        <div id="advanced-filters" class="filter-stack mt-4 d-none"></div>
+      </div>
+    </form>
+  </aside>
+
+  <section class="col-lg-9">
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Browse by product type</h2>
+        <div class="d-flex flex-wrap gap-2">
+          {% for type in product_types %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ product_type_url(type) }}">{{ type.label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div id="finder-results">
+      {% include "partials/product_results.html" %}
+    </div>
+  </section>
+</div>
+
+{% endblock %}
