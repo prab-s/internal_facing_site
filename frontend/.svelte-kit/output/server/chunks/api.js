@@ -1,36 +1,4 @@
-import { w as writable } from "./index.js";
-const API_BASE = "/api";
-const GLOBAL_UNIT_OPTIONS = [
-  "A",
-  "Hz",
-  "kg",
-  "kW",
-  "L/s",
-  "m3/h",
-  "mm",
-  "Pa",
-  "RPM",
-  "V",
-  "°C"
-];
-function emptyProductForm() {
-  return {
-    model: "",
-    product_type_key: "fan",
-    series_id: null,
-    series_name: "",
-    printed_template_id: "",
-    online_template_id: "",
-    description1_html: "",
-    description2_html: "",
-    description3_html: "",
-    comments_html: "",
-    show_rpm_band_shading: true,
-    band_graph_background_color: "#ffffff",
-    band_graph_label_text_color: "#000000"
-  };
-}
-const theme = writable("light");
+import { A as API_BASE } from "./config.js";
 function url(path) {
   return `${API_BASE}${path}`;
 }
@@ -73,6 +41,10 @@ async function getProductTypes() {
   const r = await apiFetch("/product-types");
   return r.json();
 }
+async function getProductTypePdfContext(id) {
+  const r = await apiFetch(`/product-types/${id}/pdf-context`);
+  return r.json();
+}
 async function getProduct(id) {
   const r = await apiFetch(`/products/${id}`);
   return r.json();
@@ -102,18 +74,13 @@ async function getUsers() {
   return r.json();
 }
 export {
-  GLOBAL_UNIT_OPTIONS as G,
-  getRpmLines as a,
-  getRpmPoints as b,
-  getEfficiencyPoints as c,
-  getUsers as d,
-  emptyProductForm as e,
-  getProductTypes as f,
-  getProduct as g,
-  login as h,
-  getAuthSession as i,
-  getProducts as j,
-  getProductChartData as k,
-  logout as l,
-  theme as t
+  getProductTypes as a,
+  login as b,
+  getAuthSession as c,
+  getProductTypePdfContext as d,
+  getProducts as e,
+  getProduct as f,
+  getUsers as g,
+  getProductChartData as h,
+  logout as l
 };

@@ -1,12 +1,16 @@
 import { h as head, a as attr, e as escape_html, i as ensure_array_like } from "../../../chunks/index2.js";
+import { d as getProductTypePdfContext } from "../../../chunks/api.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
-    let availableTemplates, createSourceTemplates;
-    let templates = { product_templates: [], series_templates: [] };
+    let availableTemplates, createSourceTemplates, previewProductType;
+    let templates = {
+      product_templates: []
+    };
     let productTypes = [];
     let templateType = "";
     let templateId = "";
     let previewProductTypeKey = "";
+    let previewProductTypeContext = null;
     let rawHtmlContent = "";
     let rawCssContent = "";
     let refreshing = false;
@@ -14,11 +18,25 @@ function _page($$renderer, $$props) {
     let createType = "";
     let createSourceId = "";
     function templateCollection(type) {
-      return type === "series" ? templates.series_templates ?? [] : templates.product_templates ?? [];
+      return templates.product_templates ?? [];
     }
-    availableTemplates = templateCollection(templateType);
-    createSourceTemplates = templateCollection(createType);
-    productTypes.find((item) => item.key === previewProductTypeKey) || null;
+    async function loadPreviewProductTypeContext() {
+      if (!previewProductType) {
+        previewProductTypeContext = null;
+        return;
+      }
+      try {
+        previewProductTypeContext = await getProductTypePdfContext(previewProductType.id);
+      } catch {
+        previewProductTypeContext = null;
+      }
+    }
+    availableTemplates = templateCollection();
+    createSourceTemplates = templateCollection();
+    previewProductType = productTypes.find((item) => item.key === previewProductTypeKey) || null;
+    if (previewProductType) {
+      loadPreviewProductTypeContext();
+    }
     head("yl845", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Template Builder | Internal Facing</title>`);
@@ -48,6 +66,9 @@ function _page($$renderer, $$props) {
         });
         $$renderer3.option({ value: "series" }, ($$renderer4) => {
           $$renderer4.push(`Series`);
+        });
+        $$renderer3.option({ value: "product_type" }, ($$renderer4) => {
+          $$renderer4.push(`Product Type`);
         });
       }
     );
@@ -84,6 +105,9 @@ function _page($$renderer, $$props) {
       });
       $$renderer3.option({ value: "series" }, ($$renderer4) => {
         $$renderer4.push(`Series`);
+      });
+      $$renderer3.option({ value: "product_type" }, ($$renderer4) => {
+        $$renderer4.push(`Product Type`);
       });
     });
     $$renderer2.push(`</div> <div><label class="form-label" for="create-label">Label</label> <input id="create-label" class="form-control"${attr("value", createLabel)} placeholder="Compact product template"/></div> <div><label class="form-label" for="create-source">Clone existing</label> `);

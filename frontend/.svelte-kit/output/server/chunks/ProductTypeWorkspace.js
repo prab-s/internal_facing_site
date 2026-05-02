@@ -7,6 +7,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
     let productTypes = [];
     let selectedProductTypeId = "";
     let saving = false;
+    let refreshingPdfId = null;
     let mode = initialMode;
     function resetDraft(productType = null) {
       return {
@@ -82,7 +83,14 @@ function ProductTypeWorkspace($$renderer, $$props) {
         title: `Series names for ${selectedProductType.label}`,
         emptyLabel: "This product type does not have any series yet."
       });
-      $$renderer2.push(`<!----></div>`);
+      $$renderer2.push(`<!----></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", refreshingPdfId === selectedProductType.id, true)}>${escape_html(refreshingPdfId === selectedProductType.id ? "Generating..." : "Generate Product Type PDF")}</button> `);
+      if (selectedProductType.product_type_pdf_url) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<a class="btn btn-outline-primary btn-sm"${attr("href", selectedProductType.product_type_pdf_url)} target="_blank" rel="noreferrer">Open Product Type PDF</a>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }

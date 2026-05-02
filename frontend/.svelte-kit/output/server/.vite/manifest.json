@@ -35,7 +35,7 @@
       "_utils.js",
       "_root.js",
       "_state.svelte.js",
-      "_api.js",
+      "_config.js",
       "_fullChart.js",
       "_SeriesNamesBadgeList.js"
     ],
@@ -61,7 +61,7 @@
     "file": "chunks/api.js",
     "name": "api",
     "imports": [
-      "_index.js"
+      "_config.js"
     ]
   },
   "_auth.js": {
@@ -70,6 +70,13 @@
     "imports": [
       "_index.js",
       "_api.js"
+    ]
+  },
+  "_config.js": {
+    "file": "chunks/config.js",
+    "name": "config",
+    "imports": [
+      "_index.js"
     ]
   },
   "_environment.js": {
@@ -208,7 +215,7 @@
       "_index2.js",
       "_stores.js",
       "_auth.js",
-      "_api.js"
+      "_config.js"
     ],
     "css": [
       "_app/immutable/assets/_layout.DgLIrzHR.css"
@@ -385,6 +392,7 @@
       "_index2.js",
       "_index-server.js",
       "_auth.js",
+      "_config.js",
       "_api.js"
     ],
     "css": [
@@ -397,7 +405,8 @@
     "src": "src/routes/template-builder/+page.svelte",
     "isEntry": true,
     "imports": [
-      "_index2.js"
+      "_index2.js",
+      "_api.js"
     ],
     "css": [
       "_app/immutable/assets/_page.9or46G32.css"
@@ -412,6 +421,7 @@
       "_index2.js",
       "_api.js",
       "_fullChart.js",
+      "_config.js",
       "_SeriesNamesBadgeList.js"
     ],
     "css": [

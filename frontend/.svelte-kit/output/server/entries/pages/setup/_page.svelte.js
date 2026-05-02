@@ -1,7 +1,8 @@
 import { s as store_get, h as head, i as ensure_array_like, e as escape_html, a as attr, b as attr_class, u as unsubscribe_stores, ac as clsx } from "../../../chunks/index2.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
-import { d as getUsers, f as getProductTypes, G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/api.js";
+import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
+import { g as getUsers, a as getProductTypes } from "../../../chunks/api.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;

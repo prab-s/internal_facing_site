@@ -38,6 +38,13 @@
   let createType = '';
   let createSourceId = '';
   let blocksResizeCleanup = null;
+  let htmlSyncTimeout = null;
+  let cssSyncTimeout = null;
+  const canvasCssStyleId = 'template-builder-canvas-css';
+  let syncingHtmlFromSource = false;
+  let syncingHtmlFromEditor = false;
+  let syncingCssFromSource = false;
+  let syncingCssFromEditor = false;
 
   function templateCollection(type) {
     if (type === 'series') return templates.series_templates ?? [];
@@ -130,7 +137,7 @@
   }
 
   function rebuildTemplateHtmlFromSource() {
-    const source = rawHtmlContent || loadedTemplate?.html_content || '';
+    const source = rawHtmlContent;
     const parsed = extractEditableSections(source);
     if (!parsed.headPrefix && !parsed.bodySuffix) return parsed.bodyHtml;
     return `${parsed.headPrefix}\n${parsed.bodyHtml}\n${parsed.bodySuffix}`;
@@ -138,19 +145,114 @@
 
   function refreshPreviewFromSource() {
     if (!editor) return;
-    const parsed = extractEditableSections(rawHtmlContent || '');
-    headPrefix = parsed.headPrefix;
-    bodySuffix = parsed.bodySuffix;
-    editor.setComponents(applyTemplatePreviewSubstitutions(parsed.bodyHtml, templateType));
-    editor.setStyle(rawCssContent || '');
+    pushHtmlSourceToEditor();
+    pushCssSourceToEditor();
+  }
+
+  function getEditorHtmlContent() {
+    if (!editor) return '';
+    const parsed = extractEditableSections(rawHtmlContent);
+    const bodyHtml = restoreTemplatePreviewSubstitutions(editor.getHtml());
+    return parsed.headPrefix || parsed.bodySuffix ? `${parsed.headPrefix}\n${bodyHtml}\n${parsed.bodySuffix}` : bodyHtml;
+  }
+
+  function getEditorCssContent() {
+    return editor?.getCss({ keepUnusedStyles: true, avoidProtected: false }) || '';
+  }
+
+  function pushHtmlSourceToEditor() {
+    if (!editor || syncingHtmlFromEditor) return;
+    syncingHtmlFromSource = true;
+    try {
+      const parsed = extractEditableSections(rawHtmlContent);
+      headPrefix = parsed.headPrefix;
+      bodySuffix = parsed.bodySuffix;
+      editor.setComponents(applyTemplatePreviewSubstitutions(parsed.bodyHtml, templateType));
+    } finally {
+      syncingHtmlFromSource = false;
+    }
+  }
+
+  function pullHtmlFromEditor() {
+    if (!editor || syncingHtmlFromSource) return;
+    syncingHtmlFromEditor = true;
+    try {
+      rawHtmlContent = getEditorHtmlContent();
+      const parsed = extractEditableSections(rawHtmlContent);
+      headPrefix = parsed.headPrefix;
+      bodySuffix = parsed.bodySuffix;
+    } finally {
+      syncingHtmlFromEditor = false;
+    }
+  }
+
+  function scheduleHtmlPullFromEditor() {
+    if (!editor || syncingHtmlFromSource) return;
+    window.clearTimeout(htmlSyncTimeout);
+    htmlSyncTimeout = window.setTimeout(() => {
+      pullHtmlFromEditor();
+    }, 120);
+  }
+
+  function pushCssSourceToEditor() {
+    if (!editor || syncingCssFromEditor) return;
+    syncingCssFromSource = true;
+    try {
+      editor.setStyle(rawCssContent || '');
+      syncCanvasCssIntoFrame();
+    } finally {
+      syncingCssFromSource = false;
+    }
+  }
+
+  function pullCssFromEditor() {
+    if (!editor || syncingCssFromSource) return;
+    syncingCssFromEditor = true;
+    try {
+      rawCssContent = getEditorCssContent();
+    } finally {
+      syncingCssFromEditor = false;
+    }
+  }
+
+  function scheduleCssPullFromEditor() {
+    if (!editor || syncingCssFromSource) return;
+    window.clearTimeout(cssSyncTimeout);
+    cssSyncTimeout = window.setTimeout(() => {
+      pullCssFromEditor();
+    }, 120);
+  }
+
+  function syncCanvasCssIntoFrame() {
+    if (!editor) return;
+    const doc = editor.Canvas.getDocument();
+    if (!doc?.head) return;
+
+    let styleEl = doc.getElementById(canvasCssStyleId);
+    if (!styleEl) {
+      styleEl = doc.createElement('style');
+      styleEl.id = canvasCssStyleId;
+      doc.head.appendChild(styleEl);
+    }
+
+    styleEl.textContent = rawCssContent || '';
+  }
+
+  function handleCssSourceInput(event) {
+    rawCssContent = event.currentTarget.value;
+    pushCssSourceToEditor();
+    syncCanvasCssIntoFrame();
+  }
+
+  function handleHtmlSourceInput(event) {
+    rawHtmlContent = event.currentTarget.value;
+    pushHtmlSourceToEditor();
   }
 
   function buildTemplateHtmlForSave() {
     if (editor) {
-      const parsed = extractEditableSections(rawHtmlContent || loadedTemplate?.html_content || '');
-      const bodyHtml = restoreTemplatePreviewSubstitutions(editor.getHtml());
-      const savedHtml = parsed.headPrefix || parsed.bodySuffix ? `${parsed.headPrefix}\n${bodyHtml}\n${parsed.bodySuffix}` : bodyHtml;
-      const savedCss = editor.getCss();
+      const savedHtml = getEditorHtmlContent();
+      const savedCss = getEditorCssContent();
       return {
         html_content: savedHtml,
         css_content: savedCss
@@ -347,6 +449,16 @@
       selectorManager: { componentFirst: true },
       blockManager: { blocks: starterBlocks }
     });
+    editor.on('component:add', scheduleHtmlPullFromEditor);
+    editor.on('component:remove', scheduleHtmlPullFromEditor);
+    editor.on('component:update', scheduleHtmlPullFromEditor);
+    editor.on('component:styleUpdate', scheduleHtmlPullFromEditor);
+    editor.on('component:resize:update', scheduleHtmlPullFromEditor);
+    editor.on('component:resize:end', scheduleHtmlPullFromEditor);
+    editor.on('component:styleUpdate', scheduleCssPullFromEditor);
+    editor.on('style:property:update', scheduleCssPullFromEditor);
+    editor.on('style:sector:update', scheduleCssPullFromEditor);
+    editor.on('canvas:frame:load', syncCanvasCssIntoFrame);
     editor.runCommand('open-blocks');
     setupBlocksResizer(editor.Blocks.getContainer());
   }
@@ -363,6 +475,7 @@
       rawHtmlContent = files.html_content || '';
       rawCssContent = files.css_content || '';
       refreshPreviewFromSource();
+      syncCanvasCssIntoFrame();
       statusMessage = `Loaded ${files.label}.`;
     } catch (error) {
       loadError = error?.message || 'Unable to load template.';
@@ -382,6 +495,7 @@
       rawHtmlContent = loadedTemplate.html_content || '';
       rawCssContent = loadedTemplate.css_content || '';
       refreshPreviewFromSource();
+      syncCanvasCssIntoFrame();
       statusMessage = `Saved ${loadedTemplate.label}.`;
     } catch (error) {
       loadError = error?.message || 'Unable to save template.';
@@ -464,6 +578,8 @@
     return () => {
       blocksResizeCleanup?.();
       blocksResizeCleanup = null;
+      window.clearTimeout(htmlSyncTimeout);
+      window.clearTimeout(cssSyncTimeout);
       editor?.destroy();
     };
   });
@@ -652,6 +768,7 @@
               class="form-control font-monospace"
               rows="22"
               bind:value={rawHtmlContent}
+              on:input={handleHtmlSourceInput}
               spellcheck="false"
               disabled={!loadedTemplate}
             ></textarea>
@@ -663,6 +780,7 @@
               class="form-control font-monospace"
               rows="22"
               bind:value={rawCssContent}
+              on:input={handleCssSourceInput}
               spellcheck="false"
               disabled={!loadedTemplate}
             ></textarea>

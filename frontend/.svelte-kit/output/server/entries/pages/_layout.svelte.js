@@ -1,7 +1,7 @@
 import { s as store_get, a as attr, e as escape_html, b as attr_class, c as slot, u as unsubscribe_stores } from "../../chunks/index2.js";
 import { p as page } from "../../chunks/stores.js";
 import { a as auth } from "../../chunks/auth.js";
-import { t as theme } from "../../chunks/api.js";
+import { t as theme } from "../../chunks/config.js";
 function _layout($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;

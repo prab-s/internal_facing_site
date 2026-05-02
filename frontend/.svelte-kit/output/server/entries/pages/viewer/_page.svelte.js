@@ -1,6 +1,7 @@
 import { s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
-import { t as theme, j as getProducts, g as getProduct, k as getProductChartData } from "../../../chunks/api.js";
+import { e as getProducts, f as getProduct, h as getProductChartData } from "../../../chunks/api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../chunks/fullChart.js";
+import { t as theme } from "../../../chunks/config.js";
 import { S as SeriesNamesBadgeList } from "../../../chunks/SeriesNamesBadgeList.js";
 function html(value) {
   var html2 = String(value ?? "");
@@ -27,6 +28,7 @@ function _page($$renderer, $$props) {
     let seriesOptions = [];
     let selectedProduct = null;
     let activeViewerTab = "product";
+    let selectedProductTypeId = "";
     let seriesTabSeriesId = "";
     let seriesTabOptions = [];
     let refreshingProductGraphId = null;
@@ -185,6 +187,7 @@ function _page($$renderer, $$props) {
       loadChartData();
     }
     seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
+    productTypes.find((productType) => Number(productType.id) === Number(selectedProductTypeId)) || null;
     head("1470g8z", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Viewer — Internal Facing</title>`);
@@ -201,7 +204,7 @@ function _page($$renderer, $$props) {
     {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <ul class="nav nav-tabs"><li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "product" })} type="button">Product</button></li> <li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "series" })} type="button">Series</button></li></ul> `);
+    $$renderer2.push(`<!--]--> <ul class="nav nav-tabs"><li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "product" })} type="button">Product</button></li> <li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "series" })} type="button">Series</button></li> <li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "product-type" })} type="button">Product Types</button></li></ul> `);
     {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="row g-3 align-items-start"><div class="col-12 col-xxl-4"><div class="vstack gap-3 viewer-sidebar"><div class="card shadow-sm"><div class="card-body"><div class="row g-3 align-items-end"><div class="col-12"><label class="form-label" for="viewer-search">Search</label> <input class="form-control" id="viewer-search"${attr("value", search)} placeholder="Model, series, mounting, discharge"/></div> <div class="col-12"><label class="form-label" for="viewer-product-type">Product type</label> `);

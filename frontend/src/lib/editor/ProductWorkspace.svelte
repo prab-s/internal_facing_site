@@ -1408,7 +1408,6 @@
   async function loadProducts() {
     try {
       products = await getProducts();
-      if (mode !== 'create' && products.length && !selectedProductId) selectedProductId = products[0].id;
     } catch (e) {
       error = e.message;
     }
@@ -1636,10 +1635,6 @@
     } finally {
       loadingExistingProduct = false;
     }
-  }
-
-  $: if (selectedProductId) {
-    loadProductData();
   }
 
   $: if (initialProductId !== '' && Number(initialProductId) !== Number(selectedProductId)) {
