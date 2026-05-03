@@ -99,10 +99,30 @@ wait_for_url() {
   done
 }
 
+compose_build_with_retry() {
+  local attempt=1
+  local max_attempts=2
+
+  while (( attempt <= max_attempts )); do
+    if ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" build --no-cache; then
+      return 0
+    fi
+
+    if (( attempt == max_attempts )); then
+      return 1
+    fi
+
+    echo
+    echo "Build attempt ${attempt} failed; retrying in 5 seconds..."
+    sleep 5
+    attempt=$((attempt + 1))
+  done
+}
+
 stop_legacy_public_service
 
 ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" down --remove-orphans || true
-${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" build --no-cache
+compose_build_with_retry
 podman image prune -f >/dev/null 2>&1 || true
 ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" up -d
 

@@ -4,8 +4,8 @@
 
 <div class="row g-4">
   <div class="col-lg-8">
-    <h1 class="h2">{{ series.name }}</h1>
-    <p class="text-muted">{{ series.product_type_label }}</p>
+    <p class="text-uppercase text-muted small fw-semibold mb-2">{{ series.product_type_label }}</p>
+    <h1 class="h2 mb-3">{{ series.name }}</h1>
 
     {% for section in series_sections %}
       <section class="content-section mb-4">
@@ -17,7 +17,7 @@
     {% endfor %}
 
     {% if series.series_graph_image_url %}
-      <div class="card my-4">
+      <div class="card my-4 section-card">
         <div class="card-header fw-semibold">Performance graph</div>
         <div class="card-body">
           <img class="img-fluid" src="{{ media_url(series.series_graph_image_url) }}" alt="{{ series.name }} graph">

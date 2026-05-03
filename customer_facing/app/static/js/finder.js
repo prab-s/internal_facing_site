@@ -11,7 +11,6 @@ const GRAPH_FILTER_GROUP_NAME = "__graph__";
 let advancedOpen = false;
 let filterMetadata = { groups: [] };
 let activeRefreshToken = 0;
-let initialRefreshComplete = false;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -485,6 +484,7 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
   const seriesId = resetDependentFilters ? "" : getSeriesId();
 
   if (!currentType) {
+    setLoadingState(false);
     filterMetadata = { series: [], groups: [] };
     renderFilterControls();
     await updateResults();
@@ -493,6 +493,7 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
 
   const requestToken = ++activeRefreshToken;
   const preservedState = resetDependentFilters ? {} : captureFilterState();
+  setLoadingState(true);
 
   try {
     const params = new URLSearchParams();
@@ -522,15 +523,14 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
     renderFilterControls();
     await updateResults();
   } finally {
-    if (!initialRefreshComplete) {
-      initialRefreshComplete = true;
+    if (requestToken === activeRefreshToken) {
       setLoadingState(false);
     }
   }
 }
 
 if (form) {
-  setLoadingState(true);
+  setLoadingState(false);
 
   if (productTypeSelect) {
     productTypeSelect.addEventListener("change", () => {
@@ -571,9 +571,6 @@ if (form) {
   });
 
   refreshMetadataAndResults().catch(() => {
-    if (!initialRefreshComplete) {
-      initialRefreshComplete = true;
-      setLoadingState(false);
-    }
+    setLoadingState(false);
   });
 }
