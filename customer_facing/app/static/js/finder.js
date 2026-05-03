@@ -4,12 +4,14 @@ const seriesFilterHost = document.querySelector("#series-filter");
 const mainFiltersHost = document.querySelector("#main-filters");
 const advancedFiltersHost = document.querySelector("#advanced-filters");
 const advancedToggle = document.querySelector("#advanced-toggle");
+const loadingState = document.querySelector("#finder-loading");
 const productTypeSelect = form?.querySelector('[name="product_type_key"]') || null;
 const GRAPH_FILTER_GROUP_NAME = "__graph__";
 
 let advancedOpen = false;
 let filterMetadata = { groups: [] };
 let activeRefreshToken = 0;
+let initialRefreshComplete = false;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -27,6 +29,18 @@ function cloneTemplate(id) {
   }
 
   return template.content.firstElementChild?.cloneNode(true) || null;
+}
+
+function setLoadingState(isLoading) {
+  if (loadingState) {
+    loadingState.classList.toggle("d-none", !isLoading);
+  }
+  if (form) {
+    form.setAttribute("aria-busy", isLoading ? "true" : "false");
+  }
+  if (results) {
+    results.setAttribute("aria-busy", isLoading ? "true" : "false");
+  }
 }
 
 function getSelectedProductType() {
@@ -507,10 +521,17 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
     filterMetadata = { series: [], groups: [] };
     renderFilterControls();
     await updateResults();
+  } finally {
+    if (!initialRefreshComplete) {
+      initialRefreshComplete = true;
+      setLoadingState(false);
+    }
   }
 }
 
 if (form) {
+  setLoadingState(true);
+
   if (productTypeSelect) {
     productTypeSelect.addEventListener("change", () => {
       advancedOpen = false;
@@ -549,5 +570,10 @@ if (form) {
     }, 250);
   });
 
-  refreshMetadataAndResults();
+  refreshMetadataAndResults().catch(() => {
+    if (!initialRefreshComplete) {
+      initialRefreshComplete = true;
+      setLoadingState(false);
+    }
+  });
 }

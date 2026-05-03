@@ -5,6 +5,7 @@
 <div class="mb-4">
   <h1 class="h2">{{ selected_type.label }}</h1>
   <p class="text-muted">Browse available series and products for this category.</p>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ products_url() }}">Back to products</a>
 </div>
 
 {% if selected_type.series_names %}

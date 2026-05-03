@@ -64,6 +64,9 @@ class CatalogueApi:
     async def series(self, series_id):
         return await self._get(f"/api/cms/series/{series_id}")
 
+    async def catalogue_index(self):
+        return await self._get("/api/cms/catalogue-index")
+
     def media_url(self, relative_url):
         if not relative_url:
             return None

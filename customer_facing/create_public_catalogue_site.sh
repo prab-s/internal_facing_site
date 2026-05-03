@@ -28,6 +28,8 @@ BACKEND_API_BASE_URL=https://p2.bitrep.nz
 PUBLIC_SITE_URL=http://0.0.0.0:8004
 SITE_NAME=Vent-tech catalogue
 REQUEST_TIMEOUT_SECONDS=10
+CATALOGUE_CACHE_PATH=/tmp/vent-tech-catalogue-cache.json
+CATALOGUE_REFRESH_INTERVAL_SECONDS=300
 EOF
 
 cat > "$ROOT_DIR/.env" <<'EOF'
@@ -35,6 +37,8 @@ BACKEND_API_BASE_URL=https://p2.bitrep.nz
 PUBLIC_SITE_URL=http://0.0.0.0:8004
 SITE_NAME=Vent-tech catalogue
 REQUEST_TIMEOUT_SECONDS=10
+CATALOGUE_CACHE_PATH=/tmp/vent-tech-catalogue-cache.json
+CATALOGUE_REFRESH_INTERVAL_SECONDS=300
 EOF
 
 cat > "$ROOT_DIR/app/config.py" <<'EOF'
@@ -49,6 +53,8 @@ class Settings:
     public_site_url = os.getenv("PUBLIC_SITE_URL", "http://localhost:8004").rstrip("/")
     site_name = os.getenv("SITE_NAME", "Vent-tech catalogue")
     request_timeout_seconds = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "10"))
+    catalogue_cache_path = os.getenv("CATALOGUE_CACHE_PATH", "/tmp/vent-tech-catalogue-cache.json")
+    catalogue_refresh_interval_seconds = float(os.getenv("CATALOGUE_REFRESH_INTERVAL_SECONDS", "300"))
 
 
 settings = Settings()

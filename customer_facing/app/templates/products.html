@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="/">Home</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Products</li>
+  </ol>
+</nav>
+
+<div class="mb-4">
+  <p class="text-uppercase text-muted small fw-semibold mb-2">Products</p>
+  <h1 class="h2 mb-2">Product Finder</h1>
+  <p class="text-muted mb-0">
+    Filter the catalogue by product type and key engineering parameters.
+  </p>
+</div>
+
+<div id="finder-loading" class="alert alert-light border d-flex align-items-center gap-2 mb-4" role="status" aria-live="polite">
+  <div class="spinner-border spinner-border-sm text-secondary" aria-hidden="true"></div>
+  <div>Loading product filters...</div>
+</div>
+
+<div class="row g-4">
+  <aside class="col-lg-3">
+    <form id="finder-form" class="card shadow-sm border-0">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Filter products</h2>
+
+        <label class="form-label">Product type</label>
+        <select class="form-select mb-3" name="product_type_key">
+          <option value="" selected>-- select option --</option>
+          {% for type in product_types %}
+            <option value="{{ type.key }}">{{ type.label }}</option>
+          {% endfor %}
+        </select>
+
+        <label class="form-label">Search</label>
+        <input class="form-control" name="search" placeholder="Model or keyword">
+
+        <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
+          <p class="text-muted small mb-0">Choose a product type to reveal the available engineering filters.</p>
+          <button
+            type="button"
+            id="advanced-toggle"
+            class="btn btn-sm btn-outline-secondary d-none"
+          >
+            Advanced
+          </button>
+        </div>
+
+        <div id="series-filter" class="d-none"></div>
+        <div id="main-filters" class="filter-stack"></div>
+        <div id="advanced-filters" class="filter-stack mt-4 d-none"></div>
+      </div>
+    </form>
+  </aside>
+
+  <section class="col-lg-9">
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Browse by product type</h2>
+        <div class="d-flex flex-wrap gap-2">
+          {% for type in product_types %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ product_type_url(type) }}">{{ type.label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div id="finder-results">
+      {% include "partials/product_results.html" %}
+    </div>
+  </section>
+</div>
+
+<template id="finder-select-field-template">
+  <div class="mb-3">
+    <label class="form-label"></label>
+    <select class="form-select finder-filter-input">
+      <option value="">-- select option --</option>
+    </select>
+  </div>
+</template>
+
+<template id="finder-series-field-template">
+  <div class="mb-3">
+    <label class="form-label">Series</label>
+    <select class="form-select finder-filter-series">
+      <option value="">-- select option --</option>
+    </select>
+  </div>
+</template>
+
+<template id="finder-range-field-template">
+  <div class="mb-3">
+    <label class="form-label"></label>
+    <div class="row g-2">
+      <div class="col-6">
+        <input class="form-control finder-filter-min" type="number" step="any" inputmode="decimal">
+      </div>
+      <div class="col-6">
+        <input class="form-control finder-filter-max" type="number" step="any" inputmode="decimal">
+      </div>
+    </div>
+  </div>
+</template>
+
+{% endblock %}
+
+{% block page_scripts %}
+  <script src="/static/js/finder.js?v=20260503"></script>
+{% endblock %}

@@ -13,6 +13,8 @@ BACKEND_API_BASE_URL=https://p2.bitrep.nz
 PUBLIC_SITE_URL=http://0.0.0.0:8004
 SITE_NAME=Vent-tech catalogue
 REQUEST_TIMEOUT_SECONDS=10
+CATALOGUE_CACHE_PATH=/tmp/vent-tech-catalogue-cache.json
+CATALOGUE_REFRESH_INTERVAL_SECONDS=300
 CMS_API_TOKEN=<same token used by the CMS consumer>
 ```
 
@@ -26,6 +28,7 @@ uvicorn app.main:app --reload --port 8004
 ```
 
 The public CMS endpoints in this repo require the CMS bearer token, so local runs need `CMS_API_TOKEN` set in `.env` or the shell environment.
+The customer-facing app now keeps a local read-only cache of catalogue/filter data and refreshes it on startup, periodically, and after backend write notifications.
 
 ---
 
@@ -67,7 +70,8 @@ http://localhost:8004
 
 | Route | Description |
 |------|------------|
-| `/` | Product finder |
+| `/` | Lightweight overview landing page |
+| `/products` | Product finder |
 | `/products/type/{product_type_key}` | Product type landing page |
 | `/series/{id}-{slug}` | Series detail page |
 | `/products/{id}-{slug}` | Product detail page |

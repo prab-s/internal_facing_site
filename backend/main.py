@@ -15,6 +15,8 @@ import tarfile
 import tempfile
 import threading
 import zipfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -96,6 +98,7 @@ from backend.schemas import (
     TemplateFileUpdateRequest,
     TemplateRegistryResponse,
     ProductTypePdfResponse,
+    CmsCatalogueIndexResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -123,6 +126,7 @@ AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() in
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "admin").strip()
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "").strip()
 CMS_API_TOKEN = os.getenv("CMS_API_TOKEN", "").strip()
+PUBLIC_CATALOGUE_SITE_URL = os.getenv("PUBLIC_CATALOGUE_SITE_URL", "").strip().rstrip("/")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 POSTGRES_DB = os.getenv("POSTGRES_DB", "").strip()
 POSTGRES_USER = os.getenv("POSTGRES_USER", "").strip()
@@ -1762,6 +1766,140 @@ def graph_filter_values_for_products(products: list[Product]) -> dict[str, list[
     }
 
 
+def build_cms_catalogue_index_parameter_group(group: ProductParameterGroup) -> dict:
+    return {
+        "group_name": group.group_name,
+        "sort_order": group.sort_order,
+        "parameters": [
+            {
+                "parameter_name": parameter.parameter_name,
+                "sort_order": parameter.sort_order,
+                "value_string": parameter.value_string,
+                "value_number": parameter.value_number,
+                "unit": parameter.unit,
+            }
+            for parameter in group.parameters or []
+        ],
+    }
+
+
+def build_cms_catalogue_index_product(product: Product) -> dict:
+    return {
+        "id": product.id,
+        "model": product.model,
+        "product_type_key": product.product_type_key,
+        "product_type_label": product.product_type_label,
+        "series_id": product.series_id,
+        "series_name": product.series_name_value,
+        "primary_product_image_url": product.primary_product_image_url,
+        "product_pdf_url": product.product_pdf_url,
+        "product_printed_pdf_url": product.product_printed_pdf_url,
+        "product_online_pdf_url": product.product_online_pdf_url,
+        "parameter_groups": [
+            build_cms_catalogue_index_parameter_group(group)
+            for group in sorted(product.parameter_groups or [], key=lambda item: (item.sort_order, item.id))
+        ],
+        "rpm_lines": [
+            {
+                "rpm": line.rpm,
+                "band_color": line.band_color,
+                "sort_order": index,
+                "points": [
+                    {
+                        "airflow": point.airflow,
+                        "pressure": point.pressure,
+                        "sort_order": point_index,
+                    }
+                    for point_index, point in enumerate(sorted(line.points or [], key=lambda item: item.id))
+                ],
+            }
+            for index, line in enumerate(sorted(product.rpm_lines or [], key=lambda item: (item.rpm, item.id)))
+        ],
+        "efficiency_points": [
+            {
+                "airflow": point.airflow,
+                "sort_order": index,
+                "efficiency_centre": point.efficiency_centre,
+                "efficiency_lower_end": point.efficiency_lower_end,
+                "efficiency_higher_end": point.efficiency_higher_end,
+                "permissible_use": point.permissible_use,
+            }
+            for index, point in enumerate(sorted(product.efficiency_points or [], key=lambda item: (item.airflow, item.id)))
+        ],
+    }
+
+
+def build_cms_catalogue_index_series(series: Series) -> dict:
+    return {
+        "id": series.id,
+        "name": series.name,
+        "product_type_key": series.product_type_key,
+        "product_type_label": series.product_type_label,
+        "product_count": series.product_count,
+        "series_tab_color": series.series_tab_color,
+    }
+
+
+def build_cms_catalogue_index(db: Session) -> dict:
+    product_types = (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.series),
+            selectinload(ProductType.parameter_group_presets).selectinload(
+                ProductTypeParameterGroupPreset.parameter_presets
+            ),
+            selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
+            selectinload(ProductType.efficiency_point_presets),
+        )
+        .order_by(ProductType.label)
+        .all()
+    )
+    series = (
+        db.query(Series)
+        .options(joinedload(Series.product_type), selectinload(Series.products))
+        .order_by(Series.name)
+        .all()
+    )
+    products = (
+        db.query(Product)
+        .options(
+            joinedload(Product.product_type),
+            joinedload(Product.series),
+            selectinload(Product.product_images),
+            selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+            selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+            selectinload(Product.efficiency_points),
+        )
+        .order_by(Product.model)
+        .all()
+    )
+    return {
+        "product_types": product_types,
+        "series": [build_cms_catalogue_index_series(item) for item in series],
+        "products": [build_cms_catalogue_index_product(item) for item in products],
+    }
+
+
+def notify_public_catalogue_cache_refresh():
+    if not PUBLIC_CATALOGUE_SITE_URL or not CMS_API_TOKEN:
+        return
+
+    def _post_refresh():
+        request = urllib.request.Request(
+            f"{PUBLIC_CATALOGUE_SITE_URL}/api/cache/refresh",
+            data=b"",
+            method="POST",
+            headers={"Authorization": f"Bearer {CMS_API_TOKEN}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=5):
+                pass
+        except (urllib.error.URLError, ValueError) as exc:
+            logger.warning("Catalogue cache refresh notification failed: %s", exc)
+
+    threading.Thread(target=_post_refresh, daemon=True).start()
+
+
 def value_in_window(value: float, minimum: float | None, maximum: float | None) -> bool:
     if minimum is not None and value < minimum:
         return False
@@ -2578,6 +2716,7 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
     db.add(product_type)
     db.commit()
     db.refresh(product_type)
+    notify_public_catalogue_cache_refresh()
     return product_type
 
 
@@ -2648,6 +2787,7 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
 
     db.commit()
     db.refresh(product_type)
+    notify_public_catalogue_cache_refresh()
     return product_type
 
 
@@ -2689,6 +2829,7 @@ def update_product_type_parameter_group_presets(
     )
     db.commit()
     db.refresh(product_type)
+    notify_public_catalogue_cache_refresh()
     return product_type
 
 
@@ -3023,6 +3164,7 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
     ensure_series_tab_color(db, series)
     db.commit()
     db.refresh(series)
+    notify_public_catalogue_cache_refresh()
     return series
 
 
@@ -3072,6 +3214,7 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
     ensure_series_tab_color(db, series)
     db.commit()
     db.refresh(series)
+    notify_public_catalogue_cache_refresh()
     return series
 
 
@@ -3084,6 +3227,7 @@ def delete_series(series_id: int, db: Session = Depends(get_db)):
         sync_product_series(product, None)
     db.delete(series)
     db.commit()
+    notify_public_catalogue_cache_refresh()
     return {"deleted": series_id}
 
 
@@ -3340,6 +3484,18 @@ def get_cms_product_graph_values(
     )
 
 
+@app.get(
+    "/api/cms/catalogue-index",
+    response_model=CmsCatalogueIndexResponse,
+    dependencies=[Depends(require_cms_token)],
+    tags=["Customer CMS"],
+    summary="Get lightweight customer-facing catalogue index",
+    description="Returns the lightweight catalogue data used by the public site to populate dropdowns and filter metadata without loading product detail payloads.",
+)
+def get_cms_catalogue_index(db: Session = Depends(get_db)):
+    return build_cms_catalogue_index(db)
+
+
 @app.get("/api/cms/series", response_model=list[CmsSeriesResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing series", description="Read-only series feed for the WordPress customer-facing site. Supports product type filtering.")
 def list_cms_series(
     db: Session = Depends(get_db),
@@ -3494,6 +3650,7 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     sync_graph_image(product, created_rpm_lines or list(product.rpm_lines), list(product.efficiency_points))
     db.commit()
     db.refresh(product)
+    notify_public_catalogue_cache_refresh()
     return product
 
 
@@ -3550,6 +3707,7 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
     sync_product_image_files(product)
     db.commit()
     db.refresh(product)
+    notify_public_catalogue_cache_refresh()
     return product
 
 
@@ -3566,6 +3724,7 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     delete_product_assets(product)
     db.delete(product)
     db.commit()
+    notify_public_catalogue_cache_refresh()
     return {"deleted": product_id}
 
 
@@ -3596,6 +3755,7 @@ def create_rpm_line(product_id: int, body: RpmLineCreate, db: Session = Depends(
     refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(line)
+    notify_public_catalogue_cache_refresh()
     return line
 
 
@@ -3624,6 +3784,7 @@ def update_rpm_line(product_id: int, line_id: int, body: RpmLineUpdate, db: Sess
     refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(line)
+    notify_public_catalogue_cache_refresh()
     return line
 
 
@@ -3638,6 +3799,7 @@ def delete_rpm_line(product_id: int, line_id: int, db: Session = Depends(get_db)
     db.commit()
     refresh_graph_for_product(db, product)
     db.commit()
+    notify_public_catalogue_cache_refresh()
     return {"deleted": line_id}
 
 
@@ -3674,6 +3836,7 @@ def create_rpm_point(
         refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
+    notify_public_catalogue_cache_refresh()
     return point
 
 
@@ -3700,6 +3863,7 @@ def update_rpm_point(
         refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
+    notify_public_catalogue_cache_refresh()
     return point
 
 
@@ -3720,6 +3884,7 @@ def delete_rpm_point(
     if regenerate_graph:
         refresh_graph_for_product(db, product)
         db.commit()
+    notify_public_catalogue_cache_refresh()
     return {"deleted": point_id}
 
 
@@ -3751,6 +3916,7 @@ def create_efficiency_point(
         refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
+    notify_public_catalogue_cache_refresh()
     return point
 
 
@@ -3794,6 +3960,7 @@ def delete_efficiency_point(
     if regenerate_graph:
         refresh_graph_for_product(db, product)
         db.commit()
+    notify_public_catalogue_cache_refresh()
     return {"deleted": point_id}
 
 

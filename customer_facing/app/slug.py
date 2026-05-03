@@ -17,3 +17,7 @@ def series_url(series):
 
 def product_type_url(product_type):
     return f"/products/type/{product_type['key']}"
+
+
+def products_url():
+    return "/products"

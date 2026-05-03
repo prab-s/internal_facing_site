@@ -459,6 +459,89 @@ class CmsProductGraphValuesResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CmsCatalogueIndexParameterResponse(BaseModel):
+    parameter_name: str
+    sort_order: int
+    value_string: Optional[str] = None
+    value_number: Optional[float] = None
+    unit: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsCatalogueIndexParameterGroupResponse(BaseModel):
+    group_name: str
+    sort_order: int
+    parameters: list[CmsCatalogueIndexParameterResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsCatalogueIndexRpmPointResponse(BaseModel):
+    airflow: float
+    pressure: float
+    sort_order: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsCatalogueIndexRpmLineResponse(BaseModel):
+    rpm: float
+    band_color: Optional[str] = None
+    sort_order: int
+    points: list[CmsCatalogueIndexRpmPointResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsCatalogueIndexEfficiencyPointResponse(BaseModel):
+    airflow: float
+    sort_order: int
+    efficiency_centre: Optional[float] = None
+    efficiency_lower_end: Optional[float] = None
+    efficiency_higher_end: Optional[float] = None
+    permissible_use: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsCatalogueIndexProductResponse(BaseModel):
+    id: int
+    model: str
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
+    primary_product_image_url: Optional[str] = None
+    product_pdf_url: Optional[str] = None
+    product_printed_pdf_url: Optional[str] = None
+    product_online_pdf_url: Optional[str] = None
+    parameter_groups: list[CmsCatalogueIndexParameterGroupResponse] = Field(default_factory=list)
+    rpm_lines: list[CmsCatalogueIndexRpmLineResponse] = Field(default_factory=list)
+    efficiency_points: list[CmsCatalogueIndexEfficiencyPointResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsCatalogueIndexSeriesResponse(BaseModel):
+    id: int
+    name: str
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    product_count: int = 0
+    series_tab_color: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CmsCatalogueIndexResponse(BaseModel):
+    product_types: list[ProductTypeResponse] = Field(default_factory=list)
+    series: list[CmsCatalogueIndexSeriesResponse] = Field(default_factory=list)
+    products: list[CmsCatalogueIndexProductResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProductImageResponse(BaseModel):
     id: int
     product_id: int = Field(

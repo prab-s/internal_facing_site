@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
+from app.catalogue_cache import catalogue_cache
 from app.config import settings
 from app.routes import pages, finder
-from app.api_client import api, ApiClientError
+from app.api_client import ApiClientError
 from app.view_templates import TEMPLATE_DIR, templates
 
 app = FastAPI(
@@ -19,14 +20,44 @@ app.include_router(pages.router)
 app.include_router(finder.router)
 
 
+@app.middleware("http")
+async def add_build_marker_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-App-Build"] = settings.app_build_marker
+    return response
+
+
+@app.on_event("startup")
+async def startup_catalogue_cache():
+    app.state.catalogue_cache = catalogue_cache
+    await catalogue_cache.initialize()
+
+
+@app.on_event("shutdown")
+async def shutdown_catalogue_cache():
+    await catalogue_cache.shutdown()
+
+
+@app.post("/api/cache/refresh")
+async def refresh_catalogue_cache(request: Request):
+    provided_token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    if not settings.cms_api_token or provided_token != settings.cms_api_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    await catalogue_cache.refresh_best_effort()
+    snapshot = catalogue_cache.snapshot()
+    return {
+        "refreshed": True,
+        "fetched_at": snapshot.fetched_at,
+        "product_types": len(snapshot.product_types),
+        "series": len(snapshot.series),
+        "products": len(snapshot.products),
+    }
+
+
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
-    product_types = []
-
-    try:
-        product_types = await api.product_types()
-    except Exception:
-        pass
+    product_types = request.app.state.catalogue_cache.product_types() if hasattr(request.app.state, "catalogue_cache") else []
 
     return templates.TemplateResponse(
         request,
@@ -46,12 +77,7 @@ async def not_found(request: Request, exc):
 
 @app.exception_handler(ApiClientError)
 async def upstream_error(request: Request, exc: ApiClientError):
-    product_types = []
-
-    try:
-        product_types = await api.product_types()
-    except Exception:
-        pass
+    product_types = request.app.state.catalogue_cache.product_types() if hasattr(request.app.state, "catalogue_cache") else []
 
     return templates.TemplateResponse(
         request,
