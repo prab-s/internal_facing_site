@@ -4,10 +4,9 @@ FROM docker.io/library/node:25-bookworm-slim AS frontend-builder
 WORKDIR /app/frontend
 
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm ci --prefer-offline --no-audit --no-fund
 
 COPY frontend/ ./
-RUN npm install -D @sveltejs/adapter-static
 RUN npm run build
 
 

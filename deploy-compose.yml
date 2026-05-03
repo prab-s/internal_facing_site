@@ -34,6 +34,11 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     environment:
       DATABASE_URL: ${DATABASE_URL}
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
@@ -41,7 +46,7 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE}
       CMS_API_TOKEN: ${CMS_API_TOKEN}
-      PUBLIC_CATALOGUE_SITE_URL: ${PUBLIC_CATALOGUE_SITE_URL:-http://customer_facing:8004}
+      PUBLIC_CATALOGUE_SITE_URL: ${PUBLIC_CATALOGUE_SITE_URL:-https://p1.bitrep.nz}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
@@ -54,11 +59,14 @@ services:
     image: vent-tech-catalogue
     container_name: vent-tech-catalogue
     restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
     ports:
       - "8004:8004"
     environment:
-      BACKEND_API_BASE_URL: ${PUBLIC_CATALOGUE_BACKEND_API_BASE_URL:-https://p2.bitrep.nz}
-      PUBLIC_SITE_URL: ${PUBLIC_CATALOGUE_SITE_URL:-http://localhost:8004}
+      BACKEND_API_BASE_URL: ${PUBLIC_CATALOGUE_BACKEND_API_BASE_URL:-http://app:8000}
+      PUBLIC_SITE_URL: ${PUBLIC_CATALOGUE_SITE_URL:-https://p1.bitrep.nz}
       SITE_NAME: ${PUBLIC_CATALOGUE_SITE_NAME:-Vent-tech catalogue}
       REQUEST_TIMEOUT_SECONDS: ${PUBLIC_CATALOGUE_REQUEST_TIMEOUT_SECONDS:-10}
       CATALOGUE_CACHE_PATH: ${PUBLIC_CATALOGUE_CACHE_PATH:-/tmp/vent-tech-catalogue-cache.json}

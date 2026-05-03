@@ -38,10 +38,36 @@ class CatalogueCache:
     async def initialize(self):
         self._load_from_disk()
         try:
-            await self.refresh()
+            await self._refresh_with_startup_retry()
         except Exception:
             logger.warning("Using the last known catalogue snapshot after refresh failure.")
         self._start_background_refresh()
+
+    async def _refresh_with_startup_retry(self):
+        deadline = time.monotonic() + settings.catalogue_startup_max_wait_seconds
+        attempt = 1
+
+        while True:
+            try:
+                logger.debug(
+                    "catalogue cache startup refresh attempt %d against backend %s",
+                    attempt,
+                    settings.backend_api_base_url,
+                )
+                await self.refresh()
+                return
+            except Exception as exc:
+                if time.monotonic() >= deadline:
+                    raise
+
+                logger.warning(
+                    "Catalogue cache startup refresh attempt %d failed: %s; retrying in %.1fs",
+                    attempt,
+                    exc,
+                    settings.catalogue_startup_retry_delay_seconds,
+                )
+                await asyncio.sleep(settings.catalogue_startup_retry_delay_seconds)
+                attempt += 1
 
     def _load_from_disk(self):
         if not self.cache_path or not self.cache_path.is_file():
@@ -75,6 +101,7 @@ class CatalogueCache:
 
     async def refresh(self):
         start = time.perf_counter()
+        logger.debug("catalogue cache refresh starting against backend %s", settings.backend_api_base_url)
         try:
             payload = await api.catalogue_index()
         except (ApiClientError, Exception) as exc:
@@ -235,6 +262,13 @@ class CatalogueCache:
             len(metadata.get("series") or []),
             len(metadata.get("groups") or []),
             (time.perf_counter() - start) * 1000.0,
+        )
+        logger.debug(
+            "finder metadata inputs type=%s search=%s series=%s filters=%s",
+            product_type_key or "*",
+            search or "*",
+            series_id or "*",
+            parameter_filters or "[]",
         )
         return metadata
 

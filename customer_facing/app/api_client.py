@@ -1,7 +1,11 @@
 import json
+import logging
 from urllib.parse import urlparse
 import httpx
 from app.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class ApiClientError(Exception):
@@ -24,6 +28,8 @@ class CatalogueApi:
         if self.cms_api_token:
             headers["Authorization"] = f"Bearer {self.cms_api_token}"
 
+        logger.debug("catalogue api request url=%s params=%s", url, params or {})
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.get(url, params=params, headers=headers)
@@ -34,6 +40,7 @@ class CatalogueApi:
             except httpx.HTTPError as exc:
                 raise ApiClientError(502, "Catalogue API is unavailable right now.") from exc
 
+            logger.debug("catalogue api response url=%s status=%s bytes=%s", url, response.status_code, len(response.content))
             return response.json()
 
     async def product_types(self):

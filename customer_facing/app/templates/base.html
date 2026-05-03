@@ -18,6 +18,17 @@
       }
     })();
   </script>
+  <script>
+    window.__CUSTOMER_FACING_CONFIG__ = {{ {
+      "siteName": site_name,
+      "buildMarker": app_build_marker,
+      "finderDebug": finder_debug,
+      "backendBaseUrl": backend_api_base_url
+    } | tojson }};
+    if (window.__CUSTOMER_FACING_CONFIG__.finderDebug) {
+      console.info("[customer-facing] debug enabled", window.__CUSTOMER_FACING_CONFIG__);
+    }
+  </script>
   <link rel="icon" type="image/png" href="/static/favicon.png">
 
   <link

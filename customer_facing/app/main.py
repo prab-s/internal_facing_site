@@ -1,4 +1,5 @@
 import httpx
+import logging
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +9,26 @@ from app.config import settings
 from app.routes import pages, finder
 from app.api_client import ApiClientError
 from app.view_templates import TEMPLATE_DIR, templates
+
+root_logger = logging.getLogger()
+root_logger.setLevel(getattr(logging, settings.log_level, logging.INFO))
+root_logger.info(
+    "Customer-facing app booting build=%s backend_api_base_url=%s public_site_url=%s log_level=%s finder_debug=%s",
+    settings.app_build_marker,
+    settings.backend_api_base_url,
+    settings.public_site_url,
+    settings.log_level,
+    settings.finder_debug,
+)
+print(
+    "Customer-facing app booting "
+    f"build={settings.app_build_marker} "
+    f"backend_api_base_url={settings.backend_api_base_url} "
+    f"public_site_url={settings.public_site_url} "
+    f"log_level={settings.log_level} "
+    f"finder_debug={settings.finder_debug}",
+    flush=True,
+)
 
 app = FastAPI(
     title=settings.site_name,

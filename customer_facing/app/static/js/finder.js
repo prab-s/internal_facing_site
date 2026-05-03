@@ -7,6 +7,8 @@ const advancedToggle = document.querySelector("#advanced-toggle");
 const loadingState = document.querySelector("#finder-loading");
 const productTypeSelect = form?.querySelector('[name="product_type_key"]') || null;
 const GRAPH_FILTER_GROUP_NAME = "__graph__";
+const customerFacingConfig = window.__CUSTOMER_FACING_CONFIG__ || {};
+const FINDER_DEBUG = Boolean(customerFacingConfig.finderDebug);
 
 let advancedOpen = false;
 let filterMetadata = { groups: [] };
@@ -19,6 +21,15 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function debugLog(message, details = null) {
+  if (!FINDER_DEBUG || !window.console) return;
+  if (details === null || details === undefined) {
+    console.debug(`[finder] ${message}`);
+    return;
+  }
+  console.debug(`[finder] ${message}`, details);
 }
 
 function cloneTemplate(id) {
@@ -342,6 +353,13 @@ function renderFilterControls() {
   if (!seriesFilterHost || !mainFiltersHost || !advancedFiltersHost || !advancedToggle) return;
 
   const { productType, mainGroup, graphGroup, advancedGroups, series } = getSelectedProductTypeData();
+  debugLog("render filters", {
+    productType,
+    seriesCount: series.length,
+    mainFilters: mainGroup?.parameters?.length || 0,
+    graphFilters: graphGroup?.parameters?.length || 0,
+    advancedGroups: advancedGroups.length,
+  });
 
   seriesFilterHost.innerHTML = "";
   mainFiltersHost.innerHTML = "";
@@ -387,6 +405,15 @@ function renderFilterControls() {
     advancedOpen = false;
     advancedFiltersHost.classList.add("d-none");
   }
+}
+
+function logFinderContext() {
+  debugLog("boot", {
+    pageUrl: window.location.href,
+    backendBaseUrl: customerFacingConfig.backendBaseUrl || "",
+    buildMarker: customerFacingConfig.buildMarker || "",
+    siteName: customerFacingConfig.siteName || "",
+  });
 }
 
 function serializeParameterFilters() {
@@ -452,9 +479,18 @@ async function updateResults() {
   }
 
   const previousHtml = results.innerHTML;
+  const requestUrl = `/finder/results?${params.toString()}`;
+
+  debugLog("results request", {
+    requestUrl,
+    productType,
+    search,
+    seriesId,
+    parameterFilters,
+  });
 
   try {
-    const response = await fetch(`/finder/results?${params.toString()}`);
+    const response = await fetch(requestUrl);
     const html = await response.text();
 
     if (!response.ok) {
@@ -462,7 +498,17 @@ async function updateResults() {
     }
 
     results.innerHTML = html;
+    debugLog("results response", {
+      requestUrl,
+      ok: response.ok,
+      status: response.status,
+      htmlLength: html.length,
+    });
   } catch (_error) {
+    debugLog("results request failed", {
+      requestUrl,
+      error: String(_error?.message || _error),
+    });
     results.innerHTML = `
       <div class="alert alert-warning border">
         The finder could not refresh right now. Please try again.
@@ -482,6 +528,7 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
   const currentType = productTypeSelect?.value || "";
   const search = form.querySelector('[name="search"]')?.value || "";
   const seriesId = resetDependentFilters ? "" : getSeriesId();
+  let requestUrl = "";
 
   if (!currentType) {
     setLoadingState(false);
@@ -505,7 +552,17 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
       params.set("parameter_filters", JSON.stringify(parameterFilters));
     }
 
-    const response = await fetch(`/finder/metadata?${params.toString()}`);
+    requestUrl = `/finder/metadata?${params.toString()}`;
+    debugLog("metadata request", {
+      requestUrl,
+      productType: currentType,
+      search,
+      seriesId,
+      parameterFilters,
+      backendBaseUrl: customerFacingConfig.backendBaseUrl || "",
+    });
+
+    const response = await fetch(requestUrl);
     if (!response.ok) {
       throw new Error("Metadata request failed");
     }
@@ -514,10 +571,19 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
     if (requestToken !== activeRefreshToken) return;
 
     filterMetadata = metadata || { series: [], groups: [] };
+    debugLog("metadata response", {
+      requestUrl,
+      seriesCount: filterMetadata.series?.length || 0,
+      groupCount: filterMetadata.groups?.length || 0,
+    });
     renderFilterControls();
     restoreFilterState(preservedState);
     await updateResults();
   } catch (_error) {
+    debugLog("metadata request failed", {
+      requestUrl,
+      error: String(_error?.message || _error),
+    });
     if (requestToken !== activeRefreshToken) return;
     filterMetadata = { series: [], groups: [] };
     renderFilterControls();
@@ -531,10 +597,14 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
 
 if (form) {
   setLoadingState(false);
+  logFinderContext();
 
   if (productTypeSelect) {
     productTypeSelect.addEventListener("change", () => {
       advancedOpen = false;
+      debugLog("product type changed", {
+        productType: productTypeSelect.value || "",
+      });
       refreshMetadataAndResults({ resetDependentFilters: true });
     });
   }
@@ -542,6 +612,9 @@ if (form) {
   if (advancedToggle) {
     advancedToggle.addEventListener("click", () => {
       advancedOpen = !advancedOpen;
+      debugLog("advanced filters toggled", {
+        advancedOpen,
+      });
       renderFilterControls();
       refreshMetadataAndResults();
     });
@@ -551,6 +624,9 @@ if (form) {
     if (event.target === productTypeSelect) {
       return;
     }
+    debugLog("form change", {
+      target: event.target?.getAttribute?.("name") || event.target?.className || event.target?.tagName || "unknown",
+    });
     refreshMetadataAndResults();
   });
   form.addEventListener("input", (event) => {

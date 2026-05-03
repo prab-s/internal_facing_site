@@ -17,3 +17,5 @@ templates.env.globals["products_url"] = products_url
 templates.env.globals["media_url"] = api.media_url
 templates.env.globals["site_name"] = settings.site_name
 templates.env.globals["app_build_marker"] = settings.app_build_marker
+templates.env.globals["finder_debug"] = settings.finder_debug
+templates.env.globals["backend_api_base_url"] = settings.backend_api_base_url

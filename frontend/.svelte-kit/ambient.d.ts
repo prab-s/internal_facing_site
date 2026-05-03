@@ -40,6 +40,7 @@
 declare module '$env/static/private' {
 	export const LESSOPEN: string;
 	export const DATABASE_URL: string;
+	export const LOG_LEVEL: string;
 	export const USER: string;
 	export const SSH_CLIENT: string;
 	export const LC_TIME: string;
@@ -81,6 +82,7 @@ declare module '$env/static/private' {
 	export const LC_TELEPHONE: string;
 	export const LS_COLORS: string;
 	export const CMS_API_TOKEN: string;
+	export const FINDER_DEBUG: string;
 	export const npm_lifecycle_script: string;
 	export const SHELL: string;
 	export const LC_NAME: string;
@@ -194,6 +196,7 @@ declare module '$env/dynamic/private' {
 	export const env: {
 		LESSOPEN: string;
 		DATABASE_URL: string;
+		LOG_LEVEL: string;
 		USER: string;
 		SSH_CLIENT: string;
 		LC_TIME: string;
@@ -235,6 +238,7 @@ declare module '$env/dynamic/private' {
 		LC_TELEPHONE: string;
 		LS_COLORS: string;
 		CMS_API_TOKEN: string;
+		FINDER_DEBUG: string;
 		npm_lifecycle_script: string;
 		SHELL: string;
 		LC_NAME: string;

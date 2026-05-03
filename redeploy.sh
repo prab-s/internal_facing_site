@@ -121,10 +121,11 @@ compose_build_with_retry() {
 
 stop_legacy_public_service
 
+podman rm -f vent-tech-catalogue fan-graphs-app 2>/dev/null || true
 ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" down --remove-orphans || true
 compose_build_with_retry
 podman image prune -f >/dev/null 2>&1 || true
-${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" up -d
+${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" up -d --force-recreate
 
 wait_for_url "${HEALTH_URL}" "Internal Facing API" "${HEALTH_TIMEOUT_SECONDS}"
 wait_for_url "${PUBLIC_HEALTH_URL}" "Customer-facing site" "${HEALTH_TIMEOUT_SECONDS}"
