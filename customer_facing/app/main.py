@@ -1,4 +1,6 @@
+import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from app.catalogue_cache import catalogue_cache
@@ -53,6 +55,30 @@ async def refresh_catalogue_cache(request: Request):
         "series": len(snapshot.series),
         "products": len(snapshot.products),
     }
+
+
+@app.get("/api/cms/media/{media_path:path}")
+async def proxy_cms_media(media_path: str, request: Request):
+    upstream_url = f"{settings.backend_api_base_url}/api/cms/media/{media_path}"
+    if request.url.query:
+        upstream_url = f"{upstream_url}?{request.url.query}"
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+            upstream = await client.get(upstream_url)
+            upstream.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text.strip() or f"Media request failed with status {exc.response.status_code}."
+        raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Media is unavailable right now.") from exc
+
+    passthrough_headers = {}
+    for header_name in ("content-type", "cache-control", "etag", "last-modified", "content-disposition"):
+        if header_name in upstream.headers:
+            passthrough_headers[header_name] = upstream.headers[header_name]
+
+    return Response(content=upstream.content, media_type=upstream.headers.get("content-type"), headers=passthrough_headers)
 
 
 @app.exception_handler(404)

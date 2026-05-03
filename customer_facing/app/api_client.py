@@ -1,4 +1,5 @@
 import json
+from urllib.parse import urlparse
 import httpx
 from app.config import settings
 
@@ -72,9 +73,22 @@ class CatalogueApi:
             return None
 
         if relative_url.startswith("http://") or relative_url.startswith("https://"):
-            return relative_url
+            parsed = urlparse(relative_url)
+            backend_base = urlparse(self.base_url)
+            if (
+                parsed.scheme == backend_base.scheme
+                and parsed.netloc == backend_base.netloc
+            ):
+                relative_url = parsed.path
+                if parsed.query:
+                    relative_url = f"{relative_url}?{parsed.query}"
+            else:
+                return relative_url
 
-        return f"{self.base_url}{relative_url}"
+        if not relative_url.startswith("/"):
+            return f"/{relative_url}"
+
+        return relative_url
 
 
 api = CatalogueApi()

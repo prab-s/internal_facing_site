@@ -80,6 +80,7 @@ declare module '$env/static/private' {
 	export const LANG: string;
 	export const LC_TELEPHONE: string;
 	export const LS_COLORS: string;
+	export const CMS_API_TOKEN: string;
 	export const npm_lifecycle_script: string;
 	export const SHELL: string;
 	export const LC_NAME: string;
@@ -139,7 +140,9 @@ declare module '$env/static/private' {
  * The above values will be the same _even if_ different values for `ENVIRONMENT` or `PUBLIC_BASE_URL` are set at runtime, as they are statically replaced in your code with their build time values.
  */
 declare module '$env/static/public' {
-	
+	export const PUBLIC_CATALOGUE_BACKEND_API_BASE_URL: string;
+	export const PUBLIC_CATALOGUE_SITE_URL: string;
+	export const PUBLIC_CATALOGUE_SITE_NAME: string;
 }
 
 /**
@@ -231,6 +234,7 @@ declare module '$env/dynamic/private' {
 		LANG: string;
 		LC_TELEPHONE: string;
 		LS_COLORS: string;
+		CMS_API_TOKEN: string;
 		npm_lifecycle_script: string;
 		SHELL: string;
 		LC_NAME: string;
@@ -309,6 +313,9 @@ declare module '$env/dynamic/private' {
  */
 declare module '$env/dynamic/public' {
 	export const env: {
+		PUBLIC_CATALOGUE_BACKEND_API_BASE_URL: string;
+		PUBLIC_CATALOGUE_SITE_URL: string;
+		PUBLIC_CATALOGUE_SITE_NAME: string;
 		[key: `PUBLIC_${string}`]: string | undefined;
 	}
 }

@@ -74,7 +74,7 @@ body {
 }
 
 .navbar {
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.98), rgba(19, 37, 58, 0.96));
+  background: linear-gradient(90deg, rgba(180, 23, 15, 0.98), rgba(120, 37, 19, 0.96));
   backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(15, 118, 110, 0.38);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
@@ -307,6 +307,12 @@ body {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 246, 250, 0.96)),
     linear-gradient(180deg, rgba(15, 118, 110, 0.04), transparent);
+}
+
+.finder-empty-hint {
+  background:
+    linear-gradient(90deg, rgba(15, 118, 110, 0.1), rgba(49, 78, 110, 0.06) 48%, rgba(255, 255, 255, 0.92)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(244, 247, 250, 0.94));
 }
 
 .table th {

@@ -12,6 +12,14 @@ BASE_ENV_FILE="${BASE_ENV_FILE:-}"
 ENV_FILE="${ENV_FILE:-.env.sit}"
 SIT_BACKEND_PID_FILE="${SIT_BACKEND_PID_FILE:-.run_sit_backend.pid}"
 SIT_FRONTEND_PID_FILE="${SIT_FRONTEND_PID_FILE:-.run_sit_frontend.pid}"
+SIT_PUBLIC_PID_FILE="${SIT_PUBLIC_PID_FILE:-.run_sit_public.pid}"
+SIT_BACKEND_URL="${SIT_BACKEND_URL:-http://127.0.0.1:8002}"
+SIT_FRONTEND_URL="${SIT_FRONTEND_URL:-http://127.0.0.1:8001}"
+SIT_PUBLIC_URL="${SIT_PUBLIC_URL:-http://127.0.0.1:8005}"
+SIT_PUBLIC_SITE_NAME="${SIT_PUBLIC_SITE_NAME:-Vent-tech catalogue (SIT)}"
+export PUBLIC_CATALOGUE_SITE_URL="${PUBLIC_CATALOGUE_SITE_URL:-$SIT_PUBLIC_URL}"
+export PUBLIC_CATALOGUE_BACKEND_API_BASE_URL="${PUBLIC_CATALOGUE_BACKEND_API_BASE_URL:-$SIT_BACKEND_URL}"
+export PUBLIC_CATALOGUE_SITE_NAME="${PUBLIC_CATALOGUE_SITE_NAME:-$SIT_PUBLIC_SITE_NAME}"
 
 if [[ -n "$BASE_ENV_FILE" && -f "$BASE_ENV_FILE" ]]; then
   set -a
@@ -27,6 +35,15 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
+if [[ -z "${CMS_API_TOKEN:-}" ]]; then
+  echo
+  echo "SIT startup aborted:"
+  echo "  CMS_API_TOKEN is required for the customer-facing site to read catalogue data from the backend on port 8002."
+  echo "  Add CMS_API_TOKEN to .env.sit, then rerun ./run_sit.sh."
+  echo
+  exit 1
+fi
+
 cleanup() {
   echo
   echo "Stopping SIT services..."
@@ -36,7 +53,11 @@ cleanup() {
   if [[ -n "${FRONTEND_PID:-}" ]]; then
     kill "$FRONTEND_PID" 2>/dev/null || true
   fi
+  if [[ -n "${PUBLIC_PID:-}" ]]; then
+    kill "$PUBLIC_PID" 2>/dev/null || true
+  fi
   rm -f "$SIT_BACKEND_PID_FILE" "$SIT_FRONTEND_PID_FILE"
+  rm -f "$SIT_PUBLIC_PID_FILE"
 }
 trap cleanup EXIT INT TERM
 
@@ -71,8 +92,28 @@ stop_port_listener() {
 echo "Checking for stale SIT processes..."
 stop_pid_file_process "$SIT_BACKEND_PID_FILE"
 stop_pid_file_process "$SIT_FRONTEND_PID_FILE"
+stop_pid_file_process "$SIT_PUBLIC_PID_FILE"
 stop_port_listener 8002
 stop_port_listener 8001
+stop_port_listener 8005
+
+wait_for_url() {
+  local url="$1"
+  local label="$2"
+  local timeout="${3:-30}"
+  local elapsed=0
+
+  echo "Waiting for ${label} at ${url} ..."
+  until curl -sf "$url" >/dev/null; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+    if (( elapsed >= timeout )); then
+      echo
+      echo "${label} did not become ready within ${timeout}s."
+      exit 1
+    fi
+  done
+}
 
 if [[ "${DATABASE_URL:-}" == postgresql* ]]; then
   if ! "$PYTHON_BIN" -c "import psycopg" >/dev/null 2>&1; then
@@ -139,6 +180,21 @@ echo "Starting SIT backend on http://0.0.0.0:8002"
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$SIT_BACKEND_PID_FILE"
 
+wait_for_url "${SIT_BACKEND_URL}/api/health" "SIT backend" 30
+
+echo "Starting SIT customer-facing site on http://0.0.0.0:8005"
+cd customer_facing
+BACKEND_API_BASE_URL="$PUBLIC_CATALOGUE_BACKEND_API_BASE_URL" \
+PUBLIC_SITE_URL="$PUBLIC_CATALOGUE_SITE_URL" \
+SITE_NAME="$PUBLIC_CATALOGUE_SITE_NAME" \
+CMS_API_TOKEN="${CMS_API_TOKEN:-}" \
+"$PYTHON_BIN" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8005 &
+PUBLIC_PID=$!
+echo "$PUBLIC_PID" > "../$SIT_PUBLIC_PID_FILE"
+cd ..
+
+wait_for_url "$SIT_PUBLIC_URL" "SIT customer-facing site" 30
+
 echo "Starting SIT frontend on http://0.0.0.0:8001"
 cd frontend
 npm run dev -- --host 0.0.0.0 --port 8001 --strictPort &
@@ -148,8 +204,10 @@ cd ..
 
 echo
 echo "SIT is running:"
-echo "  Frontend (local): http://127.0.0.1:8001"
-echo "  API (local):      http://127.0.0.1:8002/api"
-echo "  Frontend (LAN):   http://<XPS-LAN-IP>:8001"
+echo "  Frontend (local):        ${SIT_FRONTEND_URL}"
+echo "  API (local):             ${SIT_BACKEND_URL}/api"
+echo "  Customer site (local):   ${SIT_PUBLIC_URL}"
+echo "  Frontend (LAN):          http://<XPS-LAN-IP>:8001"
+echo "  Customer site (LAN):     http://<XPS-LAN-IP>:8005"
 echo
 wait
