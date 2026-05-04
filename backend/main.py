@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse
@@ -97,6 +97,11 @@ from backend.schemas import (
     TemplateFileResponse,
     TemplateFileUpdateRequest,
     TemplateRegistryResponse,
+    FileManagerCreateFolderRequest,
+    FileManagerDeleteRequest,
+    FileManagerEntryResponse,
+    FileManagerListingResponse,
+    FileManagerRenameRequest,
     ProductTypePdfResponse,
     CmsCatalogueIndexResponse,
 )
@@ -110,6 +115,15 @@ PRODUCT_TYPE_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
 SERIES_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "series_graphs"
 SERIES_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "series_pdfs"
 BACKUP_OUTPUT_DIR = Path(DEFAULT_DATA_DIR) / "backups"
+DATA_BACKUP_DIRS = [
+    PRODUCT_IMAGES_DIR,
+    PRODUCT_GRAPHS_DIR,
+    PRODUCT_PDFS_DIR,
+    PRODUCT_TYPE_PDFS_DIR,
+    SERIES_GRAPHS_DIR,
+    SERIES_PDFS_DIR,
+]
+DATA_BACKUP_DIR_NAMES = [path.name for path in DATA_BACKUP_DIRS]
 WORDPRESS_SITE_DIR = Path("/app/wordpress_site")
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
@@ -120,6 +134,7 @@ PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_TYPE_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 FINDER_DEBUG = os.getenv("FINDER_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
@@ -371,6 +386,123 @@ def load_template_registry() -> dict:
 def save_template_registry(registry: dict):
     TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
     TEMPLATE_REGISTRY_PATH.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+
+
+FILE_MANAGER_ROOTS = {
+    "data": Path(DEFAULT_DATA_DIR),
+    "templates": TEMPLATES_DIR,
+}
+FILE_MANAGER_ALLOWED_TOP_LEVEL = {
+    "data": {"product_images", "product_graphs", "product_pdfs", "product_type_pdfs", "series_graphs", "series_pdfs"},
+    "templates": {"product", "series", "product_type"},
+}
+FILE_MANAGER_PROTECTED_RELATIVE_PATHS = {
+    "data": {"fans.db", "backups", "product_images", "product_graphs", "product_pdfs", "product_type_pdfs", "series_graphs", "series_pdfs"},
+    "templates": {"registry.json", "product", "series", "product_type"},
+}
+
+
+def file_manager_root_path(root_name: str) -> Path:
+    normalized = (root_name or "").strip().lower()
+    if normalized not in FILE_MANAGER_ROOTS:
+        raise HTTPException(status_code=400, detail="Root must be 'data' or 'templates'.")
+    root_path = FILE_MANAGER_ROOTS[normalized]
+    root_path.mkdir(parents=True, exist_ok=True)
+    return root_path
+
+
+def file_manager_normalize_relative_path(relative_path: str | None) -> Path:
+    candidate = Path((relative_path or "").strip())
+    if str(candidate).strip() in {"", "."}:
+        return Path()
+    if candidate.is_absolute() or any(part in {"..", ""} for part in candidate.parts):
+        raise HTTPException(status_code=400, detail="Invalid path.")
+    return candidate
+
+
+def file_manager_resolve_path(root_name: str, relative_path: str | None = None) -> Path:
+    root_path = file_manager_root_path(root_name)
+    relative = file_manager_normalize_relative_path(relative_path)
+    resolved = (root_path / relative).resolve()
+    if not resolved.is_relative_to(root_path.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid path.")
+    return resolved
+
+
+def file_manager_relative_path(root_name: str, resolved_path: Path) -> str:
+    root_path = file_manager_root_path(root_name).resolve()
+    return str(resolved_path.resolve().relative_to(root_path))
+
+
+def file_manager_is_protected(root_name: str, relative_path: str | None) -> bool:
+    normalized = file_manager_normalize_relative_path(relative_path)
+    protected = FILE_MANAGER_PROTECTED_RELATIVE_PATHS.get((root_name or "").strip().lower(), set())
+    return str(normalized) in protected
+
+
+def file_manager_visible_entries(root_name: str, current_relative: str | None, entries: list[Path]) -> list[Path]:
+    normalized_root = (root_name or "").strip().lower()
+    if str(file_manager_normalize_relative_path(current_relative)) != "":
+        return [entry for entry in entries if not entry.name.startswith(".")]
+
+    allowed_top_level = FILE_MANAGER_ALLOWED_TOP_LEVEL.get(normalized_root)
+    if allowed_top_level is None:
+        return [entry for entry in entries if not entry.name.startswith(".")]
+
+    visible: list[Path] = []
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        if entry.name in allowed_top_level:
+            visible.append(entry)
+        elif normalized_root == "templates" and entry.name == "registry.json":
+            visible.append(entry)
+    return visible
+
+
+def file_manager_entry_to_response(root_name: str, entry: Path, root_relative: str | None = None) -> FileManagerEntryResponse:
+    stat = entry.stat()
+    relative = str(entry.resolve().relative_to(file_manager_root_path(root_name).resolve()))
+    return FileManagerEntryResponse(
+        name=entry.name,
+        path=relative,
+        type="directory" if entry.is_dir() else "file",
+        size_bytes=None if entry.is_dir() else stat.st_size,
+        modified_at=datetime.datetime.fromtimestamp(stat.st_mtime, tz=datetime.UTC).isoformat(),
+        protected=file_manager_is_protected(root_name, relative),
+    )
+
+
+def file_manager_list_directory(root_name: str, relative_path: str | None = None) -> FileManagerListingResponse:
+    current_path = file_manager_resolve_path(root_name, relative_path)
+    if not current_path.exists():
+        raise HTTPException(status_code=404, detail="Folder not found.")
+    if not current_path.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory.")
+
+    entries = sorted(current_path.iterdir(), key=lambda item: (not item.is_dir(), item.name.casefold()))
+    entries = file_manager_visible_entries(root_name, relative_path, entries)
+    parent_path = None
+    if current_path.resolve() != file_manager_root_path(root_name).resolve():
+        parent_path = str(current_path.resolve().relative_to(file_manager_root_path(root_name).resolve()).parent)
+        if parent_path == ".":
+            parent_path = ""
+
+    return FileManagerListingResponse(
+        root=root_name,
+        path=str(file_manager_normalize_relative_path(relative_path)),
+        parent_path=parent_path,
+        entries=[file_manager_entry_to_response(root_name, entry) for entry in entries],
+    )
+
+
+def sync_templates_after_file_change():
+    sync_template_registry_with_disk()
+
+
+def copy_tree_into_directory(source_dir: Path, target_dir: Path):
+    target_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
 
 
 def template_collection_name(template_type: str) -> str:
@@ -2306,6 +2438,53 @@ def utc_now_iso() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
 
+def _copy_media_directories(staging_data_dir: Path, progress_callback=None, *, label_prefix: str = "Collecting", exclude_backup_dir: bool = False):
+    backup_stage_total = len(DATA_BACKUP_DIRS) + 1
+    for offset, media_dir in enumerate(DATA_BACKUP_DIRS, start=1):
+        if exclude_backup_dir and media_dir.name == "backups":
+            continue
+        if media_dir.is_dir():
+            if progress_callback:
+                progress_callback(f"{label_prefix} {media_dir.name}", offset, backup_stage_total)
+            target_dir = staging_data_dir / media_dir.name
+            target_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(media_dir, target_dir, dirs_exist_ok=True)
+
+
+def _write_zip_archive(source_dir: Path, archive_path: Path) -> None:
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for root, _, files in os.walk(source_dir):
+            for file_name in files:
+                full_path = Path(root) / file_name
+                archive.write(full_path, full_path.relative_to(source_dir))
+
+
+def _write_backup_readme(staging_dir: Path, title: str, contents: list[str]) -> None:
+    readme = staging_dir / "README.txt"
+    readme.write_text(
+        "\n".join(
+            [
+                title,
+                "Generated by the admin maintenance API.",
+                "",
+                "Contents:",
+                *contents,
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _copy_directory_to_staging(source_dir: Path, staging_root: Path, relative_target: str, progress_message: str | None = None, progress_callback=None, progress_step: int | None = None, progress_total: int | None = None):
+    if not source_dir.is_dir():
+        return
+    if progress_callback and progress_message is not None and progress_step is not None and progress_total is not None:
+        progress_callback(progress_message, progress_step, progress_total)
+    destination = staging_root / relative_target
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_dir, destination, dirs_exist_ok=True)
+
+
 def create_maintenance_job(job_type: str) -> dict:
     job_id = uuid4().hex
     job = {
@@ -2390,9 +2569,48 @@ def start_maintenance_job(job_type: str, work):
     return job
 
 
-def create_backup_bundle(progress_callback=None) -> Path:
+def create_data_backup_bundle(progress_callback=None) -> Path:
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    archive_name = f"fan_graphs_backup_{timestamp}.zip"
+    archive_name = f"fan_graphs_media_data_backup_{timestamp}.zip"
+    archive_path = BACKUP_OUTPUT_DIR / archive_name
+    backup_stages_total = len(DATA_BACKUP_DIRS) + 2
+
+    with tempfile.TemporaryDirectory() as staging_dir_raw:
+        staging_dir = Path(staging_dir_raw)
+        if progress_callback:
+            progress_callback("Collecting media files", 1, backup_stages_total)
+        data_dir = staging_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        _copy_media_directories(data_dir, progress_callback, label_prefix="Collecting", exclude_backup_dir=True)
+        _copy_directory_to_staging(
+            TEMPLATES_DIR,
+            staging_dir,
+            "templates",
+            "Collecting templates",
+            progress_callback,
+            len(DATA_BACKUP_DIRS) + 1,
+            backup_stages_total,
+        )
+
+        _write_backup_readme(
+            staging_dir,
+            "Internal Facing media data backup archive",
+            [
+                *[f"- data/{name} : media assets and generated files (if present)" for name in DATA_BACKUP_DIR_NAMES],
+                "- templates : template files and registry (if present)",
+            ],
+        )
+
+        if progress_callback:
+            progress_callback("Creating data archive", backup_stages_total, backup_stages_total)
+        _write_zip_archive(staging_dir, archive_path)
+
+    return archive_path
+
+
+def create_database_backup_bundle(progress_callback=None) -> Path:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_name = f"fan_graphs_db_data_backup_{timestamp}.zip"
     archive_path = BACKUP_OUTPUT_DIR / archive_name
     backup_stages_total = 8
 
@@ -2401,18 +2619,8 @@ def create_backup_bundle(progress_callback=None) -> Path:
         postgres_dump_path = staging_dir / "postgres_dump.sql"
         if progress_callback:
             progress_callback("Creating PostgreSQL dump", 1, backup_stages_total)
-        postgres_dump = run_postgres_client_tool(
-            ["pg_dump", "--no-owner", "--no-privileges"]
-        )
+        postgres_dump = run_postgres_client_tool(["pg_dump", "--no-owner", "--no-privileges"])
         postgres_dump_path.write_bytes(postgres_dump.stdout)
-
-        for offset, media_dir in enumerate([PRODUCT_IMAGES_DIR, PRODUCT_GRAPHS_DIR, PRODUCT_PDFS_DIR, SERIES_GRAPHS_DIR, SERIES_PDFS_DIR], start=2):
-            if media_dir.is_dir():
-                if progress_callback:
-                    progress_callback(f"Collecting {media_dir.name}", offset, backup_stages_total)
-                target_dir = staging_dir / "data" / media_dir.name
-                target_dir.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(media_dir, target_dir, dirs_exist_ok=True)
 
         if wordpress_available():
             wordpress_dump_path = staging_dir / "wordpress_dump.sql"
@@ -2440,35 +2648,19 @@ def create_backup_bundle(progress_callback=None) -> Path:
                 with tarfile.open(wordpress_dir / "wp-content.tar", "w") as tar:
                     tar.add(wp_content_dir, arcname="wp-content")
 
-        readme = staging_dir / "README.txt"
-        readme.write_text(
-            "\n".join(
-                [
-                    "Internal Facing backup bundle",
-                    "Generated by the admin maintenance API.",
-                    "",
-                    "Contents:",
-                    "- postgres_dump.sql : PostgreSQL database dump",
-                    "- data/product_images : uploaded product images (if present)",
-                    "- data/product_graphs : generated graph images (if present)",
-                    "- data/product_pdfs : generated product PDF assets (if present)",
-                    "- data/product_type_pdfs : generated product type PDF assets (if present)",
-                    "- data/series_graphs : generated series graph images (if present)",
-                    "- data/series_pdfs : generated series PDF assets (if present)",
-                    "- wordpress_dump.sql : WordPress MariaDB dump (if present)",
-                    "- wordpress/wp-content.tar : WordPress content snapshot (if present)",
-                ]
-            ),
-            encoding="utf-8",
+        _write_backup_readme(
+            staging_dir,
+            "Internal Facing DB data backup archive",
+            [
+                "- postgres_dump.sql : PostgreSQL database dump",
+                "- wordpress_dump.sql : WordPress MariaDB dump (if present)",
+                "- wordpress/wp-content.tar : WordPress content snapshot (if present)",
+            ],
         )
 
         if progress_callback:
-            progress_callback("Creating backup archive", 8, backup_stages_total)
-        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for root, _, files in os.walk(staging_dir):
-                for file_name in files:
-                    full_path = Path(root) / file_name
-                    archive.write(full_path, full_path.relative_to(staging_dir))
+            progress_callback("Creating database archive", 8, backup_stages_total)
+        _write_zip_archive(staging_dir, archive_path)
 
     return archive_path
 
@@ -2550,17 +2742,48 @@ def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
                 tar.extractall(WORDPRESS_SITE_DIR)
 
         for offset, media_dir in enumerate(
-            ["product_images", "product_graphs", "product_pdfs", "product_type_pdfs", "series_graphs", "series_pdfs"],
+            DATA_BACKUP_DIR_NAMES,
             start=4,
         ):
-            if progress_callback:
-                progress_callback(f"Restoring {media_dir}", min(offset, restore_stages_total - 1), restore_stages_total)
             source_dir = staging_dir / "data" / media_dir
             target_dir = Path(DEFAULT_DATA_DIR) / media_dir
-            shutil.rmtree(target_dir, ignore_errors=True)
-            target_dir.mkdir(parents=True, exist_ok=True)
             if source_dir.is_dir():
+                if progress_callback:
+                    progress_callback(f"Restoring {media_dir}", min(offset, restore_stages_total - 1), restore_stages_total)
+                shutil.rmtree(target_dir, ignore_errors=True)
+                target_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+
+
+def restore_media_backup_bundle(archive_bytes: bytes, progress_callback=None):
+    restore_stages_total = len(DATA_BACKUP_DIRS) + 2
+    with tempfile.TemporaryDirectory() as staging_dir_raw:
+        staging_dir = Path(staging_dir_raw)
+        archive_path = staging_dir / "upload.zip"
+        archive_path.write_bytes(archive_bytes)
+        if progress_callback:
+            progress_callback("Extracting media archive", 1, restore_stages_total)
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            archive.extractall(staging_dir)
+
+        for offset, media_dir in enumerate(DATA_BACKUP_DIR_NAMES, start=2):
+            source_dir = staging_dir / "data" / media_dir
+            target_dir = Path(DEFAULT_DATA_DIR) / media_dir
+            if source_dir.is_dir():
+                if progress_callback:
+                    progress_callback(f"Restoring {media_dir}", offset, restore_stages_total)
+                shutil.rmtree(target_dir, ignore_errors=True)
+                target_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+
+        templates_source = staging_dir / "templates"
+        if templates_source.is_dir():
+            if progress_callback:
+                progress_callback("Restoring templates", restore_stages_total - 1, restore_stages_total)
+            shutil.rmtree(TEMPLATES_DIR, ignore_errors=True)
+            TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(templates_source, TEMPLATES_DIR, dirs_exist_ok=True)
+            sync_template_registry_with_disk()
 
 
 def run_post_restore_schema_prep(progress_callback=None):
@@ -3178,6 +3401,127 @@ def update_template_files(template_type: str, template_id: str, body: TemplateFi
         html_content=body.html_content,
         css_content=body.css_content or "",
     )
+
+
+@app.get("/api/file-manager/{root_name}", response_model=FileManagerListingResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="List file manager entries")
+def list_file_manager_entries(root_name: str, path: str = ""):
+    return file_manager_list_directory(root_name, path)
+
+
+@app.get("/api/file-manager/{root_name}/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Download a file manager file")
+def download_file_manager_entry(root_name: str, path: str):
+    target_path = file_manager_resolve_path(root_name, path)
+    if not target_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found.")
+    return FileResponse(target_path, filename=target_path.name)
+
+
+@app.post("/api/file-manager/{root_name}/folders", response_model=FileManagerListingResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Create a file manager folder")
+def create_file_manager_folder(root_name: str, path: str = "", body: FileManagerCreateFolderRequest | None = None):
+    if body is None:
+        raise HTTPException(status_code=400, detail="Folder name is required.")
+
+    folder_name = (body.folder_name or "").strip()
+    if not folder_name:
+        raise HTTPException(status_code=400, detail="Folder name is required.")
+    if Path(folder_name).is_absolute() or any(part in {"..", ""} for part in Path(folder_name).parts):
+        raise HTTPException(status_code=400, detail="Folder name is invalid.")
+
+    parent_path = file_manager_resolve_path(root_name, path)
+    if not parent_path.exists() or not parent_path.is_dir():
+        raise HTTPException(status_code=404, detail="Folder not found.")
+
+    target = parent_path / folder_name
+    if target.exists():
+        raise HTTPException(status_code=409, detail="A folder with that name already exists.")
+    target.mkdir(parents=True, exist_ok=False)
+    if root_name.strip().lower() == "templates":
+        sync_templates_after_file_change()
+    return file_manager_list_directory(root_name, path)
+
+
+@app.post("/api/file-manager/{root_name}/upload", response_model=FileManagerListingResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Upload files into the file manager")
+async def upload_file_manager_entries(
+    root_name: str,
+    path: str = "",
+    replace_existing: bool = False,
+    files: list[UploadFile] = File(...),
+):
+    if not files:
+        raise HTTPException(status_code=400, detail="Please choose at least one file.")
+
+    target_dir = file_manager_resolve_path(root_name, path)
+    if not target_dir.exists() or not target_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Folder not found.")
+
+    uploads = []
+    for upload in files:
+        file_name = Path(upload.filename or "").name.strip()
+        if not file_name or file_name in {".", ".."} or Path(file_name).is_absolute():
+            raise HTTPException(status_code=400, detail="Each uploaded file must have a valid file name.")
+        destination = target_dir / file_name
+        if destination.exists() and not replace_existing:
+            raise HTTPException(status_code=409, detail=f"File already exists: {file_name}")
+        uploads.append((upload, destination))
+
+    for upload, destination in uploads:
+        contents = await upload.read()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        tmp_destination = destination.with_name(f".{destination.name}.uploading")
+        tmp_destination.write_bytes(contents)
+        tmp_destination.replace(destination)
+
+    if root_name.strip().lower() == "templates":
+        sync_templates_after_file_change()
+    return file_manager_list_directory(root_name, path)
+
+
+@app.put("/api/file-manager/{root_name}/rename", response_model=FileManagerListingResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Rename a file manager entry")
+def rename_file_manager_entry(root_name: str, path: str, body: FileManagerRenameRequest):
+    if not (path or "").strip():
+        raise HTTPException(status_code=400, detail="Open a file or folder first.")
+    target_path = file_manager_resolve_path(root_name, path)
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="File or folder not found.")
+
+    new_name = (body.new_name or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="New name is required.")
+    if Path(new_name).is_absolute() or any(part in {"..", ""} for part in Path(new_name).parts):
+        raise HTTPException(status_code=400, detail="New name is invalid.")
+
+    destination = target_path.parent / new_name
+    if destination.exists():
+        raise HTTPException(status_code=409, detail="A file or folder with that name already exists.")
+    if file_manager_is_protected(root_name, path):
+        raise HTTPException(status_code=400, detail="That item is protected and cannot be renamed.")
+
+    target_path.rename(destination)
+    if root_name.strip().lower() == "templates":
+        sync_templates_after_file_change()
+    return file_manager_list_directory(root_name, str(Path(path).parent) if path else "")
+
+
+@app.delete("/api/file-manager/{root_name}", response_model=FileManagerListingResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Delete a file manager entry")
+def delete_file_manager_entry(root_name: str, path: str, body: FileManagerDeleteRequest | None = None):
+    if not (path or "").strip():
+        raise HTTPException(status_code=400, detail="Open a file or folder first.")
+    target_path = file_manager_resolve_path(root_name, path)
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="File or folder not found.")
+    if file_manager_is_protected(root_name, path):
+        raise HTTPException(status_code=400, detail="That item is protected and cannot be deleted.")
+    if target_path.is_dir():
+        if body is None:
+            body = FileManagerDeleteRequest()
+        if not body.recursive and any(target_path.iterdir()):
+            raise HTTPException(status_code=400, detail="Folder is not empty. Enable recursive delete to remove it.")
+        shutil.rmtree(target_path)
+    else:
+        target_path.unlink()
+    if root_name.strip().lower() == "templates":
+        sync_templates_after_file_change()
+    return file_manager_list_directory(root_name, str(Path(path).parent) if path else "")
 
 
 @app.get("/api/series", response_model=list[SeriesResponse], dependencies=[Depends(get_current_user)], tags=["Series"], summary="List series")
@@ -4171,12 +4515,12 @@ def start_delete_all_graph_images_job():
     return serialize_maintenance_job(start_maintenance_job("clear_all_graph_images", work))
 
 
-@app.get("/api/maintenance/backups/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"])
-def download_backup_bundle():
+@app.get("/api/maintenance/backups/database/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Download a DB data backup")
+def download_database_backup_bundle():
     try:
-        archive_path = create_backup_bundle()
+        archive_path = create_database_backup_bundle()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Unable to create backup bundle: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Unable to create DB data backup: {exc}") from exc
 
     return FileResponse(
         archive_path,
@@ -4185,12 +4529,17 @@ def download_backup_bundle():
     )
 
 
-@app.post("/api/maintenance/jobs/backups/create", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start creating a backup bundle")
-def start_backup_bundle_job():
+@app.get("/api/maintenance/backups/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+def download_backup_bundle():
+    return download_database_backup_bundle()
+
+
+@app.post("/api/maintenance/jobs/backups/database/create", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start creating a DB data backup")
+def start_database_backup_bundle_job():
     def work(progress):
-        archive_path = create_backup_bundle(progress)
+        archive_path = create_database_backup_bundle(progress)
         return {
-            "result_message": f"Backup bundle created: {archive_path.name}",
+            "result_message": f"DB data backup created: {archive_path.name}",
             "result_download_url": f"/api/maintenance/jobs/{job['id']}/download",
             "result_file_path": str(archive_path),
             "progress_current": 1,
@@ -4198,28 +4547,98 @@ def start_backup_bundle_job():
             "progress_percent": 100.0,
         }
 
-    job = start_maintenance_job("create_backup_bundle", work)
+    job = start_maintenance_job("create_database_backup_bundle", work)
     return serialize_maintenance_job(job)
 
 
-@app.post("/api/maintenance/backups/restore", dependencies=[Depends(require_admin_user)], tags=["Maintenance"])
-async def restore_backup_bundle_endpoint(file: UploadFile = File(...)):
+@app.post("/api/maintenance/jobs/backups/create", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+def start_backup_bundle_job():
+    return start_database_backup_bundle_job()
+
+
+@app.get("/api/maintenance/media/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Download a media data backup")
+def download_media_backup_bundle():
+    try:
+        archive_path = create_data_backup_bundle()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to create media data backup: {exc}") from exc
+
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=archive_path.name,
+    )
+
+
+@app.get("/api/maintenance/data/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+def download_data_backup_bundle():
+    return download_media_backup_bundle()
+
+
+@app.post("/api/maintenance/jobs/media/create", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start creating a media data backup")
+def start_media_backup_bundle_job():
+    def work(progress):
+        archive_path = create_data_backup_bundle(progress)
+        return {
+            "result_message": f"Media data backup created: {archive_path.name}",
+            "result_download_url": f"/api/maintenance/jobs/{job['id']}/download",
+            "result_file_path": str(archive_path),
+            "progress_current": 1,
+            "progress_total": 1,
+            "progress_percent": 100.0,
+        }
+
+    job = start_maintenance_job("create_media_data_backup_bundle", work)
+    return serialize_maintenance_job(job)
+
+
+@app.post("/api/maintenance/jobs/data/create", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+def start_data_backup_bundle_job():
+    return start_media_backup_bundle_job()
+
+
+@app.post("/api/maintenance/backups/db/restore", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Restore a DB data backup")
+async def restore_db_backup_bundle_endpoint(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Please upload a .zip backup bundle.")
+        raise HTTPException(status_code=400, detail="Please upload a .zip DB data backup.")
 
     try:
         archive_bytes = await file.read()
         restore_backup_bundle(archive_bytes)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Unable to restore backup bundle: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Unable to restore DB data backup: {exc}") from exc
 
-    return {"message": "Backup bundle restored successfully."}
+    return {"message": "DB data backup restored successfully."}
 
 
-@app.post("/api/maintenance/jobs/backups/restore", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start restoring a backup bundle")
+@app.post("/api/maintenance/backups/restore", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+async def restore_backup_bundle_endpoint(file: UploadFile = File(...)):
+    return await restore_db_backup_bundle_endpoint(file)
+
+
+@app.post("/api/maintenance/backups/media/restore", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Restore a media data backup")
+async def restore_media_backup_bundle_endpoint(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Please upload a .zip media data backup.")
+
+    try:
+        archive_bytes = await file.read()
+        restore_media_backup_bundle(archive_bytes)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unable to restore media data backup: {exc}") from exc
+
+    return {"message": "Media data backup restored successfully."}
+
+
+@app.post("/api/maintenance/backups/media/restore-old", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+async def restore_media_backup_bundle_endpoint_old(file: UploadFile = File(...)):
+    return await restore_media_backup_bundle_endpoint(file)
+
+
+@app.post("/api/maintenance/jobs/backups/db/restore", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start restoring a DB data backup")
 async def start_restore_backup_bundle_job(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Please upload a .zip backup bundle.")
+        raise HTTPException(status_code=400, detail="Please upload a .zip DB data backup.")
 
     archive_bytes = await file.read()
 
@@ -4227,13 +4646,42 @@ async def start_restore_backup_bundle_job(file: UploadFile = File(...)):
         restore_backup_bundle(archive_bytes, progress)
         run_post_restore_schema_prep(progress)
         return {
-            "result_message": "Backup bundle restored successfully.",
+            "result_message": "DB data backup restored successfully.",
             "progress_current": 1,
             "progress_total": 1,
             "progress_percent": 100.0,
         }
 
-    return serialize_maintenance_job(start_maintenance_job("restore_backup_bundle", work))
+    return serialize_maintenance_job(start_maintenance_job("restore_db_data_backup_bundle", work))
+
+
+@app.post("/api/maintenance/jobs/backups/restore", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+async def start_restore_backup_bundle_job_old(file: UploadFile = File(...)):
+    return await start_restore_backup_bundle_job(file)
+
+
+@app.post("/api/maintenance/jobs/backups/media/restore", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start restoring a media data backup")
+async def start_restore_media_backup_bundle_job(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Please upload a .zip media data backup.")
+
+    archive_bytes = await file.read()
+
+    def work(progress):
+        restore_media_backup_bundle(archive_bytes, progress)
+        return {
+            "result_message": "Media data backup restored successfully.",
+            "progress_current": 1,
+            "progress_total": 1,
+            "progress_percent": 100.0,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("restore_media_data_backup_bundle", work))
+
+
+@app.post("/api/maintenance/jobs/backups/media/restore-old", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
+async def start_restore_media_backup_bundle_job_old(file: UploadFile = File(...)):
+    return await start_restore_media_backup_bundle_job(file)
 
 
 @app.get("/api/maintenance/jobs/{job_id}", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Get maintenance job status")
@@ -4241,7 +4689,7 @@ def get_maintenance_job(job_id: str):
     return serialize_maintenance_job(get_maintenance_job_or_404(job_id))
 
 
-@app.get("/api/maintenance/jobs/{job_id}/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Download a completed backup bundle")
+@app.get("/api/maintenance/jobs/{job_id}/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Download a completed maintenance archive")
 def download_maintenance_job_file(job_id: str):
     job = get_maintenance_job_or_404(job_id)
     if job.get("status") != "completed":

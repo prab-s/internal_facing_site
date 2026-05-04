@@ -226,8 +226,9 @@ The `Setup` page now contains:
   - regenerating all product graph images
   - clearing all product graph images
   - regenerating all product PDFs
-  - creating a backup bundle
-  - restoring a backup bundle
+  - creating a database backup archive
+  - creating a media data backup archive
+  - restoring a database backup archive
 - maintenance job polling with status text and a progress bar
 
 ## Environment files
@@ -258,7 +259,8 @@ That lets SIT keep its own schema/data while still overriding things like:
 Used by:
 
 - `./redeploy.sh`
-- `./backup_bundle.sh`
+- `./backup_bundle.sh` for DB data
+- `./backup_data.sh` for media data
 
 ### Important env values
 
@@ -323,6 +325,7 @@ Purpose:
 - brings down the existing deployment stack
 - rebuilds the application image
 - starts the Podman Compose deployment stack
+- seeds the PROD app data volume from the existing host `data/` tree when it is still empty
 - app startup prepares/applies database migrations before `uvicorn` starts
 - waits for the FastAPI health endpoint
 - if the WordPress profile is enabled, waits for WordPress too
@@ -358,15 +361,8 @@ This now manages the whole stack from:
 
 Purpose:
 
-- creates a zip backup bundle for SIT or deployment
+- creates a DB data backup ZIP for SIT or deployment
 - includes a PostgreSQL dump
-- includes media folders from `data/`
-- includes generated product and series assets when present:
-  - `product_images`
-  - `product_graphs`
-  - `product_pdfs`
-  - `series_graphs`
-  - `series_pdfs`
 - when backing up the deployment stack with WordPress running, it also includes:
   - a WordPress MariaDB dump
   - a `wp-content` snapshot
@@ -394,13 +390,50 @@ Output:
 
 - zip files written into `data/backups/` by default
 
+### `backup_data.sh`
+
+Purpose:
+
+- creates a media data ZIP for SIT or deployment
+- includes generated product and series assets when present:
+  - `product_images`
+  - `product_graphs`
+  - `product_pdfs`
+  - `product_type_pdfs`
+  - `series_graphs`
+  - `series_pdfs`
+- includes templates when present
+- excludes `data/backups/`
+- prints timestamped progress in the terminal while it runs
+
+Use:
+
+```bash
+./backup_data.sh
+```
+
+For SIT specifically:
+
+```bash
+./backup_data.sh --sit
+```
+
+For deployment specifically:
+
+```bash
+./backup_data.sh --deploy
+```
+
+Output:
+
+- zip files written into `data/backups/` by default
+
 ### `restore_bundle.sh`
 
 Purpose:
 
-- restores a zip bundle created by `backup_bundle.sh`
+- restores a DB data zip created by `backup_bundle.sh`
 - restores the PostgreSQL dump into SIT or deployment, depending on `ENV_FILE`
-- restores media folders back into `data/`
 - restores WordPress data too when a deployment backup includes it
 - prints timestamped progress in the terminal while it runs
 - shows byte-stream progress for large restore phases when `pv` is installed
@@ -410,30 +443,62 @@ Purpose:
 Use:
 
 ```bash
-./restore_bundle.sh data/backups/your_backup_file.zip
+./restore_bundle.sh data/backups/your_db_backup_file.zip
 ```
 
-To restore a SIT backup into deployment:
+To restore a SIT DB backup into deployment:
 
 ```bash
-./restore_bundle.sh data/backups/your_backup_file.zip --deploy
+./restore_bundle.sh data/backups/your_db_backup_file.zip --deploy
 ```
 
 To restore into SIT:
 
 ```bash
-./restore_bundle.sh data/backups/your_backup_file.zip --sit
+./restore_bundle.sh data/backups/your_db_backup_file.zip --sit
 ```
 
 This script currently restores:
 
 - the Postgres SQL dump
-- `data/product_images`
-- `data/product_graphs`
-- `data/product_pdfs`
-- `data/series_graphs`
-- `data/series_pdfs`
 - WordPress MariaDB + `wp-content` if present in the backup and restoring into deployment
+
+### `restore_data.sh`
+
+Purpose:
+
+- restores a media data zip created by `backup_data.sh`
+- restores media folders back into `data/` when they are present in the archive
+- restores the `templates/` tree when present in the archive
+- prints timestamped progress in the terminal while it runs
+
+Use:
+
+```bash
+./restore_data.sh data/backups/your_media_backup_file.zip
+```
+
+To restore a SIT media backup into deployment:
+
+```bash
+./restore_data.sh data/backups/your_media_backup_file.zip --deploy
+```
+
+To restore into SIT:
+
+```bash
+./restore_data.sh data/backups/your_media_backup_file.zip --sit
+```
+
+This script currently restores:
+
+- `data/product_images` when present
+- `data/product_graphs` when present
+- `data/product_pdfs` when present
+- `data/product_type_pdfs` when present
+- `data/series_graphs` when present
+- `data/series_pdfs` when present
+- `templates/` when present
 
 ### `postgres-compose.yml`
 
@@ -443,6 +508,20 @@ Purpose:
 - useful for SIT/local database work
 
 This is separate from the production deployment stack.
+
+### `migrate_prod_data_volume.sh`
+
+Purpose:
+
+- copies the existing host-side `data/` media directories into the PROD Podman volume
+- intended as a one-time migration helper before or after switching deployment to the named volume
+- skips the SQLite database file and copies directory data only
+
+Use:
+
+```bash
+./migrate_prod_data_volume.sh
+```
 
 ## Podman deployment layout
 
@@ -894,22 +973,27 @@ The expected workflow later is:
 
 ## Backup contents
 
-The backup bundle currently captures:
+The DB backup currently captures:
 
 - PostgreSQL SQL dump
-- `data/product_images`
-- `data/product_graphs`
-- `data/product_pdfs`
-- `data/series_graphs`
-- `data/series_pdfs`
 - WordPress MariaDB dump if the deployment WordPress stack is running in the backed-up environment
 - WordPress `wp-content` snapshot if the deployment WordPress stack is running in the backed-up environment
 
-That gives one zip archive containing both structured data and related media files.
+The media data backup currently captures:
+
+- `data/product_images`
+- `data/product_graphs`
+- `data/product_pdfs`
+- `data/product_type_pdfs`
+- `data/series_graphs`
+- `data/series_pdfs`
+- `templates/`
+That gives two zip archives, one for DB data and one for media data.
 
 This also explains why SIT backups can be much smaller than older deployment backups:
 
-- SIT backups usually contain the app database + app media only
+- SIT DB backups usually contain the app database + WordPress only if present
+- SIT media backups usually contain the app media + templates only
 - deployment backups can additionally contain:
   - `wordpress_dump.sql`
   - `wordpress/wp-content.tar`
@@ -925,13 +1009,15 @@ If you intentionally want to copy current SIT data into deployment, the intended
 1. create a backup from SIT:
 
 ```bash
-./backup_bundle.sh --sit
+    ./backup_bundle.sh --sit
+    ./backup_data.sh --sit
 ```
 
-2. restore that bundle into deployment:
+2. restore the DB backup and media backup into deployment:
 
 ```bash
-./restore_bundle.sh data/backups/your_backup_file.zip --deploy
+./restore_bundle.sh data/backups/your_db_backup_file.zip --deploy
+./restore_data.sh data/backups/your_media_backup_file.zip --deploy
 ```
 
 3. bring the deployment stack fully back up:
@@ -944,7 +1030,7 @@ Important:
 
 - this is a data copy, not just a schema migration
 - `./redeploy.sh` runs schema migration/startup, but it does not copy SIT data into deployment by itself
-- restoring a SIT bundle into deployment overwrites the deployment app database and the related app media captured in that bundle
+- restoring a SIT archive into deployment overwrites the deployment app database and any media captured in that archive
 
 For larger backup/restore/regeneration tasks, the `Setup` page now uses background maintenance jobs instead of one long blocking browser request. The page starts the job, polls for status, and shows a progress bar. This is the recommended workflow when you want to avoid browser or Cloudflare request timeouts.
 

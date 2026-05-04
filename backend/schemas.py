@@ -208,6 +208,34 @@ class TemplateFileUpdateRequest(BaseModel):
     css_content: str = ""
 
 
+class FileManagerEntryResponse(BaseModel):
+    name: str
+    path: str
+    type: str
+    size_bytes: Optional[int] = None
+    modified_at: Optional[str] = None
+    protected: bool = False
+
+
+class FileManagerListingResponse(BaseModel):
+    root: str
+    path: str
+    parent_path: Optional[str] = None
+    entries: list[FileManagerEntryResponse] = Field(default_factory=list)
+
+
+class FileManagerCreateFolderRequest(BaseModel):
+    folder_name: str
+
+
+class FileManagerRenameRequest(BaseModel):
+    new_name: str
+
+
+class FileManagerDeleteRequest(BaseModel):
+    recursive: bool = True
+
+
 class SeriesBase(BaseModel):
     name: str
     product_type_key: str

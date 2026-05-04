@@ -50,7 +50,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - ./data:/app/data:Z
+      - fan_graphs_app_data:/app/data:Z
+      - fan_graphs_templates:/app/templates:Z
 
   customer_facing:
     profiles: ["catalogue"]
@@ -76,4 +77,6 @@ services:
       CMS_API_TOKEN: ${CMS_API_TOKEN}
 
 volumes:
+  fan_graphs_app_data:
+  fan_graphs_templates:
   fan_graphs_postgres_data:

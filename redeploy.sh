@@ -16,6 +16,9 @@ COMPOSE_BIN="${COMPOSE_BIN:-podman compose}"
 HEALTH_URL="${HEALTH_URL:-https://p2.bitrep.nz/api/health}"
 PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-http://localhost:8004/}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-30}"
+PODMAN_BIN="${PODMAN_BIN:-podman}"
+APP_DATA_VOLUME="${APP_DATA_VOLUME:-fan_graphs_app_data}"
+ALPINE_IMAGE="${ALPINE_IMAGE:-docker.io/library/alpine:3.20}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 LEGACY_PUBLIC_SERVICE_NAME="${LEGACY_PUBLIC_SERVICE_NAME:-vent-tech-catalogue.service}"
 LEGACY_PUBLIC_CONTAINER_NAME="${LEGACY_PUBLIC_CONTAINER_NAME:-vent-tech-catalogue}"
@@ -42,6 +45,32 @@ fail_if_placeholder() {
 fail_if_placeholder "POSTGRES_PASSWORD" "${POSTGRES_PASSWORD:-}"
 fail_if_placeholder "SESSION_SECRET" "${SESSION_SECRET:-}"
 fail_if_placeholder "CMS_API_TOKEN" "${CMS_API_TOKEN:-}"
+
+seed_app_data_volume_if_needed() {
+  local source_has_data=0
+  local data_dir
+  for data_dir in data/product_images data/product_graphs data/product_pdfs data/product_type_pdfs data/series_graphs data/series_pdfs data/backups; do
+    if [[ -d "$data_dir" ]]; then
+      source_has_data=1
+      break
+    fi
+  done
+
+  if [[ "$source_has_data" -eq 0 ]]; then
+    return 0
+  fi
+
+  if ${PODMAN_BIN} volume inspect "${APP_DATA_VOLUME}" >/dev/null 2>&1; then
+    if ${PODMAN_BIN} run --rm -v "${APP_DATA_VOLUME}:/target:Z" "${ALPINE_IMAGE}" sh -lc 'find /target -mindepth 1 -maxdepth 1 -print -quit | grep -q .'; then
+      return 0
+    fi
+  fi
+
+  if [[ -x ./migrate_prod_data_volume.sh ]]; then
+    echo "Seeding the PROD app data volume from the existing host data tree..."
+    ./migrate_prod_data_volume.sh
+  fi
+}
 
 stop_legacy_public_service() {
   local systemctl_cmd=""
@@ -120,6 +149,7 @@ compose_build_with_retry() {
 }
 
 stop_legacy_public_service
+seed_app_data_volume_if_needed
 
 podman rm -f vent-tech-catalogue fan-graphs-app 2>/dev/null || true
 ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" down --remove-orphans || true

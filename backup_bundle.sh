@@ -19,7 +19,7 @@ COMPOSE_BIN="${COMPOSE_BIN:-podman compose}"
 PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-docker.io/library/postgres:16}"
 OUTPUT_DIR="${OUTPUT_DIR:-data/backups}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-ARCHIVE_NAME="${ARCHIVE_NAME:-fan_graphs_backup_${TIMESTAMP}.zip}"
+ARCHIVE_NAME="${ARCHIVE_NAME:-fan_graphs_db_data_backup_${TIMESTAMP}.zip}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 PG_TOOL_DATABASE_URL=""
 PODMAN_BIN="${PODMAN_BIN:-podman}"
@@ -161,27 +161,14 @@ case "$BACKUP_MODE" in
     ;;
 esac
 
-mkdir -p "$STAGING_DIR/data"
-
-log "Collecting media assets"
-for media_dir in product_images product_graphs product_pdfs series_graphs series_pdfs; do
-  echo "  ${media_dir}"
-  if [[ -d "data/${media_dir}" ]]; then
-    cp -a "data/${media_dir}" "$STAGING_DIR/data/${media_dir}"
-  fi
-done
-
 cat > "$STAGING_DIR/README.txt" <<EOF
-Internal Facing backup bundle
+Internal Facing DB data backup archive
 Generated: ${TIMESTAMP}
 Mode: ${BACKUP_MODE}
 Env file: ${ENV_FILE}
 
 Contents:
 - postgres_dump.sql : PostgreSQL database dump
-- data/product_images : uploaded product images (if present)
-- data/product_graphs : generated graph images (if present)
-- data/product_pdfs : future PDF assets (if present)
 - wordpress_dump.sql : WordPress MariaDB dump (if present)
 - wordpress/wp-content.tar : WordPress content volume snapshot (if present)
 EOF

@@ -204,7 +204,7 @@ restore_optional_wordpress_data() {
   local wordpress_content_tar="${STAGING_DIR}/wordpress/wp-content.tar"
 
   if [[ ! -f "${wordpress_dump_path}" ]] && [[ ! -f "${wordpress_content_tar}" ]]; then
-    log "No WordPress data in backup bundle"
+    log "No WordPress data in backup archive"
     return 0
   fi
 
@@ -266,13 +266,13 @@ run_post_restore_migrations() {
 
 log "Restoring media assets"
 mkdir -p data
-for media_dir in product_images product_graphs product_pdfs series_graphs series_pdfs; do
+for media_dir in product_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs; do
   target_dir="data/${media_dir}"
   source_dir="${STAGING_DIR}/data/${media_dir}"
   echo "  ${media_dir}"
-  rm -rf "${target_dir}"
-  mkdir -p "${target_dir}"
   if [[ -d "${source_dir}" ]]; then
+    rm -rf "${target_dir}"
+    mkdir -p "${target_dir}"
     cp -a "${source_dir}/." "${target_dir}/"
   fi
 done

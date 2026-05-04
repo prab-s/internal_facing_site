@@ -475,40 +475,159 @@ export async function startDeleteAllGraphImagesJob() {
   return r.json();
 }
 
-export async function downloadBackupBundle() {
-  const r = await apiFetch('/maintenance/backups/download');
+export async function downloadDatabaseBackupBundle() {
+  const r = await apiFetch('/maintenance/backups/database/download');
   const blob = await r.blob();
   const disposition = r.headers.get('content-disposition') || '';
   const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
   return {
     blob,
-    filename: filenameMatch?.[1] || 'internal_facing_backup.zip'
+    filename: filenameMatch?.[1] || 'internal_facing_db_data_backup.zip'
   };
 }
 
-export async function startBackupBundleJob() {
-  const r = await apiFetch('/maintenance/jobs/backups/create', {
+export async function startDatabaseBackupBundleJob() {
+  const r = await apiFetch('/maintenance/jobs/backups/database/create', {
     method: 'POST'
   });
   return r.json();
 }
 
-export async function restoreBackupBundle(file) {
+export async function downloadDataBackupBundle() {
+  const r = await apiFetch('/maintenance/media/download');
+  const blob = await r.blob();
+  const disposition = r.headers.get('content-disposition') || '';
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return {
+    blob,
+    filename: filenameMatch?.[1] || 'internal_facing_media_data_backup.zip'
+  };
+}
+
+export async function startDataBackupBundleJob() {
+  const r = await apiFetch('/maintenance/jobs/media/create', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function downloadBackupBundle() {
+  return downloadDatabaseBackupBundle();
+}
+
+export async function startBackupBundleJob() {
+  return startDatabaseBackupBundleJob();
+}
+
+export async function restoreDatabaseBackupBundle(file) {
   const formData = new FormData();
   formData.append('file', file);
-  const r = await apiFetch('/maintenance/backups/restore', {
+  const r = await apiFetch('/maintenance/backups/db/restore', {
     method: 'POST',
     body: formData
   });
   return r.json();
 }
 
-export async function startRestoreBackupBundleJob(file) {
+export async function startRestoreDatabaseBackupBundleJob(file) {
   const formData = new FormData();
   formData.append('file', file);
-  const r = await apiFetch('/maintenance/jobs/backups/restore', {
+  const r = await apiFetch('/maintenance/jobs/backups/db/restore', {
     method: 'POST',
     body: formData
+  });
+  return r.json();
+}
+
+export async function restoreDataBackupBundle(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await apiFetch('/maintenance/backups/media/restore', {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function startRestoreDataBackupBundleJob(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await apiFetch('/maintenance/jobs/backups/media/restore', {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function restoreBackupBundle(file) {
+  return restoreDatabaseBackupBundle(file);
+}
+
+export async function startRestoreBackupBundleJob(file) {
+  return startRestoreDatabaseBackupBundleJob(file);
+}
+
+export async function listFileManagerEntries(rootName, path = '') {
+  const sp = new URLSearchParams();
+  if (path) sp.set('path', path);
+  const r = await apiFetch(`/file-manager/${rootName}` + (sp.toString() ? `?${sp.toString()}` : ''));
+  return r.json();
+}
+
+export async function downloadFileManagerEntry(rootName, path) {
+  const sp = new URLSearchParams({ path });
+  const r = await apiFetch(`/file-manager/${rootName}/download?${sp.toString()}`);
+  const blob = await r.blob();
+  const disposition = r.headers.get('content-disposition') || '';
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return {
+    blob,
+    filename: filenameMatch?.[1] || path.split('/').pop() || 'download.bin'
+  };
+}
+
+export async function createFileManagerFolder(rootName, path, folderName) {
+  const sp = new URLSearchParams();
+  if (path) sp.set('path', path);
+  const r = await apiFetch(`/file-manager/${rootName}/folders` + (sp.toString() ? `?${sp.toString()}` : ''), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder_name: folderName })
+  });
+  return r.json();
+}
+
+export async function uploadFileManagerEntries(rootName, path, files, replaceExisting = false) {
+  const sp = new URLSearchParams();
+  if (path) sp.set('path', path);
+  if (replaceExisting) sp.set('replace_existing', 'true');
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  const r = await apiFetch(`/file-manager/${rootName}/upload` + (sp.toString() ? `?${sp.toString()}` : ''), {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function renameFileManagerEntry(rootName, path, newName) {
+  const sp = new URLSearchParams({ path });
+  const r = await apiFetch(`/file-manager/${rootName}/rename?${sp.toString()}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName })
+  });
+  return r.json();
+}
+
+export async function deleteFileManagerEntry(rootName, path, recursive = true) {
+  const sp = new URLSearchParams({ path });
+  const r = await apiFetch(`/file-manager/${rootName}?${sp.toString()}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recursive })
   });
   return r.json();
 }

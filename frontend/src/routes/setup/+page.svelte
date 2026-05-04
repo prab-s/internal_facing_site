@@ -3,6 +3,7 @@
   import { get } from 'svelte/store';
   import { auth } from '$lib/auth.js';
   import { GLOBAL_UNIT_OPTIONS } from '$lib/config.js';
+  import FileManager from '$lib/FileManager.svelte';
   import {
     changePassword,
     createUser,
@@ -11,11 +12,13 @@
     getMaintenanceJob,
     getProductTypes,
     getUsers,
-    startBackupBundleJob,
+    startDataBackupBundleJob,
+    startDatabaseBackupBundleJob,
     startDeleteAllGraphImagesJob,
     startRegenerateAllGraphImagesJob,
     startRegenerateAllProductPdfsJob,
-    startRestoreBackupBundleJob,
+    startRestoreDataBackupBundleJob,
+    startRestoreDatabaseBackupBundleJob,
     updateProductType,
     updateUser,
     updateUserPassword,
@@ -40,7 +43,8 @@
   let newIsAdmin = false;
   let maintenanceLoading = false;
   let maintenanceError = '';
-  let backupFile = null;
+  let dbBackupFile = null;
+  let mediaBackupFile = null;
   let maintenanceJob = null;
   let maintenancePollTimeout = null;
   let productTypes = [];
@@ -677,40 +681,80 @@
     }
   }
 
-  async function handleBackupDownload() {
-    await runMaintenanceJob(startBackupBundleJob, {
-      successMessage: 'Backup bundle created.',
-      errorMessage: 'Unable to create backup bundle.',
+  async function handleDatabaseBackupDownload() {
+    await runMaintenanceJob(startDatabaseBackupBundleJob, {
+      successMessage: 'DB data backup created.',
+      errorMessage: 'Unable to create DB data backup.',
       downloadOnComplete: true
     });
   }
 
-  function handleBackupFileChange(event) {
-    backupFile = event.currentTarget?.files?.[0] || null;
+  async function handleDataBackupDownload() {
+    await runMaintenanceJob(startDataBackupBundleJob, {
+      successMessage: 'Media data backup created.',
+      errorMessage: 'Unable to create media data backup.',
+      downloadOnComplete: true
+    });
   }
 
-  async function handleBackupRestore() {
-    if (!backupFile) {
-      maintenanceError = 'Choose a backup ZIP file first.';
+  function handleDbBackupFileChange(event) {
+    dbBackupFile = event.currentTarget?.files?.[0] || null;
+  }
+
+  function handleMediaBackupFileChange(event) {
+    mediaBackupFile = event.currentTarget?.files?.[0] || null;
+  }
+
+  async function handleDbBackupRestore() {
+    if (!dbBackupFile) {
+      maintenanceError = 'Choose a DB data ZIP file first.';
       clearSuccessToast();
       return;
     }
 
     const confirmed = window.confirm(
-      'Restore this backup bundle? This will overwrite the current database and WordPress content with the uploaded backup.'
+      'Restore this DB data backup? This will overwrite the current database with the uploaded backup.'
     );
     if (!confirmed) {
       return;
     }
 
-    const fileToRestore = backupFile;
-    await runMaintenanceJob(() => startRestoreBackupBundleJob(fileToRestore), {
-      successMessage: 'Backup bundle restored successfully.',
-      errorMessage: 'Unable to restore backup bundle.'
+    const fileToRestore = dbBackupFile;
+    await runMaintenanceJob(() => startRestoreDatabaseBackupBundleJob(fileToRestore), {
+      successMessage: 'DB data backup restored successfully.',
+      errorMessage: 'Unable to restore DB data backup.'
     });
     if (!maintenanceError) {
-      backupFile = null;
-      const input = document.getElementById('backup-restore-file');
+      dbBackupFile = null;
+      const input = document.getElementById('db-backup-restore-file');
+      if (input) {
+        input.value = '';
+      }
+    }
+  }
+
+  async function handleMediaBackupRestore() {
+    if (!mediaBackupFile) {
+      maintenanceError = 'Choose a media data ZIP file first.';
+      clearSuccessToast();
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Restore this media data backup? This will overwrite the current media and templates with the uploaded backup.'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const fileToRestore = mediaBackupFile;
+    await runMaintenanceJob(() => startRestoreDataBackupBundleJob(fileToRestore), {
+      successMessage: 'Media data backup restored successfully.',
+      errorMessage: 'Unable to restore media data backup.'
+    });
+    if (!maintenanceError) {
+      mediaBackupFile = null;
+      const input = document.getElementById('media-backup-restore-file');
       if (input) {
         input.value = '';
       }
@@ -948,33 +992,32 @@
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                 <div>
-                  <h3 class="h6 mb-1">Backups</h3>
+                  <h3 class="h6 mb-1">Backup DB Data</h3>
                   <p class="mb-2 text-body-secondary">
-                    Download a full backup ZIP of the deployed data, or restore one here. The backup bundle includes
-                    the app database and media, plus the WordPress database and `wp-content`.
+                    Download the PostgreSQL backup ZIP. This is the plug-and-play restore package for the app database.
                   </p>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                   <button
                     class="btn btn-primary btn-sm"
                     type="button"
-                    on:click={handleBackupDownload}
+                    on:click={handleDatabaseBackupDownload}
                     disabled={maintenanceLoading}
                   >
-                    Download Backup ZIP
+                    Download DB Data ZIP
                   </button>
                 </div>
               </div>
 
               <div class="row g-2 align-items-end mt-1">
                 <div class="col-12 col-lg">
-                  <label class="form-label form-label-sm" for="backup-restore-file">Restore Backup ZIP</label>
+                  <label class="form-label form-label-sm" for="db-backup-restore-file">Restore DB Data ZIP</label>
                   <input
-                    id="backup-restore-file"
+                    id="db-backup-restore-file"
                     class="form-control form-control-sm"
                     type="file"
                     accept=".zip,application/zip"
-                    on:change={handleBackupFileChange}
+                    on:change={handleDbBackupFileChange}
                     disabled={maintenanceLoading}
                   />
                 </div>
@@ -982,14 +1025,78 @@
                   <button
                     class="btn btn-outline-danger btn-sm"
                     type="button"
-                    on:click={handleBackupRestore}
-                    disabled={maintenanceLoading || !backupFile}
+                    on:click={handleDbBackupRestore}
+                    disabled={maintenanceLoading || !dbBackupFile}
                   >
-                    Restore Backup ZIP
+                    Restore DB Data ZIP
                   </button>
                 </div>
               </div>
             </div>
+          </div>
+
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Backup Media Data</h3>
+                  <p class="mb-2 text-body-secondary">
+                    Download the media-only ZIP for product images, graph images, generated PDFs, and templates. Backups are excluded.
+                  </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={handleDataBackupDownload}
+                    disabled={maintenanceLoading}
+                  >
+                    Download Media Data ZIP
+                  </button>
+                </div>
+              </div>
+
+              <div class="row g-2 align-items-end mt-1">
+                <div class="col-12 col-lg">
+                  <label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIP</label>
+                  <input
+                    id="media-backup-restore-file"
+                    class="form-control form-control-sm"
+                    type="file"
+                    accept=".zip,application/zip"
+                    on:change={handleMediaBackupFileChange}
+                    disabled={maintenanceLoading}
+                  />
+                </div>
+                <div class="col-12 col-lg-auto">
+                  <button
+                    class="btn btn-outline-danger btn-sm"
+                    type="button"
+                    on:click={handleMediaBackupRestore}
+                    disabled={maintenanceLoading || !mediaBackupFile}
+                  >
+                    Restore Media Data ZIP
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <FileManager
+              rootName="data"
+              title="Media File Manager"
+              description="Browse and manage media folders in the deployment volume. Open a folder to upload, create folders, rename, or delete items."
+            />
+          </div>
+
+          <div class="mb-3">
+            <FileManager
+              rootName="templates"
+              title="Template File Manager"
+              description="Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
+            />
           </div>
 
           <div class="card border mb-3">

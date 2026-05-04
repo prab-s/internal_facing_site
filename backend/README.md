@@ -93,5 +93,7 @@ Use the project scripts for normal operation:
 ```bash
 ./redeploy.sh
 ./backup_bundle.sh --deploy
-./restore_bundle.sh backups/your_backup_file.zip --deploy
+./backup_data.sh --deploy
+./restore_bundle.sh data/backups/your_backup_file.zip --deploy
+./restore_data.sh data/backups/your_media_backup_file.zip --deploy
 ```
