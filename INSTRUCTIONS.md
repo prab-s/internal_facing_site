@@ -259,8 +259,10 @@ That lets SIT keep its own schema/data while still overriding things like:
 Used by:
 
 - `./redeploy.sh`
-- `./backup_bundle.sh` for DB data
-- `./backup_data.sh` for media data
+- `./backup_db_data.sh` for DB data
+- `./backup_media_data.sh` for media data
+
+Compatibility wrappers still exist at `./backup_bundle.sh` and `./backup_data.sh`.
 
 ### Important env values
 
@@ -357,7 +359,7 @@ This now manages the whole stack from:
 
 - [deploy-compose.yml](/home/user1/Documents/fan_graphs_website/deploy-compose.yml)
 
-### `backup_bundle.sh`
+### `backup_db_data.sh`
 
 Purpose:
 
@@ -371,26 +373,26 @@ Purpose:
 Use:
 
 ```bash
-./backup_bundle.sh
+./backup_db_data.sh
 ```
 
 For SIT specifically:
 
 ```bash
-./backup_bundle.sh --sit
+./backup_db_data.sh --sit
 ```
 
 For deployment specifically:
 
 ```bash
-./backup_bundle.sh --deploy
+./backup_db_data.sh --deploy
 ```
 
 Output:
 
 - zip files written into `data/backups/` by default
 
-### `backup_data.sh`
+### `backup_media_data.sh`
 
 Purpose:
 
@@ -409,30 +411,30 @@ Purpose:
 Use:
 
 ```bash
-./backup_data.sh
+./backup_media_data.sh
 ```
 
 For SIT specifically:
 
 ```bash
-./backup_data.sh --sit
+./backup_media_data.sh --sit
 ```
 
 For deployment specifically:
 
 ```bash
-./backup_data.sh --deploy
+./backup_media_data.sh --deploy
 ```
 
 Output:
 
 - zip files written into `data/backups/` by default
 
-### `restore_bundle.sh`
+### `restore_db_data.sh`
 
 Purpose:
 
-- restores a DB data zip created by `backup_bundle.sh`
+- restores a DB data zip created by `backup_db_data.sh`
 - restores the PostgreSQL dump into SIT or deployment, depending on `ENV_FILE`
 - restores WordPress data too when a deployment backup includes it
 - prints timestamped progress in the terminal while it runs
@@ -443,19 +445,19 @@ Purpose:
 Use:
 
 ```bash
-./restore_bundle.sh data/backups/your_db_backup_file.zip
+./restore_db_data.sh data/backups/your_db_backup_file.zip
 ```
 
 To restore a SIT DB backup into deployment:
 
 ```bash
-./restore_bundle.sh data/backups/your_db_backup_file.zip --deploy
+./restore_db_data.sh data/backups/your_db_backup_file.zip --deploy
 ```
 
 To restore into SIT:
 
 ```bash
-./restore_bundle.sh data/backups/your_db_backup_file.zip --sit
+./restore_db_data.sh data/backups/your_db_backup_file.zip --sit
 ```
 
 This script currently restores:
@@ -463,11 +465,11 @@ This script currently restores:
 - the Postgres SQL dump
 - WordPress MariaDB + `wp-content` if present in the backup and restoring into deployment
 
-### `restore_data.sh`
+### `restore_media_data.sh`
 
 Purpose:
 
-- restores a media data zip created by `backup_data.sh`
+- restores a media data zip created by `backup_media_data.sh`
 - restores media folders back into `data/` when they are present in the archive
 - restores the `templates/` tree when present in the archive
 - prints timestamped progress in the terminal while it runs
@@ -475,19 +477,19 @@ Purpose:
 Use:
 
 ```bash
-./restore_data.sh data/backups/your_media_backup_file.zip
+./restore_media_data.sh data/backups/your_media_backup_file.zip
 ```
 
 To restore a SIT media backup into deployment:
 
 ```bash
-./restore_data.sh data/backups/your_media_backup_file.zip --deploy
+./restore_media_data.sh data/backups/your_media_backup_file.zip --deploy
 ```
 
 To restore into SIT:
 
 ```bash
-./restore_data.sh data/backups/your_media_backup_file.zip --sit
+./restore_media_data.sh data/backups/your_media_backup_file.zip --sit
 ```
 
 This script currently restores:
@@ -1009,15 +1011,15 @@ If you intentionally want to copy current SIT data into deployment, the intended
 1. create a backup from SIT:
 
 ```bash
-    ./backup_bundle.sh --sit
-    ./backup_data.sh --sit
+    ./backup_db_data.sh --sit
+    ./backup_media_data.sh --sit
 ```
 
 2. restore the DB backup and media backup into deployment:
 
 ```bash
-./restore_bundle.sh data/backups/your_db_backup_file.zip --deploy
-./restore_data.sh data/backups/your_media_backup_file.zip --deploy
+./restore_db_data.sh data/backups/your_db_backup_file.zip --deploy
+./restore_media_data.sh data/backups/your_media_backup_file.zip --deploy
 ```
 
 3. bring the deployment stack fully back up:
@@ -1040,3 +1042,8 @@ For larger backup/restore/regeneration tasks, the `Setup` page now uses backgrou
 - Keep `AUTH_COOKIE_SECURE=false` for local SIT if you are serving over plain HTTP.
 - The old shared `APP_PASSWORD` approach is obsolete.
 - PostgreSQL is now the intended primary database.
+- Legacy compatibility wrappers remain available as:
+  - `./backup_bundle.sh`
+  - `./backup_data.sh`
+  - `./restore_bundle.sh`
+  - `./restore_data.sh`

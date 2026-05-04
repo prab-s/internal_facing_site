@@ -92,8 +92,10 @@ Use the project scripts for normal operation:
 
 ```bash
 ./redeploy.sh
-./backup_bundle.sh --deploy
-./backup_data.sh --deploy
-./restore_bundle.sh data/backups/your_backup_file.zip --deploy
-./restore_data.sh data/backups/your_media_backup_file.zip --deploy
+./backup_db_data.sh --deploy
+./backup_media_data.sh --deploy
+./restore_db_data.sh data/backups/your_backup_file.zip --deploy
+./restore_media_data.sh data/backups/your_media_backup_file.zip --deploy
 ```
+
+Legacy wrappers remain available as `./backup_bundle.sh`, `./backup_data.sh`, `./restore_bundle.sh`, and `./restore_data.sh`.
