@@ -121,6 +121,7 @@ PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_TYPE_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
+FINDER_DEBUG = os.getenv("FINDER_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "admin").strip()
@@ -138,6 +139,11 @@ PASSWORD_HASH_ITERATIONS = 600_000
 POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
 MAINTENANCE_JOBS: dict[str, dict] = {}
 MAINTENANCE_JOBS_LOCK = threading.Lock()
+
+
+def trace_product_filter(message: str, *args):
+    if FINDER_DEBUG:
+        logger.warning(message, *args)
 
 
 def sanitize_name(value: str) -> str:
@@ -1912,6 +1918,7 @@ def product_matches_parameter_filters(product: Product, parameter_filters: list[
     if not parameter_filters:
         return True
 
+    product_label = f"{product.model or 'unknown model'} (id={product.id})"
     grouped_parameters: dict[tuple[str, str], list[ProductParameter]] = {}
     for group in product.parameter_groups:
             group_name = (group.group_name or "").strip().casefold()
@@ -1930,14 +1937,52 @@ def product_matches_parameter_filters(product: Product, parameter_filters: list[
             min_number = filter_item.get("min_number")
             max_number = filter_item.get("max_number")
             graph_metric_values = graph_values.get(filter_key[1], [])
+            trace_product_filter(
+                "product filter trace: product=%s graph_filter=%s min=%s max=%s values=%s",
+                product_label,
+                filter_key[1],
+                min_number,
+                max_number,
+                graph_metric_values,
+            )
             if not graph_metric_values:
+                trace_product_filter(
+                    "product filter trace result: product=%s graph_filter=%s matched=False reason=no_graph_values",
+                    product_label,
+                    filter_key[1],
+                )
                 return False
-            if not any(value_in_window(metric_value, min_number, max_number) for metric_value in graph_metric_values):
+            graph_matches = [value_in_window(metric_value, min_number, max_number) for metric_value in graph_metric_values]
+            trace_product_filter(
+                "product filter trace compare: product=%s graph_filter=%s comparisons=%s mode=all",
+                product_label,
+                filter_key[1],
+                graph_matches,
+            )
+            if not all(graph_matches):
+                trace_product_filter(
+                    "product filter trace result: product=%s graph_filter=%s matched=False reason=graph_value_out_of_window",
+                    product_label,
+                    filter_key[1],
+                )
                 return False
             continue
 
         matching_parameters = grouped_parameters.get(filter_key, [])
+        trace_product_filter(
+            "product filter trace: product=%s spec_filter=%s.%s candidates=%s",
+            product_label,
+            filter_key[0],
+            filter_key[1],
+            len(matching_parameters),
+        )
         if not matching_parameters:
+            trace_product_filter(
+                "product filter trace result: product=%s spec_filter=%s.%s matched=False reason=no_matching_parameters",
+                product_label,
+                filter_key[0],
+                filter_key[1],
+            )
             return False
 
         value_string = filter_item.get("value_string")
@@ -1960,7 +2005,26 @@ def product_matches_parameter_filters(product: Product, parameter_filters: list[
                 break
 
         if not matched:
+            trace_product_filter(
+                "product filter trace result: product=%s spec_filter=%s.%s matched=False reason=no_parameter_match value_string=%s min=%s max=%s",
+                product_label,
+                filter_key[0],
+                filter_key[1],
+                value_string,
+                min_number,
+                max_number,
+            )
             return False
+
+        trace_product_filter(
+            "product filter trace result: product=%s spec_filter=%s.%s matched=True value_string=%s min=%s max=%s",
+            product_label,
+            filter_key[0],
+            filter_key[1],
+            value_string,
+            min_number,
+            max_number,
+        )
 
     return True
 
@@ -3398,6 +3462,15 @@ def list_cms_products(
     parameter_filters: Optional[str] = Query(None),
 ):
     parsed_parameter_filters = parse_parameter_filters(parameter_filters)
+    trace_product_filter(
+        "product filter trace request: endpoint=/api/cms/products search=%s product_type_key=%s series_id=%s series_name=%s raw_filters=%s parsed_filters=%s",
+        search,
+        product_type_key,
+        series_id,
+        series_name,
+        parameter_filters,
+        parsed_parameter_filters,
+    )
     q = db.query(Product).options(
         joinedload(Product.product_type),
         joinedload(Product.series),
@@ -3456,6 +3529,14 @@ def get_cms_product_graph_values(
     parameter_filters: Optional[str] = Query(None),
 ):
     parsed_parameter_filters = parse_parameter_filters(parameter_filters)
+    trace_product_filter(
+        "product filter trace request: endpoint=/api/cms/product-graph-values search=%s product_type_key=%s series_id=%s raw_filters=%s parsed_filters=%s",
+        search,
+        product_type_key,
+        series_id,
+        parameter_filters,
+        parsed_parameter_filters,
+    )
     q = db.query(Product).options(
         joinedload(Product.product_type),
         selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
