@@ -1,5 +1,4 @@
 import { f as fallback, e as escape_html, d as bind_props, h as head, a as attr, j as attr_style, i as ensure_array_like, b as attr_class } from "../../../chunks/index2.js";
-/* empty css                         */
 import { Compartment } from "@codemirror/state";
 import { MatchDecorator, Decoration, ViewPlugin, EditorView } from "@codemirror/view";
 import { html } from "@codemirror/lang-html";

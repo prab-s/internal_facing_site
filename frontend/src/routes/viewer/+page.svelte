@@ -5,6 +5,7 @@
     getProductChartData,
     getProduct,
     getProducts,
+    getTemplates,
     getProductTypePdfContext,
     getProductTypes,
     getSeries,
@@ -21,6 +22,7 @@
 
   let products = [];
   let productTypes = [];
+  let templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
   let seriesRecords = [];
   let selectedProductId = null;
   let rpmLines = [];
@@ -135,6 +137,38 @@
     return productTypes.find((item) => item.key === selectedProduct?.product_type_key) || null;
   }
 
+  function templateCollection(templateType) {
+    if (templateType === 'series') return templateRegistry.series_templates ?? [];
+    if (templateType === 'product_type') return templateRegistry.product_type_templates ?? [];
+    return templateRegistry.product_templates ?? [];
+  }
+
+  function templateLabel(templateType, templateId, fallbackId) {
+    const selectedId = templateId || fallbackId;
+    const match = templateCollection(templateType).find((item) => item.id === selectedId);
+    if (match?.label) return match.label;
+    if (selectedId) return selectedId;
+    return 'Default';
+  }
+
+  function productPdfTemplateLabels(product) {
+    return {
+      printed: templateLabel('product', product?.printed_template_id, product?.template_id || 'product-default'),
+      online: templateLabel('product', product?.online_template_id, product?.template_id || 'product-default')
+    };
+  }
+
+  function seriesPdfTemplateLabels(series) {
+    return {
+      printed: templateLabel('series', series?.printed_template_id, series?.template_id || 'series-default'),
+      online: templateLabel('series', series?.online_template_id, series?.template_id || 'series-default')
+    };
+  }
+
+  function productTypePdfTemplateLabel(productType) {
+    return templateLabel('product_type', productType?.product_type_template_id, 'product_type-default');
+  }
+
   function getCurrentGraphConfig() {
     const productType = getCurrentProductType();
     return productType
@@ -231,6 +265,11 @@
     error = '';
     try {
       products = await getProducts();
+      try {
+        templateRegistry = await getTemplates();
+      } catch {
+        templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
+      }
       try {
         productTypes = await getProductTypes();
       } catch {
@@ -716,6 +755,9 @@
               <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
             {/if}
           </div>
+          <div class="small text-body-secondary mt-2">
+            Printed template: {productPdfTemplateLabels(currentProduct).printed} · Online template: {productPdfTemplateLabels(currentProduct).online}
+          </div>
 
       <div class="row g-3 mt-1">
         <div class="col-12 col-md-3">
@@ -900,6 +942,11 @@
               <button class="btn btn-outline-secondary" type="button" on:click={() => regenerateProductTypePdf(selectedProductTypeRecord)} disabled={!selectedProductTypeRecord || refreshingProductTypePdfId === selectedProductTypeRecord.id}>
                 {refreshingProductTypePdfId === selectedProductTypeRecord?.id ? 'Generating PDF...' : 'Generate Product Type PDF'}
               </button>
+              {#if selectedProductTypeRecord}
+                <div class="small text-body-secondary">
+                  Template: {productTypePdfTemplateLabel(selectedProductTypeRecord)}
+                </div>
+              {/if}
               {#if selectedProductTypeRecord?.product_type_pdf_url}
                 <a class="btn btn-outline-primary" href={selectedProductTypeRecord.product_type_pdf_url} target="_blank" rel="noreferrer">Open Product Type PDF</a>
               {/if}
@@ -1036,6 +1083,9 @@
               {:else if selectedSeriesRecord.series_pdf_url}
                 <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
               {/if}
+            </div>
+            <div class="small text-body-secondary mb-3">
+              Printed template: {seriesPdfTemplateLabels(selectedSeriesRecord).printed} · Online template: {seriesPdfTemplateLabels(selectedSeriesRecord).online}
             </div>
 
             <div class="row g-3">

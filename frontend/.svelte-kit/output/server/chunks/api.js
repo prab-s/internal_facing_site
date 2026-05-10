@@ -41,10 +41,6 @@ async function getProductTypes() {
   const r = await apiFetch("/product-types");
   return r.json();
 }
-async function getProductTypePdfContext(id) {
-  const r = await apiFetch(`/product-types/${id}/pdf-context`);
-  return r.json();
-}
 async function getProduct(id) {
   const r = await apiFetch(`/products/${id}`);
   return r.json();
@@ -77,10 +73,9 @@ export {
   getProductTypes as a,
   login as b,
   getAuthSession as c,
-  getProductTypePdfContext as d,
-  getProducts as e,
-  getProduct as f,
+  getProducts as d,
+  getProduct as e,
+  getProductChartData as f,
   getUsers as g,
-  getProductChartData as h,
   logout as l
 };

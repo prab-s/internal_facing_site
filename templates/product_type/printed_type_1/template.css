@@ -42,8 +42,6 @@ body.product-type-template {
   overflow: hidden;
   margin: 0 auto;
   background: #fff;
-  page-break-after: always;
-  break-after: page;
 }
 
 .pdf-page--portrait {
@@ -51,28 +49,23 @@ body.product-type-template {
   min-height: 297mm;
 }
 
-.pdf-page--landscape {
-  width: 297mm;
-  min-height: 210mm;
-}
-
 .pdf-page-break {
+  display: block;
   height: 0;
   overflow: hidden;
   color: transparent;
-  page-break-after: always;
   break-after: page;
 }
 
 /* Page 1: cover */
 .cover-page {
   background:
-    radial-gradient(circle at 48% 38%, rgba(255,255,255,0.16) 0 0.4mm, transparent 0.6mm),
-    radial-gradient(circle at 50% 39%, transparent 0 27mm, rgba(255,255,255,0.12) 27.2mm 27.6mm, transparent 27.8mm),
-    radial-gradient(circle at 50% 39%, transparent 0 45mm, rgba(255,255,255,0.10) 45.2mm 45.6mm, transparent 45.8mm),
+    radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.16) 0 0.4mm, transparent 0.6mm),
+    radial-gradient(circle at 50% 39%, transparent 0 27mm, rgba(255, 255, 255, 0.12) 27.2mm 27.6mm, transparent 27.8mm),
+    radial-gradient(circle at 50% 39%, transparent 0 45mm, rgba(255, 255, 255, 0.10) 45.2mm 45.6mm, transparent 45.8mm),
     linear-gradient(180deg, #000 0%, #08090d 76%, #b60e20 76%, #e02532 100%);
   color: #fff;
-  padding: 15mm 10mm 0;
+  padding: 11mm 7mm 0;
 }
 
 .cover-page__artwork {
@@ -86,8 +79,8 @@ body.product-type-template {
 
 .cover-page__nz {
   position: absolute;
-  top: 15mm;
-  right: 20mm;
+  top: 11mm;
+  right: 11mm;
   z-index: 2;
   font-size: 3.1mm;
   line-height: 1.25;
@@ -98,8 +91,8 @@ body.product-type-template {
 .cover-page__brand-block {
   position: absolute;
   z-index: 2;
-  left: 19mm;
-  top: 105mm;
+  left: 13mm;
+  top: 88mm;
 }
 
 .cover-page__brand {
@@ -118,8 +111,8 @@ body.product-type-template {
 
 .cover-page__catalogue-block {
   position: absolute;
-  left: 10mm;
-  bottom: 39mm;
+  left: 7mm;
+  bottom: 26mm;
   z-index: 2;
   padding-top: 4mm;
   border-top: 0.8mm solid var(--vent-red);
@@ -140,9 +133,9 @@ body.product-type-template {
 
 .cover-page__feature-strip {
   position: absolute;
-  left: 42mm;
-  right: 8mm;
-  bottom: 35mm;
+  left: 28mm;
+  right: 6mm;
+  bottom: 24mm;
   z-index: 2;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -176,7 +169,7 @@ body.product-type-template {
   right: 0;
   bottom: 0;
   z-index: 2;
-  height: 15mm;
+  height: 10mm;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,7 +179,49 @@ body.product-type-template {
   font-weight: 700;
 }
 
-/* Page 2: contact spread */
+/* Page 2: full-page company image/artwork */
+.company-image-page {
+  padding: 0;
+  background: #0b3a73;
+}
+
+.company-image-page__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 297mm;
+  object-fit: cover;
+}
+
+/* Page 3: contact details */
+.contact-page {
+  padding: 0 7mm 6mm;
+  background: #fff;
+}
+
+.contact-page__header {
+  height: 24mm;
+  margin: 0 -7mm 6mm;
+  padding: 6mm 7mm;
+  color: #fff;
+  background:
+    linear-gradient(rgba(0, 41, 92, 0.92), rgba(0, 41, 92, 0.92)),
+    linear-gradient(90deg, #002a63, #074989);
+}
+
+.contact-page__logo {
+  font-size: 4mm;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.contact-page__header h1 {
+  margin: 1mm 0 0;
+  font-size: 8mm;
+  line-height: 1;
+}
+
+/* Legacy Page 2 contact spread selectors retained for GrapeJS compatibility */
 .contact-spread {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -196,7 +231,7 @@ body.product-type-template {
 .contact-spread__image-panel {
   position: relative;
   background:
-    linear-gradient(rgba(0,55,112,0.83), rgba(0,55,112,0.83)),
+    linear-gradient(rgba(0, 55, 112, 0.83), rgba(0, 55, 112, 0.83)),
     linear-gradient(135deg, #0b3a73, #061f43);
 }
 
@@ -208,17 +243,17 @@ body.product-type-template {
 }
 
 .contact-spread__content-panel {
-  padding: 0 10mm 7mm;
+  padding: 0 6mm 5mm;
   background: #fff;
 }
 
 .contact-spread__header {
-  height: 29mm;
-  margin: 0 -10mm 7mm;
-  padding: 7mm 10mm;
+  height: 22mm;
+  margin: 0 -6mm 5mm;
+  padding: 5mm 6mm;
   color: #fff;
   background:
-    linear-gradient(rgba(0,41,92,0.92), rgba(0,41,92,0.92)),
+    linear-gradient(rgba(0, 41, 92, 0.92), rgba(0, 41, 92, 0.92)),
     linear-gradient(90deg, #002a63, #074989);
 }
 
@@ -239,7 +274,7 @@ body.product-type-template {
   align-items: center;
   justify-content: center;
   gap: 5mm;
-  min-height: 20mm;
+  min-height: 16mm;
   color: #1d3d7a;
   font-size: 5mm;
   letter-spacing: 0.05em;
@@ -261,9 +296,9 @@ body.product-type-template {
 .contact-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4mm;
-  padding: 5mm;
-  margin-bottom: 7mm;
+  gap: 3mm;
+  padding: 4mm;
+  margin-bottom: 5mm;
   border-radius: 4mm;
   background: #eaf2ff;
 }
@@ -283,13 +318,13 @@ body.product-type-template {
 }
 
 .locations-panel {
-  padding: 5mm;
+  padding: 4mm;
   border-radius: 4mm;
   background: #eef4ff;
 }
 
 .locations-panel h2 {
-  margin: 0 0 5mm;
+  margin: 0 0 3mm;
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -300,17 +335,17 @@ body.product-type-template {
 .locations-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10mm;
+  gap: 6mm;
 }
 
 .location-block h3 {
-  margin: 0 0 2mm;
+  margin: 0 0 1.5mm;
   font-size: 3.6mm;
   color: #253d6b;
 }
 
 .location-block p {
-  margin: 0 0 1.5mm;
+  margin: 0 0 1mm;
   font-size: 2.8mm;
   line-height: 1.25;
 }
@@ -319,7 +354,7 @@ body.product-type-template {
 .map-row {
   display: grid;
   gap: 1mm;
-  margin-top: 5mm;
+  margin-top: 3mm;
 }
 
 .location-image-row {
@@ -335,7 +370,7 @@ body.product-type-template {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 28mm;
+  min-height: 26mm;
   background: #d7e2f2;
   color: #5f6d80;
   font-size: 3mm;
@@ -343,26 +378,26 @@ body.product-type-template {
 }
 
 .map-placeholder {
-  min-height: 43mm;
+  min-height: 40mm;
   background: #edf1f7;
 }
 
-/* Page 3: dynamic contents */
+/* Page 4: dynamic contents */
 .contents-page {
-  padding: 0 10mm 8mm;
+  padding: 0 6mm 5mm;
   background: #fff;
 }
 
 .contents-page__header {
-  height: 29mm;
-  margin: 0 -10mm 8mm;
-  padding: 6mm 12mm;
+  height: 22mm;
+  margin: 0 -6mm 5mm;
+  padding: 4mm 6mm;
   display: flex;
   align-items: center;
   justify-content: space-between;
   color: #fff;
   background:
-    linear-gradient(rgba(0,42,96,0.92), rgba(0,42,96,0.92)),
+    linear-gradient(rgba(0, 42, 96, 0.92), rgba(0, 42, 96, 0.92)),
     linear-gradient(90deg, #002a63, #064b8f);
 }
 
@@ -389,12 +424,12 @@ body.product-type-template {
 
 .series-legend-panel,
 .contents-panel {
-  margin-bottom: 6mm;
+  margin-bottom: 3mm;
 }
 
 .series-legend-panel h2,
 .contents-panel h2 {
-  margin: 0 0 4mm;
+  margin: 0 0 3mm;
   font-size: 5mm;
   color: var(--accent);
 }
@@ -402,14 +437,14 @@ body.product-type-template {
 .series-legend-panel__content,
 .contents-panel__content {
   font-size: 3.5mm;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 
 .series-legend {
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(60mm, 1fr));
-  gap: 3mm 4mm;
+  grid-template-columns: repeat(auto-fit, minmax(46mm, 1fr));
+  gap: 2mm 3mm;
   padding: 0;
   margin: 0;
 }
@@ -417,8 +452,8 @@ body.product-type-template {
 .series-legend__item {
   display: flex;
   align-items: flex-start;
-  gap: 3mm;
-  min-height: 11mm;
+  gap: 2mm;
+  min-height: 9mm;
 }
 
 .series-legend__swatch {
@@ -433,14 +468,14 @@ body.product-type-template {
 .product-type-contents {
   display: flex;
   flex-direction: column;
-  gap: 5mm;
+  gap: 2.5mm;
 }
 
 .series-group {
   border: 0.3mm solid var(--line);
   border-left: 4.5mm solid var(--series-accent, var(--accent));
   border-radius: 3.5mm;
-  padding: 4mm;
+  padding: 2.5mm;
   page-break-inside: avoid;
   break-inside: avoid;
   background: rgba(255, 255, 255, 0.8);
@@ -451,7 +486,7 @@ body.product-type-template {
   justify-content: space-between;
   gap: 4mm;
   align-items: baseline;
-  margin-bottom: 3.5mm;
+  margin-bottom: 2mm;
 }
 
 .series-group__title {
@@ -466,14 +501,14 @@ body.product-type-template {
 
 .series-group__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(35mm, 1fr));
-  gap: 3mm;
+  grid-template-columns: repeat(auto-fit, minmax(30mm, 1fr));
+  gap: 2mm;
 }
 
 .product-card {
   display: flex;
   flex-direction: column;
-  gap: 1.8mm;
+  gap: 1.2mm;
   page-break-inside: avoid;
   break-inside: avoid;
 }
@@ -482,12 +517,12 @@ body.product-type-template {
 .product-card__image,
 .product-card__placeholder {
   width: 100%;
-  height: 28mm;
+  height: 22mm;
   object-fit: contain;
   border: 0.25mm solid rgba(82, 96, 116, 0.24);
   border-radius: 2.2mm;
   background: rgba(255, 255, 255, 0.96);
-  padding: 2mm;
+  padding: 1.2mm;
 }
 
 .product-card__placeholder {
@@ -505,5 +540,46 @@ body.product-type-template {
 }
 
 /* === GRAPESJS MANAGED CSS START === */
-* { box-sizing: border-box; } body {margin: 0;}.gjs-row{display:table;padding-top:10px;padding-right:10px;padding-bottom:10px;padding-left:10px;width:100%;}.gjs-cell{width:8%;display:table-cell;height:75px;}.page{background-color:#edf1f6;}#iezi6{padding:10px;}#i67gp{color:black;}@media (max-width: 768px){.gjs-cell{width:100%;display:block;}}
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.gjs-row {
+  display: table;
+  padding-top: 10px;
+  padding-right: 10px;
+  padding-bottom: 10px;
+  padding-left: 10px;
+  width: 100%;
+}
+
+.gjs-cell {
+  width: 8%;
+  display: table-cell;
+  height: 75px;
+}
+
+.page {
+  background-color: #edf1f6;
+}
+
+#iezi6 {
+  padding: 10px;
+}
+
+#i67gp {
+  color: black;
+}
+
+@media (max-width: 768px) {
+  .gjs-cell {
+    width: 100%;
+    display: block;
+  }
+}
+
 /* === GRAPESJS MANAGED CSS END === */

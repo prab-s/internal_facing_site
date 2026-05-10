@@ -1,5 +1,5 @@
 import { s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
-import { e as getProducts, f as getProduct, h as getProductChartData } from "../../../chunks/api.js";
+import { d as getProducts, e as getProduct, f as getProductChartData } from "../../../chunks/api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../chunks/fullChart.js";
 import { t as theme } from "../../../chunks/config.js";
 import { S as SeriesNamesBadgeList } from "../../../chunks/SeriesNamesBadgeList.js";
@@ -13,6 +13,9 @@ function _page($$renderer, $$props) {
     var $$store_subs;
     let products = [];
     let productTypes = [];
+    let templateRegistry = {
+      product_templates: []
+    };
     let selectedProductId = null;
     let rpmLines = [];
     let rpmPoints = [];
@@ -43,6 +46,22 @@ function _page($$renderer, $$props) {
     }
     function getCurrentProductType() {
       return productTypes.find((item) => item.key === selectedProduct?.product_type_key) || null;
+    }
+    function templateCollection(templateType) {
+      return templateRegistry.product_templates ?? [];
+    }
+    function templateLabel(templateType, templateId, fallbackId) {
+      const selectedId = templateId || fallbackId;
+      const match = templateCollection().find((item) => item.id === selectedId);
+      if (match?.label) return match.label;
+      if (selectedId) return selectedId;
+      return "Default";
+    }
+    function productPdfTemplateLabels(product) {
+      return {
+        printed: templateLabel("product", product?.printed_template_id, product?.template_id || "product-default"),
+        online: templateLabel("product", product?.online_template_id, product?.template_id || "product-default")
+      };
     }
     function getCurrentGraphConfig() {
       const productType = getCurrentProductType();
@@ -309,7 +328,7 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div> `);
+        $$renderer2.push(`<!--]--></div> <div class="small text-body-secondary mt-2">Printed template: ${escape_html(productPdfTemplateLabels(currentProduct).printed)} · Online template: ${escape_html(productPdfTemplateLabels(currentProduct).online)}</div> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div> `);
         if (getCurrentProductType()) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="mt-3">`);

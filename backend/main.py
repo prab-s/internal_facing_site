@@ -21,7 +21,9 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
+from xml.etree import ElementTree as ET
 
+import html5lib
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -110,6 +112,7 @@ from backend.schemas import (
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
+JINJA_PATTERN = re.compile(r"(\{\{[\s\S]*?\}\}|\{%-?[\s\S]*?-?%\}|\{#.*?#\})")
 GRAPH_FILTER_GROUP_NAME = "__graph__"
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
@@ -703,6 +706,15 @@ def resolve_template_stylesheet_path(template_definition: dict, template_path: P
     return candidate_paths[0] if candidate_paths else None
 
 
+def inline_template_stylesheet(html_template: str, stylesheet_text: str) -> str:
+    replacement = f"<style>\n{stylesheet_text}\n</style>"
+    pattern = re.compile(
+        r"<link\b[^>]*rel=(['\"])stylesheet\1[^>]*href=(['\"])\.\/template\.css\2[^>]*\/?>",
+        re.IGNORECASE,
+    )
+    return pattern.sub(replacement, html_template, count=1)
+
+
 def find_chromium_binary() -> str:
     candidates = [
         os.getenv("CHROMIUM_BIN", "").strip(),
@@ -781,6 +793,265 @@ def normalize_color_value(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def protect_jinja_tokens(source: str, prefix: str = "template-save") -> tuple[str, list[dict[str, str]]]:
+    tokens: list[dict[str, str]] = []
+
+    def replacer(match: re.Match[str]) -> str:
+        placeholder = f"__{prefix}_{len(tokens)}__"
+        tokens.append({"placeholder": placeholder, "token": match.group(0)})
+        return placeholder
+
+    encoded = JINJA_PATTERN.sub(replacer, str(source or ""))
+    return encoded, tokens
+
+
+def restore_jinja_tokens(source: str, tokens: list[dict[str, str]] | None = None) -> str:
+    result = str(source or "")
+    for entry in tokens or []:
+        result = result.replace(entry.get("placeholder", ""), entry.get("token", ""))
+    return result
+
+
+def split_template_document(html_content: str) -> tuple[str, str, str]:
+    source = str(html_content or "")
+    body_match = re.search(r"<body\b[^>]*>", source, re.IGNORECASE)
+    closing_match = re.search(r"</body>", source, re.IGNORECASE)
+    if not body_match or not closing_match:
+        return "", source, ""
+
+    prefix_end = body_match.end()
+    return source[:prefix_end], source[prefix_end:closing_match.start()], source[closing_match.start():]
+
+
+def _html_local_name(tag: str | None) -> str:
+    if not tag:
+        return ""
+    if isinstance(tag, str) and "}" in tag:
+        return tag.rsplit("}", 1)[-1]
+    return str(tag)
+
+
+def _format_html_node(node, depth: int, indent: str) -> list[str]:
+    pad = indent * max(depth, 0)
+
+    if node.tag is ET.Comment:
+        return [f"{pad}<!--{node.text or ''}-->"]
+
+    tag_name = _html_local_name(getattr(node, "tag", ""))
+    attrs = "".join(
+        f' {name}="{html.escape(str(value), quote=True)}"' for name, value in (node.attrib or {}).items()
+    )
+    self_closing = tag_name.lower() in {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "source",
+        "track",
+        "wbr",
+    }
+    child_nodes = list(node)
+    meaningful_children = bool(child_nodes) or (node.text or "").strip() != "" or any(
+        (child.tail or "").strip() if isinstance(getattr(child, "tag", None), str) else True
+        for child in child_nodes
+    )
+
+    if self_closing:
+        return [f"{pad}<{tag_name}{attrs} />"]
+
+    if not meaningful_children:
+        return [f"{pad}<{tag_name}{attrs}></{tag_name}>"]
+
+    text_content = " ".join((node.text or "").split()).strip()
+    if len(child_nodes) == 0 and text_content:
+        return [f"{pad}<{tag_name}{attrs}>{html.escape(text_content)}</{tag_name}>"]
+
+    lines = [f"{pad}<{tag_name}{attrs}>"]
+
+    if text_content:
+        lines.append(f"{indent * (depth + 1)}{html.escape(text_content)}")
+
+    for child in child_nodes:
+        lines.extend(_format_html_node(child, depth + 1, indent))
+        tail_text = " ".join((child.tail or "").split()).strip()
+        if tail_text:
+            lines.append(f"{indent * (depth + 1)}{html.escape(tail_text)}")
+
+    lines.append(f"{pad}</{tag_name}>")
+    return lines
+
+
+def format_html_source(html_content: str, indent: str = "  ") -> str:
+    source = str(html_content or "").strip()
+    if not source:
+        return ""
+
+    protected_source, tokens = protect_jinja_tokens(source, "format-html")
+    body_open = re.search(r"<body\b[^>]*>", protected_source, re.IGNORECASE)
+    body_close = re.search(r"</body>", protected_source, re.IGNORECASE)
+
+    if body_open and body_close:
+        prefix = protected_source[: body_open.end()]
+        body_inner = protected_source[body_open.end() : body_close.start()]
+        suffix = protected_source[body_close.start() :]
+        fragment = html5lib.parseFragment(body_inner, treebuilder="etree")
+        body_lines: list[str] = []
+        if fragment.text and fragment.text.strip():
+            body_lines.append(f"{indent}{' '.join(fragment.text.split()).strip()}")
+        for child in list(fragment):
+            body_lines.extend(_format_html_node(child, 1, indent))
+            tail_text = " ".join((child.tail or "").split()).strip()
+            if tail_text:
+                body_lines.append(f"{indent}{html.escape(tail_text)}")
+        formatted = prefix
+        if body_lines:
+            formatted += "\n" + "\n".join(body_lines) + "\n"
+        formatted += suffix
+        return restore_jinja_tokens(formatted, tokens).strip()
+
+    if re.search(r"<!doctype|<html\b|<head\b|<body\b", protected_source, re.IGNORECASE):
+        document = html5lib.parse(protected_source, treebuilder="etree")
+        lines: list[str] = []
+        if "<!doctype" in protected_source.lower():
+            lines.append("<!DOCTYPE html>")
+        lines.extend(_format_html_node(document, 0, indent))
+        return restore_jinja_tokens("\n".join(lines).strip(), tokens)
+
+    fragment = html5lib.parseFragment(protected_source, treebuilder="etree")
+    lines: list[str] = []
+    if fragment.text and fragment.text.strip():
+        lines.append(" ".join(fragment.text.split()).strip())
+    for child in list(fragment):
+        lines.extend(_format_html_node(child, 0, indent))
+        tail_text = " ".join((child.tail or "").split()).strip()
+        if tail_text:
+            lines.append(html.escape(tail_text))
+
+    return restore_jinja_tokens("\n".join(lines).strip(), tokens)
+
+
+def format_css_source(css_content: str) -> str:
+    source = str(css_content or "").strip()
+    if not source:
+        return ""
+
+    protected_source, tokens = protect_jinja_tokens(source, "format-css")
+    indent = "  "
+    result = ""
+    depth = 0
+    in_string: str | None = None
+    in_comment = False
+
+    def append_indent() -> None:
+        nonlocal result
+        result += indent * max(depth, 0)
+
+    def trim_line_end() -> None:
+        nonlocal result
+        result = re.sub(r"[ \t]+$", "", result)
+
+    index = 0
+    while index < len(protected_source):
+        char = protected_source[index]
+        next_char = protected_source[index + 1] if index + 1 < len(protected_source) else ""
+
+        if in_comment:
+            result += char
+            if char == "*" and next_char == "/":
+                result += next_char
+                in_comment = False
+                result += "\n"
+                append_indent()
+                index += 2
+                continue
+            index += 1
+            continue
+
+        if in_string:
+            result += char
+            if char == "\\" and next_char:
+                result += next_char
+                index += 2
+                continue
+            if char == in_string:
+                in_string = None
+            index += 1
+            continue
+
+        if char == "/" and next_char == "*":
+            trim_line_end()
+            if result and not result.endswith("\n"):
+                result += "\n"
+            append_indent()
+            result += "/*"
+            in_comment = True
+            index += 2
+            continue
+
+        if char in {'"', "'"}:
+            result += char
+            in_string = char
+            index += 1
+            continue
+
+        if char == "{":
+            trim_line_end()
+            result += " {\n"
+            depth += 1
+            append_indent()
+            index += 1
+            continue
+
+        if char == "}":
+            trim_line_end()
+            result = re.sub(r"\n[ \t]*$", "\n", result)
+            if not result.endswith("\n"):
+                result += "\n"
+            depth = max(0, depth - 1)
+            append_indent()
+            result += "}\n\n"
+            append_indent()
+            index += 1
+            continue
+
+        if char == ";":
+            result += ";\n"
+            append_indent()
+            index += 1
+            continue
+
+        if char in {"\n", "\r", "\t"}:
+            if not result.endswith(" ") and not result.endswith("\n"):
+                result += " "
+            index += 1
+            continue
+
+        if char == " " and (not result or result.endswith("\n") or result.endswith(" ")):
+            index += 1
+            continue
+
+        result += char
+        index += 1
+
+    formatted = "\n".join(line.rstrip() for line in result.splitlines())
+    formatted = "\n".join(
+        (
+            f"{line.split(':', 1)[0].rstrip()}: {line.split(':', 1)[1].lstrip()}"
+            if ":" in line and not line.lstrip().startswith("@") and not line.lstrip().startswith("/*")
+            else line
+        )
+        for line in formatted.splitlines()
+    )
+    formatted = re.sub(r"\n{3,}", "\n\n", formatted).strip()
+    return restore_jinja_tokens(formatted, tokens)
 
 
 SERIES_TAB_FALLBACK_COLOR = "#64748b"
@@ -1303,7 +1574,7 @@ def build_product_pdf_html(product: Product, variant: str) -> str:
     stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
-    html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
+    html_template = inline_template_stylesheet(html_template, stylesheet_text)
 
     primary_image_uri = ""
     if product.product_images:
@@ -1527,7 +1798,7 @@ def build_series_pdf_html(series: Series, variant: str) -> str:
     stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
-    html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
+    html_template = inline_template_stylesheet(html_template, stylesheet_text)
 
     graph_uri = ""
     graph_path = series_graph_path(series)
@@ -1673,7 +1944,7 @@ def build_product_type_pdf_html(product_type: ProductType, contents_html: str, s
     stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
-    html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
+    html_template = inline_template_stylesheet(html_template, stylesheet_text)
 
     replacements = {
         "{{product_type.key}}": html.escape(product_type.key or ""),
@@ -3380,9 +3651,12 @@ def update_template_files(template_type: str, template_id: str, body: TemplateFi
 
     stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path) or (template_path.parent / "template.css")
 
-    template_path.write_text(body.html_content, encoding="utf-8")
+    formatted_html = format_html_source(body.html_content)
+    formatted_css = format_css_source(body.css_content or "")
+
+    template_path.write_text(formatted_html, encoding="utf-8")
     stylesheet_path.parent.mkdir(parents=True, exist_ok=True)
-    stylesheet_path.write_text(body.css_content or "", encoding="utf-8")
+    stylesheet_path.write_text(formatted_css, encoding="utf-8")
 
     registry = sync_template_registry_with_disk()
     collection_name = template_collection_name(normalized_type)
@@ -3398,8 +3672,8 @@ def update_template_files(template_type: str, template_id: str, body: TemplateFi
         type=normalized_type,
         html_path=str(template_path.relative_to(Path(__file__).resolve().parents[1])),
         css_path=str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1])),
-        html_content=body.html_content,
-        css_content=body.css_content or "",
+        html_content=formatted_html,
+        css_content=formatted_css,
     )
 
 

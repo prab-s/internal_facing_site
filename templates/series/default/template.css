@@ -31,18 +31,18 @@ body.series-template {
 }
 
 .page {
-  width: 297mm;
-  min-height: 210mm;
-  padding: 10mm 12mm 8mm;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 6mm 6mm 5mm;
   margin: 0 auto;
   background: var(--page-bg);
 }
 
 .topbar {
   display: grid;
-  grid-template-columns: 1fr 140mm;
+  grid-template-columns: 1fr 84mm;
   height: 14mm;
-  margin-bottom: 4mm;
+  margin-bottom: 2.5mm;
 }
 
 .topbar__title,
@@ -69,14 +69,14 @@ body.series-template {
 .intro-grid {
   display: grid;
   grid-template-columns: 72mm 1fr;
-  gap: 6mm;
+  gap: 3mm;
   align-items: start;
 }
 
 .left-rail {
   display: grid;
   grid-template-rows: auto auto auto;
-  gap: 4mm;
+  gap: 2.5mm;
 }
 
 .spec-card {
@@ -132,7 +132,7 @@ body.series-template {
 .main-panel {
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 3.5mm;
+  gap: 2.5mm;
 }
 
 .copy-block {
@@ -146,7 +146,7 @@ body.series-template {
 }
 
 .copy-section {
-  margin-bottom: 2.2mm;
+  margin-bottom: 1.5mm;
 }
 
 .richtext > :first-child {
@@ -226,13 +226,13 @@ body.series-template {
 .lower-grid {
   display: grid;
   grid-template-columns: 1.08fr 0.92fr;
-  gap: 6mm;
-  margin-top: 5mm;
+  gap: 4mm;
+  margin-top: 3mm;
   align-items: start;
 }
 
 .drawing-panel__inner {
-  height: 64mm;
+  height: 58mm;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -242,19 +242,19 @@ body.series-template {
 .drawing-image {
   display: block;
   max-width: 100%;
-  max-height: 62mm;
+  max-height: 56mm;
   object-fit: contain;
   filter: grayscale(100%) contrast(0.9);
 }
 
 .gallery-grid {
   display: grid;
-  gap: 3mm;
+  gap: 2mm;
 }
 
 .series-meta-grid {
   display: grid;
-  gap: 3mm;
+  gap: 2mm;
 }
 
 .series-meta-card {
