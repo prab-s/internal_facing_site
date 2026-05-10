@@ -33,7 +33,7 @@ body.series-template {
 .page {
   width: 210mm;
   min-height: 297mm;
-  padding: 6mm 6mm 5mm;
+  padding: 16mm 16mm 16mm;
   margin: 0 auto;
   background: var(--page-bg);
 }

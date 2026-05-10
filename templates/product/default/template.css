@@ -4,7 +4,7 @@
   --muted: #4d4d4d;
   --line: #c7d3e6;
   --soft-blue: #d7e0ef;
-  --deep-blue: #233f74;
+  --deep-red: #742323;
   --white: #ffffff;
 }
 
@@ -31,16 +31,16 @@ body.vt-sheet-body {
 }
 
 .page {
-  width: 210mm;
+  width: 100%;
   min-height: 297mm;
-  padding: 8mm 8mm 6mm;
+  padding: 16mm 12mm 16mm;
   margin: 0 auto;
   background: var(--page-bg);
 }
 
 .topbar {
   display: grid;
-  grid-template-columns: 1fr 88mm;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
   height: 14mm;
   margin-bottom: 3mm;
 }
@@ -49,8 +49,12 @@ body.vt-sheet-body {
 .topbar__model {
   display: flex;
   align-items: center;
+  min-width: 0;
   padding: 0 3mm;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar__title {
@@ -61,14 +65,14 @@ body.vt-sheet-body {
 
 .topbar__model {
   justify-content: flex-end;
-  background: var(--deep-blue);
+  background: var(--deep-red);
   color: var(--white);
   font-size: 7.3mm;
 }
 
 .intro-grid {
   display: grid;
-  grid-template-columns: 72mm 1fr;
+  grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
   gap: 4mm;
   align-items: start;
 }
@@ -77,6 +81,11 @@ body.vt-sheet-body {
   display: grid;
   grid-template-rows: auto auto auto auto;
   gap: 3mm;
+  min-width: 0;
+}
+
+.main-panel {
+  min-width: 0;
 }
 
 .hero-card {
@@ -99,7 +108,7 @@ body.vt-sheet-body {
   margin: 0;
   padding: 1.4mm 2.2mm;
   background: var(--soft-blue);
-  color: var(--deep-blue);
+  color: var(--deep-red);
   font-size: 3.8mm;
   font-weight: 700;
   text-transform: uppercase;
@@ -232,7 +241,7 @@ body.vt-sheet-body {
   caption-side: top;
   text-align: left;
   font-weight: 700;
-  color: var(--deep-blue);
+  color: var(--deep-red);
   margin-bottom: 1.4mm;
 }
 
@@ -327,7 +336,7 @@ body.vt-sheet-body {
 
 .footer-contact-row {
   display: grid;
-  grid-template-columns: 1fr 72mm;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 26%);
   align-items: stretch;
   border-top: 0.35mm solid #7d90b4;
   padding-top: 1.8mm;
@@ -344,7 +353,7 @@ body.vt-sheet-body {
   align-items: center;
   justify-content: flex-end;
   padding: 1.6mm 3.2mm;
-  background: var(--deep-blue);
+  background: var(--deep-red);
   color: var(--white);
   font-size: 7mm;
   font-weight: 700;
@@ -360,16 +369,15 @@ body.vt-sheet-body {
 
 @media print {
   html,
-  body,
-  .page {
+  body {
     margin: 0;
     padding: 0;
     background: var(--page-bg);
   }
 
   .page {
-    width: 210mm;
+    width: 100%;
     min-height: 297mm;
-    padding: 6mm 6mm 5mm;
+    padding: 6mm 12mm 5mm;
   }
 }

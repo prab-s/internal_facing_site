@@ -20,8 +20,8 @@
   import {
     formatCssSource,
     formatHtmlSource,
-    protectJinjaTokens,
-    restoreJinjaTokens,
+    renderPreviewHtmlSource,
+    restorePreviewHtmlSource,
     safeJoinText,
     stripTemplateStylesheetLinks,
     splitTemplateDocument
@@ -69,7 +69,6 @@
   let syncingHtmlFromEditor = false;
   let syncingCssFromSource = false;
   let syncingCssFromEditor = false;
-  let currentTokenVault = [];
   let lastAutoLoadedTemplateKey = '';
   let sidebarResizeActive = false;
   let suppressCssPullUntil = 0;
@@ -108,52 +107,207 @@
     );
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  const seriesPreviewColors = ['#21406f', '#4f7cac', '#7f8c8d', '#b5651d', '#9b3d5a', '#2f7a54'];
+
+  function previewSeriesColor(index) {
+    return seriesPreviewColors[index % seriesPreviewColors.length];
+  }
+
+  function createPreviewTable(title, rows) {
+    return `
+      <div class="preview-data-block">
+        <div class="preview-data-block__title">${escapeHtml(title)}</div>
+        <table class="preview-data-table">
+          <tbody>
+            ${rows
+              .map(
+                ([label, value]) => `
+                  <tr>
+                    <th>${escapeHtml(label)}</th>
+                    <td>${value}</td>
+                  </tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function createPreviewList(items) {
+    return `
+      <ul class="preview-data-list">
+        ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+      </ul>
+    `;
+  }
+
+  function createPreviewSpecsHtml(title) {
+    return `
+      <div class="preview-specs">
+        <div class="preview-specs__title">${escapeHtml(title)}</div>
+        ${createPreviewTable('Specifications', [
+          ['Airflow', '1,250 m3/h'],
+          ['Pressure', '190 Pa'],
+          ['Power', '380 W']
+        ])}
+      </div>
+    `;
+  }
+
   function buildPreviewTokenMap() {
+    const previewSeriesNames = previewProductType?.series_names?.length ? previewProductType.series_names : ['Series A', 'Series B'];
+    const previewSeriesGroups = previewProductTypeContext?.series?.length ? previewProductTypeContext.series : [];
     return {
-      '{{product.primary_product_image_url}}': createPreviewPlaceholder('Product primary image preview'),
+      '{{product.model}}': 'Sample Model 3000',
+      '{{product.product_type_label}}': previewProductType?.label || 'Sample Product Type',
+      '{{product.series_name}}': previewSeriesNames[0] || 'Sample Series',
+      '{{product.primary_product_image_url}}': createPreviewPlaceholder('Product image preview'),
       '{{product.graph_image_url}}': createPreviewPlaceholder('Product graph preview'),
       '{{series.graph_image_url}}': createPreviewPlaceholder('Series graph preview'),
+      '{{product.grouped_specs_impeller_html}}': createPreviewSpecsHtml('Impeller'),
+      '{{product.grouped_specs_motor_html}}': createPreviewSpecsHtml('Motor'),
+      '{{product.grouped_specs_fan_html}}': createPreviewSpecsHtml('Fan'),
+      '{{product.description1_html}}': '<p>Sample product description block. This is where the product overview appears.</p>',
+      '{{product.description2_html}}': '<p>Sample product feature block. Add supporting product details here.</p>',
+      '{{product.description3_html}}': '<p>Sample product specification block. Additional product detail appears here.</p>',
+      '{{product.comments_html}}': '<p>Sample product comments appear here.</p>',
+      '{{product.features_html}}': createPreviewList(['Key feature one', 'Key feature two', 'Key feature three']),
+      '{{product.specifications_html}}': createPreviewTable('Specifications', [
+        ['Duty', 'Continuous'],
+        ['Voltage', '415V'],
+        ['Frequency', '50Hz']
+      ]),
+      '{{product.description_html}}': '<p>Sample product description block. This is where the product overview appears.</p>',
+      '{{product.description}}': '<p>Sample product description. This space is used for the main product summary and key selling points.</p>',
+      '{{product.applications}}':
+        createPreviewList([
+          'Commercial ventilation',
+          'Industrial process air',
+          'General purpose exhaust'
+        ]),
+      '{{product.grouped_specs_table}}': createPreviewTable('Grouped Specs', [
+        ['Model', 'Sample Model 3000'],
+        ['Frame', 'Cast aluminum'],
+        ['Finish', 'Powder coated']
+      ]),
+      '{{product.fan_map_points_table}}': createPreviewTable('Fan Map Points', [
+        ['Point A', '1,250 m3/h'],
+        ['Point B', '1,100 m3/h'],
+        ['Point C', '980 m3/h']
+      ]),
+      '{{product.image_gallery}}': `
+        <div class="preview-gallery">
+          <img src="${createPreviewPlaceholder('Gallery image preview')}" alt="Gallery image preview" />
+          <img src="${createPreviewPlaceholder('Gallery image preview')}" alt="Gallery image preview" />
+        </div>
+      `,
+      '{{product.graph_image_tag}}': `<img src="${createPreviewPlaceholder('Product graph preview')}" alt="Product graph preview" />`,
+      '{{series.name}}': previewSeriesNames[0] || 'Sample Series',
+      '{{series.description1_html}}': '<p>Sample series description shown in the editor preview.</p>',
+      '{{series.description2_html}}': '<p>Additional series description preview text.</p>',
+      '{{series.description3_html}}': '<p>Further series description preview text.</p>',
+      '{{series.graph_image_tag}}': `<img src="${createPreviewPlaceholder('Series graph preview')}" alt="Series graph preview" />`,
       '{{product_type.label}}': previewProductType?.label || 'Product Type',
       '{{product_type.key}}': previewProductType?.key || 'product-type',
-      '{{product_type.series_names}}': previewProductType?.series_names?.length
-        ? safeJoinText(previewProductType.series_names)
-        : 'Series A, Series B',
-      '{{product_type.series_legend_html}}': previewProductType?.series_names?.length
-        ? previewProductType.series_names
-            .map((seriesName) => `<span class="badge text-bg-light border me-1">${seriesName}</span>`)
-            .join('')
-        : '<span class="badge text-bg-light border">Series A</span>',
-      '{{product_type.contents_html}}': previewProductTypeContext?.contents_html || '<div style="padding:1rem; border:1px dashed #9ca3af;">Product type contents preview</div>',
-      '{{product_type.series_groups}}': previewProductTypeContext?.series?.length
-        ? previewProductTypeContext.series.map((series) => `<div>${series.name}</div>`).join('')
+      '{{product_type.contents_icon_url}}': createPreviewPlaceholder('Contents icon preview'),
+      '{{product_type.series_names}}': safeJoinText(previewSeriesNames),
+      '{{product_type.series_names_html}}': renderSeriesNamesPreview(previewSeriesNames),
+      '{{product_type.series_legend_html}}': renderSeriesLegendPreview(previewSeriesNames),
+      '{{product_type.series_groups_html}}': renderSeriesGroupsPreview(previewSeriesGroups),
+      '{{product_type.contents_html}}': renderSeriesGroupsPreview(previewSeriesGroups),
+      '{{product_type.series_groups}}': previewSeriesGroups.length
+        ? previewSeriesGroups.map((series) => `<div>${escapeHtml(series.name || 'Series')}</div>`).join('')
         : '<div>Series group preview</div>'
     };
   }
 
-  function applyTemplatePreviewSubstitutions(htmlContent) {
-    return Object.entries(buildPreviewTokenMap()).reduce(
-      (content, [token, placeholder]) => content.replaceAll(token, placeholder),
-      htmlContent
-    );
+  function createPreviewTokenResolver() {
+    const previewTokenMap = buildPreviewTokenMap();
+
+    return (token, context = 'text') => {
+      const tokenValue = previewTokenMap[token];
+      if (tokenValue == null || tokenValue === '') {
+        if (token.startsWith('{%') || token.startsWith('{#')) return '';
+        return context === 'attr' ? '' : 'No data available';
+      }
+      return tokenValue;
+    };
   }
 
-  function restoreTemplatePreviewSubstitutions(htmlContent) {
-    return Object.entries(buildPreviewTokenMap()).reduce(
-      (content, [token, placeholder]) => content.replaceAll(placeholder, token),
-      htmlContent
-    );
+  function renderSeriesNamesPreview(seriesNames) {
+    if (!seriesNames?.length) {
+      return '<p class="placeholder">No series are linked to this product type yet.</p>';
+    }
+
+    return `<ul class="series-names">${seriesNames
+      .map((seriesName) => `<li class="series-names__item"><span class="series-names__name">${escapeHtml(seriesName)}</span></li>`)
+      .join('')}</ul>`;
+  }
+
+  function renderSeriesLegendPreview(seriesNames) {
+    if (!seriesNames?.length) {
+      return '<p class="placeholder">No series are linked to this product type yet.</p>';
+    }
+
+    return `<ul class="series-legend">${seriesNames
+      .map(
+        (seriesName, index) => `
+              <li class="series-legend__item">
+                <span class="series-legend__swatch" style="background:${previewSeriesColor(index)};"></span>
+                <div class="series-legend__text">
+              <div class="series-legend__name">${escapeHtml(seriesName)}</div>
+              <div class="series-legend__meta">Preview series</div>
+            </div>
+          </li>`
+      )
+      .join('')}</ul>`;
+  }
+
+  function renderSeriesGroupsPreview(seriesGroups) {
+    if (!seriesGroups?.length) {
+      return '<p class="placeholder">Product type contents preview</p>';
+    }
+
+    return `<section class="series-tile-grid">${seriesGroups
+      .map(
+        (series) => `
+          <article class="series-tile" style="--series-accent: ${escapeHtml(series.series_tab_color || previewSeriesColor(Number(series.id) || 0))};">
+            <div class="series-tile__badge">${escapeHtml(series.name)}</div>
+            <div class="series-tile__image-wrap">
+              ${
+                series.first_product_image_uri
+                  ? `<img class="series-tile__image" src="${escapeHtml(series.first_product_image_uri)}" alt="${escapeHtml(series.name)}" />`
+                  : '<div class="series-tile__placeholder">No image</div>'
+              }
+            </div>
+            <div class="series-tile__description">
+              ${series.series_description_html || '<p class="placeholder">No description provided.</p>'}
+            </div>
+          </article>`
+      )
+      .join('')}</section>`;
   }
 
   function prepareBodyForEditor(bodyHtml) {
-    const previewApplied = stripTemplateStylesheetLinks(applyTemplatePreviewSubstitutions(bodyHtml));
-    const protectedMarkup = protectJinjaTokens(previewApplied, 'template-builder-v2');
-    currentTokenVault = protectedMarkup.tokens;
-    return protectedMarkup.encoded;
+    const resolvePreviewToken = createPreviewTokenResolver();
+    const previewApplied = stripTemplateStylesheetLinks(
+      renderPreviewHtmlSource(bodyHtml, resolvePreviewToken)
+    );
+    return previewApplied;
   }
 
   function restoreBodyFromEditor(editorHtml) {
-    const restoredTokens = restoreJinjaTokens(editorHtml, currentTokenVault);
-    return restoreTemplatePreviewSubstitutions(restoredTokens);
+    return restorePreviewHtmlSource(editorHtml);
   }
 
   function rebuildTemplateHtmlFromSource() {

@@ -82,24 +82,20 @@
       </section>
     </section>
     <div class="pdf-page-break">PDF PAGE BREAK</div><!-- Page 4: dynamic visual contents / product type landing page -->
-    <section id="contents-page" class="pdf-page pdf-page--portrait contents-page">
-      <header class="contents-page__header">
-        <div>
+      <section id="contents-page" class="pdf-page pdf-page--portrait contents-page">
+        <header class="contents-page__header">
+          <div>
           <div class="contents-page__section-label">Product Type</div>
           <h1>{{product_type.label}}</h1>
         </div>
-        <div class="contents-page__icon">✺</div>
-      </header>
-      <section class="series-legend-panel">
-        <h2>Series Legend</h2>
-        <div class="series-legend-panel__content">
-          {{product_type.series_legend_html}}
-        </div>
-      </section>
+          <div class="contents-page__icon">
+            <img src="{{product_type.contents_icon_url}}" alt="{{product_type.label}} contents icon" class="contents-page__icon-image" />
+          </div>
+        </header>
       <section class="contents-panel">
-        <h2>{{product_type.label}}</h2>
+        <h2>Series groups</h2>
         <div class="contents-panel__content product-type-contents">
-          {{product_type.contents_html}}
+          {{product_type.series_groups_html}}
         </div>
       </section>
     </section>

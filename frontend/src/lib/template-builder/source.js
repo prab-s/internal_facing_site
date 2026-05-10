@@ -52,6 +52,141 @@ export function stripTemplateStylesheetLinks(htmlContent) {
   );
 }
 
+export function stripHtmlTags(value) {
+  if (value == null || value === '') return '';
+  const template = document.createElement('template');
+  template.innerHTML = String(value);
+  return template.content.textContent || '';
+}
+
+function createPreviewWrapper(token, sampleHtml) {
+  const wrapper = document.createElement('div');
+  wrapper.setAttribute('data-jinja-token', token);
+  wrapper.style.display = 'contents';
+  const sample = String(sampleHtml ?? '');
+  if (sample) {
+    wrapper.innerHTML = sample;
+  } else {
+    wrapper.textContent = 'No data available';
+  }
+  return wrapper;
+}
+
+function replaceTokensInString(source, tokenResolver, context = 'text') {
+  return String(source || '').replace(JINJA_PATTERN, (token) => {
+    const sample = tokenResolver ? tokenResolver(token, context) : '';
+    if (sample == null || sample === '') {
+      return context === 'attr' ? '' : 'No data available';
+    }
+    return context === 'attr' ? stripHtmlTags(sample) : String(sample);
+  });
+}
+
+function isJinjaAttributeValue(value) {
+  return typeof value === 'string' && cloneTokenPattern().test(value);
+}
+
+function cloneTokenPattern() {
+  return new RegExp(JINJA_PATTERN.source, 'g');
+}
+
+function renderPreviewTextNode(doc, textNode, tokenResolver) {
+  const text = textNode.textContent || '';
+  if (!cloneTokenPattern().test(text)) return;
+
+  const fragment = document.createDocumentFragment();
+  const pattern = cloneTokenPattern();
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text))) {
+    const token = match[0];
+    if (match.index > lastIndex) {
+      fragment.appendChild(doc.createTextNode(text.slice(lastIndex, match.index)));
+    }
+
+    const sample = tokenResolver ? tokenResolver(token, 'text') : '';
+    const wrapper = createPreviewWrapper(token, sample);
+    fragment.appendChild(wrapper);
+    lastIndex = match.index + token.length;
+  }
+
+  if (lastIndex < text.length) {
+    fragment.appendChild(doc.createTextNode(text.slice(lastIndex)));
+  }
+
+  textNode.replaceWith(fragment);
+}
+
+function renderPreviewElementAttributes(element, tokenResolver) {
+  for (const attr of Array.from(element.attributes || [])) {
+    if (!isJinjaAttributeValue(attr.value)) continue;
+    const existing = element.getAttribute('data-jinja-attrs');
+    const storedAttrs = existing ? JSON.parse(existing) : {};
+    storedAttrs[attr.name] = attr.value;
+    element.setAttribute('data-jinja-attrs', JSON.stringify(storedAttrs));
+    element.setAttribute(attr.name, replaceTokensInString(attr.value, tokenResolver, 'attr'));
+  }
+}
+
+export function renderPreviewHtmlSource(htmlContent, tokenResolver = null) {
+  if (!htmlContent) return '';
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(String(htmlContent), 'text/html');
+  const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, null);
+  const nodes = [];
+
+  while (walker.nextNode()) {
+    nodes.push(walker.currentNode);
+  }
+
+  for (const node of nodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const parentTag = node.parentElement?.tagName?.toLowerCase() || '';
+      if (['script', 'style'].includes(parentTag)) continue;
+      renderPreviewTextNode(doc, node, tokenResolver);
+      continue;
+    }
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      renderPreviewElementAttributes(node, tokenResolver);
+    }
+  }
+
+  return doc.body.innerHTML;
+}
+
+export function restorePreviewHtmlSource(htmlContent) {
+  if (!htmlContent) return '';
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(String(htmlContent), 'text/html');
+
+  for (const element of Array.from(doc.querySelectorAll('[data-jinja-token]')).reverse()) {
+    const token = element.getAttribute('data-jinja-token') || '';
+    element.replaceWith(doc.createTextNode(token));
+  }
+
+  for (const element of Array.from(doc.querySelectorAll('*'))) {
+    const storedAttrs = element.getAttribute('data-jinja-attrs');
+    if (!storedAttrs) continue;
+
+    try {
+      const parsedAttrs = JSON.parse(storedAttrs);
+      for (const [name, value] of Object.entries(parsedAttrs)) {
+        element.setAttribute(name, value);
+      }
+    } catch {
+      // Ignore malformed stored attribute data and keep the preview value.
+    }
+
+    element.removeAttribute('data-jinja-attrs');
+  }
+
+  return doc.body.innerHTML;
+}
+
 function indentString(depth, indent = '  ') {
   return indent.repeat(Math.max(0, depth));
 }

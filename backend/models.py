@@ -51,6 +51,7 @@ class ProductType(Base):
     product_template_id = Column(String(128), nullable=True)
     printed_product_template_id = Column(String(128), nullable=True)
     online_product_template_id = Column(String(128), nullable=True)
+    contents_icon_url = Column(String(512), nullable=True)
     band_graph_background_color = Column(String(32), nullable=True)
     band_graph_label_text_color = Column(String(32), nullable=True)
     band_graph_faded_opacity = Column(Float, nullable=True)

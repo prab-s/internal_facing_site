@@ -118,6 +118,7 @@ class ProductTypeResponse(BaseModel):
     product_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
+    contents_icon_url: Optional[str] = None
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None
@@ -146,6 +147,7 @@ class ProductTypeCreate(BaseModel):
     product_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
+    contents_icon_url: Optional[str] = None
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None
@@ -169,6 +171,7 @@ class ProductTypeUpdate(BaseModel):
     product_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
+    contents_icon_url: Optional[str] = None
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None
@@ -756,6 +759,8 @@ class ProductTypePdfSeriesResponse(BaseModel):
     id: int
     name: str
     series_tab_color: Optional[str] = None
+    series_description_html: Optional[str] = None
+    first_product_image_uri: Optional[str] = None
     page_start: int = 0
     page_end: int = 0
     page_count: int = 0
@@ -770,7 +775,10 @@ class ProductTypePdfResponse(BaseModel):
     key: str
     label: str
     series_names: list[str] = Field(default_factory=list)
+    series_names_html: str = ""
+    series_groups_html: str = ""
     contents_html: str = ""
+    contents_icon_url: Optional[str] = None
     intro_page_count: int = 0
     page_count: int = 0
     product_type_pdf_url: Optional[str] = None

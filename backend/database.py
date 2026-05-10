@@ -256,6 +256,7 @@ def _ensure_product_type_columns(target_engine):
         "product_template_id": "VARCHAR(128)",
         "printed_product_template_id": "VARCHAR(128)",
         "online_product_template_id": "VARCHAR(128)",
+        "contents_icon_url": "VARCHAR(512)",
         "band_graph_background_color": "VARCHAR(32)",
         "band_graph_label_text_color": "VARCHAR(32)",
         "band_graph_faded_opacity": "FLOAT",

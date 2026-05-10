@@ -17,6 +17,7 @@ import tempfile
 import threading
 import zipfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -627,8 +628,10 @@ def scaffold_blank_template(template_type: str, destination_dir: Path):
   <body>
     <main class="sheet">
       <h1>{{product_type.label}}</h1>
-      <div>{{product_type.series_names}}</div>
-      <div>{{product_type.contents_html}}</div>
+      <div>{{product_type.contents_icon_url}}</div>
+      <div>{{product_type.series_names_html}}</div>
+      <div>{{product_type.series_legend_html}}</div>
+      <div>{{product_type.series_groups_html}}</div>
     </main>
   </body>
 </html>
@@ -1861,6 +1864,38 @@ def product_primary_image_uri(product: Product) -> str:
     return first_image_path.as_uri()
 
 
+def build_product_type_contents_icon_url(product_type: ProductType) -> str:
+    explicit_url = (product_type.contents_icon_url or "").strip()
+    if explicit_url:
+        return explicit_url
+
+    label = (product_type.label or "PT").strip() or "PT"
+    icon_text = html.escape(label[:2].upper())
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">'
+        '<rect width="120" height="120" rx="20" fill="#21406f"/>'
+        '<rect x="18" y="18" width="84" height="84" rx="12" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.85"/>'
+        f'<text x="60" y="72" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#ffffff">{icon_text}</text>'
+        "</svg>"
+    )
+    return "data:image/svg+xml;charset=UTF-8," + urllib.parse.quote(svg)
+
+
+def build_product_type_series_names_html(series_names: list[str]) -> str:
+    if not series_names:
+        return '<p class="placeholder">No series are linked to this product type yet.</p>'
+
+    items = "".join(
+        f'<li class="series-names__item"><span class="series-names__name">{html.escape(str(series_name))}</span></li>'
+        for series_name in series_names
+        if str(series_name).strip()
+    )
+    if not items:
+        return '<p class="placeholder">No series are linked to this product type yet.</p>'
+
+    return '<ul class="series-names">' + items + "</ul>"
+
+
 def build_product_type_series_legend_html(series_summaries: list[dict]) -> str:
     if not series_summaries:
         return '<p class="placeholder">No series are linked to this product type yet.</p>'
@@ -1889,48 +1924,47 @@ def build_product_type_series_legend_html(series_summaries: list[dict]) -> str:
     return '<ul class="series-legend">' + "".join(items) + "</ul>"
 
 
-def build_product_type_contents_html(product_type: ProductType, series_summaries: list[dict]) -> str:
+def build_product_type_series_groups_html(product_type: ProductType, series_summaries: list[dict]) -> str:
     if not series_summaries:
         return '<p class="placeholder">No series are linked to this product type yet.</p>'
 
-    parts: list[str] = ['<div class="product-type-contents">']
+    parts: list[str] = ['<section class="series-tile-grid">']
     for summary in series_summaries:
         series_name = html.escape(str(summary.get("name") or "Series"))
         series_color = html.escape(str(summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR))
-        product_count = int(summary.get("product_count") or 0)
-        product_cards: list[str] = []
-        for product in summary.get("products") or []:
-            product_name = html.escape(str(product.get("model") or "Product"))
-            image_uri = html.escape(str(product.get("primary_product_image_uri") or ""))
-            image_html = (
-                f'<img src="{image_uri}" alt="{product_name}" class="product-card__image" />'
-                if image_uri
-                else '<div class="product-card__placeholder">No image</div>'
-            )
-            product_cards.append(
-                '<article class="product-card">'
-                f"{image_html}"
-                f'<div class="product-card__name">{product_name}</div>'
-                "</article>"
-            )
-
-        parts.append(
-            '<section class="series-group" '
-            f'style="--series-accent: {series_color};">'
-            '<div class="series-group__header">'
-            f'<h3 class="series-group__title">{series_name}</h3>'
-            f'<div class="series-group__meta">{product_count} products</div>'
-            "</div>"
-            '<div class="series-group__grid">'
-            + "".join(product_cards)
-            + "</div></section>"
+        description_html = summary.get("series_description_html") or '<p class="placeholder">No description provided.</p>'
+        image_uri = html.escape(str(summary.get("first_product_image_uri") or ""))
+        image_html = (
+            f'<img class="series-tile__image" src="{image_uri}" alt="{series_name}" />'
+            if image_uri
+            else '<div class="series-tile__placeholder">No image</div>'
         )
 
-    parts.append("</div>")
+        parts.append(
+            '<article class="series-tile" '
+            f'style="--series-accent: {series_color};">'
+            f'<div class="series-tile__badge">{series_name}</div>'
+            '<div class="series-tile__image-wrap">'
+            f"{image_html}"
+            "</div>"
+            f'<div class="series-tile__description">{description_html}</div>'
+            "</article>"
+        )
+
+    parts.append("</section>")
     return "".join(parts)
 
 
-def build_product_type_pdf_html(product_type: ProductType, contents_html: str, series_legend_html: str) -> str:
+def build_product_type_contents_html(product_type: ProductType, series_summaries: list[dict]) -> str:
+    return build_product_type_series_groups_html(product_type, series_summaries)
+
+
+def build_product_type_pdf_html(
+    product_type: ProductType,
+    series_names_html: str,
+    series_groups_html: str,
+    series_legend_html: str,
+) -> str:
     template_id = resolve_product_type_pdf_template_id(product_type) or "product_type-default"
     template_definition = get_template_definition(template_id, "product_type")
     if template_definition is None:
@@ -1949,9 +1983,12 @@ def build_product_type_pdf_html(product_type: ProductType, contents_html: str, s
     replacements = {
         "{{product_type.key}}": html.escape(product_type.key or ""),
         "{{product_type.label}}": html.escape(product_type.label or ""),
+        "{{product_type.contents_icon_url}}": build_product_type_contents_icon_url(product_type),
         "{{product_type.series_names}}": html.escape(", ".join(product_type.series_names or [])),
+        "{{product_type.series_names_html}}": series_names_html,
         "{{product_type.series_legend_html}}": series_legend_html,
-        "{{product_type.contents_html}}": contents_html,
+        "{{product_type.series_groups_html}}": series_groups_html,
+        "{{product_type.contents_html}}": series_groups_html,
     }
 
     rendered = html_template
@@ -1968,11 +2005,14 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
     for series in ordered_series:
         series_base_path, series_page_count = build_series_pdf_base(series, "printed", temp_dir)
         series_base_paths.append(series_base_path)
+        ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
         series_summaries.append(
             {
                 "id": series.id,
                 "name": series.name,
                 "series_tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
+                "series_description_html": render_richtext_html(series.description1_html),
+                "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
                 "page_count": series_page_count,
                 "product_count": len(series.products or []),
                 "products": [
@@ -1985,15 +2025,19 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
                         "product_type_label": product.product_type_label,
                         "primary_product_image_uri": product_primary_image_uri(product),
                     }
-                    for product in sorted(series.products or [], key=lambda item: (item.model or "").casefold())
+                    for product in ordered_products
                 ],
             }
         )
 
-    contents_html = build_product_type_contents_html(product_type, series_summaries)
+    series_names_html = build_product_type_series_names_html(product_type.series_names or [])
+    series_groups_html = build_product_type_series_groups_html(product_type, series_summaries)
     series_legend_html = build_product_type_series_legend_html(series_summaries)
     intro_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
-    render_pdf_from_html(build_product_type_pdf_html(product_type, contents_html, series_legend_html), intro_base_path)
+    render_pdf_from_html(
+        build_product_type_pdf_html(product_type, series_names_html, series_groups_html, series_legend_html),
+        intro_base_path,
+    )
     intro_page_count = pdf_page_count(intro_base_path)
 
     page_start = intro_page_count + 1
@@ -2009,7 +2053,9 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
         "intro_page_count": intro_page_count,
         "page_count": pdf_page_count(merged_base_path),
         "series_summaries": series_summaries,
-        "contents_html": contents_html,
+        "series_names_html": series_names_html,
+        "series_groups_html": series_groups_html,
+        "contents_html": series_groups_html,
         "series_legend_html": series_legend_html,
     }
 
@@ -3267,6 +3313,7 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
         printed_product_template_id=printed_product_template_id,
         online_product_template_id=online_product_template_id,
         product_template_id=online_product_template_id or printed_product_template_id,
+        contents_icon_url=(body.contents_icon_url or "").strip() or None,
         band_graph_background_color=normalize_color_value(body.band_graph_background_color),
         band_graph_label_text_color=normalize_color_value(body.band_graph_label_text_color),
         band_graph_faded_opacity=None if body.band_graph_faded_opacity is None else max(0, min(1, float(body.band_graph_faded_opacity))),
@@ -3320,6 +3367,8 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
 
     if "product_type_template_id" in updates:
         product_type.product_type_template_id = validate_template_id(updates["product_type_template_id"], "product_type")
+    if "contents_icon_url" in updates:
+        product_type.contents_icon_url = (updates["contents_icon_url"] or "").strip() or None
 
     for field in [
         "supports_graph",
@@ -3427,7 +3476,10 @@ def get_product_type_pdf_context(product_type_id: int, db: Session = Depends(get
         key=product_type.key,
         label=product_type.label,
         series_names=product_type.series_names,
+        series_names_html=metadata["series_names_html"],
+        series_groups_html=metadata["series_groups_html"],
         contents_html=metadata["contents_html"],
+        contents_icon_url=product_type.contents_icon_url,
         intro_page_count=metadata["intro_page_count"],
         page_count=metadata["page_count"],
         product_type_pdf_url=product_type.product_type_pdf_url,
@@ -3474,7 +3526,10 @@ def refresh_product_type_pdf(product_type_id: int, db: Session = Depends(get_db)
         key=product_type.key,
         label=product_type.label,
         series_names=product_type.series_names,
+        series_names_html=metadata["series_names_html"],
+        series_groups_html=metadata["series_groups_html"],
         contents_html=metadata["contents_html"],
+        contents_icon_url=product_type.contents_icon_url,
         intro_page_count=metadata["intro_page_count"],
         page_count=metadata["page_count"],
         product_type_pdf_url=product_type.product_type_pdf_url,

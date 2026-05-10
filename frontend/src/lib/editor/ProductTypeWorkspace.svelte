@@ -33,6 +33,7 @@
       graph_y_axis_label: productType?.graph_y_axis_label ?? '',
       graph_y_axis_unit: productType?.graph_y_axis_unit ?? '',
       product_type_template_id: productType?.product_type_template_id ?? '',
+      contents_icon_url: productType?.contents_icon_url ?? '',
       band_graph_background_color: productType?.band_graph_background_color ?? '#ffffff',
       band_graph_label_text_color: productType?.band_graph_label_text_color ?? '#000000',
       band_graph_faded_opacity:
@@ -105,6 +106,7 @@
         graph_y_axis_label: productTypeDraft.graph_y_axis_label || null,
         graph_y_axis_unit: productTypeDraft.graph_y_axis_unit || null,
         product_type_template_id: productTypeDraft.product_type_template_id || null,
+        contents_icon_url: productTypeDraft.contents_icon_url || null,
         band_graph_background_color: productTypeDraft.band_graph_background_color || null,
         band_graph_label_text_color: productTypeDraft.band_graph_label_text_color || null,
         band_graph_faded_opacity:
@@ -245,6 +247,10 @@
                 <option value={template.id}>{template.label}</option>
               {/each}
             </select>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="product-type-contents-icon">Contents icon URL</label>
+            <input class="form-control" id="product-type-contents-icon" bind:value={productTypeDraft.contents_icon_url} placeholder="https://... or data:image/svg+xml,..."/>
           </div>
           <div class="col-12">
             <hr class="my-2" />
