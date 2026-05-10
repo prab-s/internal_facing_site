@@ -1,7 +1,9 @@
 <script>
-  import { onMount } from 'svelte';
-  import { createProductType, getProductTypes, getTemplates, refreshProductTypePdf, updateProductType } from '$lib/api.js';
+  import { onDestroy, onMount } from 'svelte';
+  import { createProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
+  import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
+  import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
 
   export let initialMode = 'create';
 
@@ -9,10 +11,11 @@
   let templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
   let selectedProductTypeId = '';
   let saving = false;
-  let refreshingPdfId = null;
+  let refreshingPdfJob = null;
   let error = '';
   let success = '';
   let mode = initialMode;
+  let destroyed = false;
 
   function resetDraft(productType = null) {
     return {
@@ -135,23 +138,38 @@
 
   async function generateProductTypePdf() {
     if (!selectedProductType?.id) return;
-    refreshingPdfId = selectedProductType.id;
+    refreshingPdfJob = null;
     error = '';
     success = '';
     try {
-      await refreshProductTypePdf(selectedProductType.id);
+      const job = await runMaintenanceJob(
+        () => startRefreshProductTypePdfJob(selectedProductType.id),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingPdfJob = nextJob;
+          }
+        }
+      );
+      refreshingPdfJob = job;
       await loadProductTypes();
       success = 'Product type PDF generated.';
     } catch (e) {
       error = e.message;
     } finally {
-      refreshingPdfId = null;
+      if (!destroyed) {
+        refreshingPdfJob = null;
+      }
     }
   }
 
   onMount(async () => {
     selectProductTypeFromUrl();
     await loadProductTypes();
+  });
+
+  onDestroy(() => {
+    destroyed = true;
   });
 </script>
 
@@ -296,9 +314,10 @@
             />
           </div>
           <div class="d-flex flex-wrap gap-2 mt-3">
-            <button class="btn btn-outline-secondary btn-sm" type="button" on:click={generateProductTypePdf} disabled={refreshingPdfId === selectedProductType.id}>
-              {refreshingPdfId === selectedProductType.id ? 'Generating...' : 'Generate Product Type PDF'}
+            <button class="btn btn-outline-secondary btn-sm" type="button" on:click={generateProductTypePdf} disabled={refreshingPdfJob?.status === 'running'}>
+              {refreshingPdfJob?.status === 'running' ? 'Generating...' : 'Generate Product Type PDF'}
             </button>
+            <JobProgressPanel job={refreshingPdfJob} label="Product type PDF generation" />
             {#if selectedProductType.product_type_pdf_url}
               <a class="btn btn-outline-primary btn-sm" href={selectedProductType.product_type_pdf_url} target="_blank" rel="noreferrer">
                 Open Product Type PDF

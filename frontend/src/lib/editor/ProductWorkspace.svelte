@@ -27,7 +27,7 @@
     updateEfficiencyPoint,
     deleteEfficiencyPoint,
     refreshGraphImage,
-    refreshProductPdf,
+    startRefreshProductPdfJob,
     uploadProductImages,
     reorderProductImages,
     deleteProductImage
@@ -36,6 +36,7 @@
   import AccordionCard from '$lib/editor/AccordionCard.svelte';
   import ProductMediaPanel from '$lib/editor/ProductMediaPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
+  import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
   import {
     GLOBAL_UNIT_OPTIONS,
     emptyProductForm,
@@ -83,7 +84,7 @@
   let mapPointSaveRenderChain = Promise.resolve();
   let successDismissTimeout = null;
   let refreshingTemplates = false;
-  let refreshingProductPdfId = null;
+  let refreshingProductPdfJob = null;
   let refreshingProductGraphId = null;
   let savingProductType = false;
   let savingSeriesRecord = false;
@@ -129,6 +130,7 @@
   let draggingPoint = null;
   let dragAxisLock = null;
   let loadingExistingProduct = false;
+  let destroyed = false;
   
   // Mode: 'select' (initial), 'create', or 'editExisting'
   let mode = initialMode;
@@ -1202,6 +1204,7 @@
   });
 
   onDestroy(() => {
+    destroyed = true;
     if (successDismissTimeout) {
       clearTimeout(successDismissTimeout);
     }
@@ -2002,16 +2005,28 @@
       error = 'Select a product first.';
       return;
     }
-    refreshingProductPdfId = selectedProductId;
+    refreshingProductPdfJob = null;
+    const productLabel = currentProduct?.model || `product ${selectedProductId}`;
     try {
-      await refreshProductPdf(selectedProductId);
+      const job = await runMaintenanceJob(
+        () => startRefreshProductPdfJob(selectedProductId),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingProductPdfJob = nextJob;
+          }
+        }
+      );
+      refreshingProductPdfJob = job;
       await loadProductData();
       products = await getProducts();
-      addSuccess('Printed and online product PDFs generated.');
+      addSuccess(`Printed and online product PDFs generated for ${productLabel}.`);
     } catch (e) {
       error = e.message;
     } finally {
-      refreshingProductPdfId = null;
+      if (!destroyed) {
+        refreshingProductPdfJob = null;
+      }
     }
   }
 
@@ -3298,7 +3313,7 @@
               {productForm}
               {productImages}
               {currentProduct}
-              {refreshingProductPdfId}
+              productPdfJob={refreshingProductPdfJob}
               {refreshingProductGraphId}
               {selectedProductId}
               {graphStyleForm}

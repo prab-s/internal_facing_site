@@ -1,9 +1,11 @@
 <script>
+  import JobProgressPanel from '$lib/JobProgressPanel.svelte';
+
   export let productForm;
   export let productImages = [];
   export let pendingImageFiles = [];
   export let currentProduct = null;
-  export let refreshingProductPdfId = null;
+  export let productPdfJob = null;
   export let refreshingProductGraphId = null;
   export let selectedProductId = null;
   export let graphStyleForm;
@@ -78,8 +80,8 @@
         {#if currentProduct?.graph_image_url}
           <a href={currentProduct.graph_image_url} download class="btn btn-outline-secondary">Download Current Graph</a>
         {/if}
-        <button class="btn btn-outline-secondary" on:click={generateProductPdf} disabled={refreshingProductPdfId === selectedProductId || !selectedProductId}>
-          {refreshingProductPdfId === selectedProductId ? 'Generating PDFs...' : 'Generate Product PDFs'}
+        <button class="btn btn-outline-secondary" on:click={generateProductPdf} disabled={productPdfJob?.status === 'running' || !selectedProductId}>
+          {productPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate Product PDFs'}
         </button>
         {#if currentProduct?.product_printed_pdf_url}
           <a href={currentProduct.product_printed_pdf_url} download class="btn btn-outline-secondary">Download Printed PDF</a>
@@ -90,6 +92,7 @@
           <a href={currentProduct.product_pdf_url} download class="btn btn-outline-secondary">Download Existing PDF</a>
         {/if}
       </div>
+      <JobProgressPanel job={productPdfJob} label="Product PDF generation" />
     </div>
   </div>
 

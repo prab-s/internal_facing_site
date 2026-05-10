@@ -111,6 +111,13 @@ export async function refreshProductTypePdf(id) {
   return r.json();
 }
 
+export async function startRefreshProductTypePdfJob(id) {
+  const r = await apiFetch(`/maintenance/jobs/product-types/${id}/pdf/refresh`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function getTemplates() {
   const r = await apiFetch('/templates');
   return r.json();
@@ -200,6 +207,13 @@ export async function refreshSeriesGraphImage(id) {
 
 export async function refreshSeriesPdf(id) {
   const r = await apiFetch(`/series/${id}/pdf/refresh`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function startRefreshSeriesPdfJob(id) {
+  const r = await apiFetch(`/maintenance/jobs/series/${id}/pdf/refresh`, {
     method: 'POST'
   });
   return r.json();
@@ -338,6 +352,13 @@ export async function refreshGraphImage(productId) {
 
 export async function refreshProductPdf(productId) {
   const r = await apiFetch(`/products/${productId}/pdf/refresh`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function startRefreshProductPdfJob(productId) {
+  const r = await apiFetch(`/maintenance/jobs/products/${productId}/pdf/refresh`, {
     method: 'POST'
   });
   return r.json();

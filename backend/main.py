@@ -3483,6 +3483,71 @@ def refresh_product_type_pdf(product_type_id: int, db: Session = Depends(get_db)
     )
 
 
+@app.post(
+    "/api/maintenance/jobs/product-types/{product_type_id}/pdf/refresh",
+    response_model=MaintenanceJobResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Maintenance"],
+    summary="Start generating a product type PDF",
+)
+def start_refresh_product_type_pdf_job(product_type_id: int):
+    with SessionLocal() as db:
+        product_type = (
+            db.query(ProductType)
+            .options(
+                selectinload(ProductType.series)
+                .selectinload(Series.products)
+                .selectinload(Product.product_images),
+                selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
+                selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+            )
+            .filter(ProductType.id == product_type_id)
+            .first()
+        )
+        if not product_type:
+            raise HTTPException(status_code=404, detail="Product type not found.")
+        product_type_label = product_type.label
+
+    def work(progress):
+        progress("Loading product type data", 1, 4)
+        with SessionLocal() as db:
+            product_type = (
+                db.query(ProductType)
+                .options(
+                    selectinload(ProductType.series)
+                    .selectinload(Series.products)
+                    .selectinload(Product.product_images),
+                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
+                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+                )
+                .filter(ProductType.id == product_type_id)
+                .first()
+            )
+            if not product_type:
+                raise HTTPException(status_code=404, detail="Product type not found.")
+
+            progress("Rendering product type PDF pages", 2, 4)
+            with tempfile.TemporaryDirectory(prefix="product-type-context-") as temp_dir_name:
+                temp_dir = Path(temp_dir_name)
+                _, metadata = build_product_type_pdf_base(product_type, temp_dir)
+
+            progress("Stamping product type PDF", 3, 4)
+            generate_product_type_pdf(product_type)
+            db.refresh(product_type)
+            db.commit()
+
+        progress("Refreshing product type context", 4, 4)
+        return {
+            "result_message": f"Generated product type PDF for {product_type_label}.",
+            "progress_message": f"Generated product type PDF for {product_type_label}.",
+            "progress_current": 4,
+            "progress_total": 4,
+            "progress_percent": 100.0,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job(f"refresh_product_type_pdf_{product_type_id}", work))
+
+
 @app.get("/api/templates", response_model=TemplateRegistryResponse, dependencies=[Depends(get_current_user)], tags=["Templates"], summary="List available templates")
 def list_templates():
     return sync_template_registry_with_disk()
@@ -3985,6 +4050,50 @@ def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
     db.refresh(series)
     return series
+
+
+@app.post(
+    "/api/maintenance/jobs/series/{series_id}/pdf/refresh",
+    response_model=MaintenanceJobResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Maintenance"],
+    summary="Start generating a series PDF",
+)
+def start_refresh_series_pdf_job(series_id: int):
+    with SessionLocal() as db:
+        series = db.get(Series, series_id)
+        if not series:
+            raise HTTPException(status_code=404, detail="Series not found")
+        series_name = series.name
+
+    def work(progress):
+        with SessionLocal() as db:
+            series = db.get(Series, series_id)
+            if not series:
+                raise HTTPException(status_code=404, detail="Series not found")
+
+            db.refresh(series)
+            if series.product_type and series.product_type.supports_graph:
+                progress("Refreshing series graph", 1, 3)
+                generate_series_graph(series)
+            else:
+                progress("Refreshing series graph", 1, 3)
+
+            progress("Rendering printed series PDF", 2, 3)
+            generate_series_pdf(series, "printed")
+            progress("Rendering online series PDF", 3, 3)
+            generate_series_pdf(series, "online")
+            db.commit()
+
+        return {
+            "result_message": f"Generated series PDFs for {series_name}.",
+            "progress_message": f"Generated series PDFs for {series_name}.",
+            "progress_current": 3,
+            "progress_total": 3,
+            "progress_percent": 100.0,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job(f"refresh_series_pdf_{series_id}", work))
 
 
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
@@ -4730,6 +4839,45 @@ def refresh_product_pdf(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(product)
     return product
+
+
+@app.post(
+    "/api/maintenance/jobs/products/{product_id}/pdf/refresh",
+    response_model=MaintenanceJobResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Maintenance"],
+    summary="Start generating a product PDF",
+)
+def start_refresh_product_pdf_job(product_id: int):
+    with SessionLocal() as db:
+        product = require_product(db, product_id)
+        product_label = product.model or f"product {product_id}"
+
+    def work(progress):
+        with SessionLocal() as db:
+            product = require_product(db, product_id)
+            if product.product_type and product.product_type.supports_graph:
+                progress("Refreshing product graph", 1, 3)
+                refresh_graph_for_product(db, product)
+                db.commit()
+            else:
+                progress("Refreshing product graph", 1, 3)
+
+            progress("Rendering printed product PDF", 2, 3)
+            generate_product_pdf(product, "printed")
+            progress("Rendering online product PDF", 3, 3)
+            generate_product_pdf(product, "online")
+            db.commit()
+
+        return {
+            "result_message": f"Generated printed and online PDFs for {product_label}.",
+            "progress_message": f"Generated printed and online PDFs for {product_label}.",
+            "progress_current": 3,
+            "progress_total": 3,
+            "progress_percent": 100.0,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job(f"refresh_product_pdf_{product_id}", work))
 
 
 @app.post("/api/maintenance/graph-images/regenerate-all", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])

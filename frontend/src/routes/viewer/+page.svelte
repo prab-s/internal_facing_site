@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
   import {
     getProductChartData,
@@ -10,15 +10,17 @@
     getProductTypes,
     getSeries,
     refreshGraphImage,
-    refreshProductPdf,
-    refreshProductTypePdf,
+    startRefreshProductPdfJob,
+    startRefreshProductTypePdfJob,
     refreshSeriesGraphImage,
-    refreshSeriesPdf
+    startRefreshSeriesPdfJob
   } from '$lib/api.js';
   import ECharts from '$lib/ECharts.svelte';
   import { getChartTheme, theme } from '$lib/config.js';
   import { buildFullChartOption } from '$lib/fullChart.js';
+  import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
+  import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
 
   let products = [];
   let productTypes = [];
@@ -50,10 +52,11 @@
   let viewerUrlStateReady = false;
 
   let refreshingProductGraphId = null;
-  let refreshingProductPdfId = null;
-  let refreshingProductTypePdfId = null;
+  let refreshingProductPdfJob = null;
+  let refreshingProductTypePdfJob = null;
   let refreshingSeriesGraphId = null;
-  let refreshingSeriesPdfId = null;
+  let refreshingSeriesPdfJob = null;
+  let destroyed = false;
 
   function parseViewerStateFromUrl() {
     if (!browser) return;
@@ -339,33 +342,55 @@
   }
 
   async function regenerateProductPdf(product) {
-    refreshingProductPdfId = product.id;
+    refreshingProductPdfJob = null;
     error = '';
     success = '';
     try {
-      await refreshProductPdf(product.id);
+      const job = await runMaintenanceJob(
+        () => startRefreshProductPdfJob(product.id),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingProductPdfJob = nextJob;
+          }
+        }
+      );
+      refreshingProductPdfJob = job;
       await loadEverything();
       success = `Generated printed and online PDFs for ${product.model}.`;
     } catch (e) {
       error = e.message;
     } finally {
-      refreshingProductPdfId = null;
+      if (!destroyed) {
+        refreshingProductPdfJob = null;
+      }
     }
   }
 
   async function regenerateProductTypePdf(productType) {
-    refreshingProductTypePdfId = productType.id;
+    refreshingProductTypePdfJob = null;
     error = '';
     success = '';
     try {
-      await refreshProductTypePdf(productType.id);
+      const job = await runMaintenanceJob(
+        () => startRefreshProductTypePdfJob(productType.id),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingProductTypePdfJob = nextJob;
+          }
+        }
+      );
+      refreshingProductTypePdfJob = job;
       await loadEverything();
       await loadProductTypeContext();
       success = `Generated product type PDF for ${productType.label}.`;
     } catch (e) {
       error = e.message;
     } finally {
-      refreshingProductTypePdfId = null;
+      if (!destroyed) {
+        refreshingProductTypePdfJob = null;
+      }
     }
   }
 
@@ -385,17 +410,28 @@
   }
 
   async function regenerateSeriesPdfAsset(series) {
-    refreshingSeriesPdfId = series.id;
+    refreshingSeriesPdfJob = null;
     error = '';
     success = '';
     try {
-      await refreshSeriesPdf(series.id);
+      const job = await runMaintenanceJob(
+        () => startRefreshSeriesPdfJob(series.id),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingSeriesPdfJob = nextJob;
+          }
+        }
+      );
+      refreshingSeriesPdfJob = job;
       await loadEverything();
       success = `Generated printed and online PDFs for ${series.name}.`;
     } catch (e) {
       error = e.message;
     } finally {
-      refreshingSeriesPdfId = null;
+      if (!destroyed) {
+        refreshingSeriesPdfJob = null;
+      }
     }
   }
 
@@ -583,6 +619,10 @@
     viewerUrlStateReady = true;
     syncViewerUrl();
   });
+
+  onDestroy(() => {
+    destroyed = true;
+  });
 </script>
 
 <svelte:head>
@@ -739,8 +779,8 @@
             <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductGraph(currentProduct)} disabled={refreshingProductGraphId === currentProduct.id}>
               {refreshingProductGraphId === currentProduct.id ? 'Generating Graph...' : 'Generate Graph'}
             </button>
-            <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductPdf(currentProduct)} disabled={refreshingProductPdfId === currentProduct.id}>
-              {refreshingProductPdfId === currentProduct.id ? 'Generating PDFs...' : 'Generate PDFs'}
+            <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductPdf(currentProduct)} disabled={refreshingProductPdfJob?.status === 'running'}>
+              {refreshingProductPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate PDFs'}
             </button>
             <a class="btn btn-outline-primary btn-sm" href={productEditorUrl(currentProduct.id)}>Open in Editor</a>
             {#if currentProduct.graph_image_url}
@@ -758,6 +798,7 @@
           <div class="small text-body-secondary mt-2">
             Printed template: {productPdfTemplateLabels(currentProduct).printed} · Online template: {productPdfTemplateLabels(currentProduct).online}
           </div>
+          <JobProgressPanel job={refreshingProductPdfJob} label="Product PDF generation" />
 
       <div class="row g-3 mt-1">
         <div class="col-12 col-md-3">
@@ -939,14 +980,15 @@
               {/each}
             </select>
             <div class="d-grid gap-2 mt-3">
-              <button class="btn btn-outline-secondary" type="button" on:click={() => regenerateProductTypePdf(selectedProductTypeRecord)} disabled={!selectedProductTypeRecord || refreshingProductTypePdfId === selectedProductTypeRecord.id}>
-                {refreshingProductTypePdfId === selectedProductTypeRecord?.id ? 'Generating PDF...' : 'Generate Product Type PDF'}
+              <button class="btn btn-outline-secondary" type="button" on:click={() => regenerateProductTypePdf(selectedProductTypeRecord)} disabled={!selectedProductTypeRecord || refreshingProductTypePdfJob?.status === 'running'}>
+                {refreshingProductTypePdfJob?.status === 'running' ? 'Generating PDF...' : 'Generate Product Type PDF'}
               </button>
               {#if selectedProductTypeRecord}
                 <div class="small text-body-secondary">
                   Template: {productTypePdfTemplateLabel(selectedProductTypeRecord)}
                 </div>
               {/if}
+              <JobProgressPanel job={refreshingProductTypePdfJob} label="Product type PDF generation" />
               {#if selectedProductTypeRecord?.product_type_pdf_url}
                 <a class="btn btn-outline-primary" href={selectedProductTypeRecord.product_type_pdf_url} target="_blank" rel="noreferrer">Open Product Type PDF</a>
               {/if}
@@ -1069,8 +1111,8 @@
               <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesGraph(selectedSeriesRecord)} disabled={refreshingSeriesGraphId === selectedSeriesRecord.id}>
                 {refreshingSeriesGraphId === selectedSeriesRecord.id ? 'Generating Graph...' : 'Generate Series Graph'}
               </button>
-              <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesPdfAsset(selectedSeriesRecord)} disabled={refreshingSeriesPdfId === selectedSeriesRecord.id}>
-                {refreshingSeriesPdfId === selectedSeriesRecord.id ? 'Generating PDFs...' : 'Generate Series PDFs'}
+              <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesPdfAsset(selectedSeriesRecord)} disabled={refreshingSeriesPdfJob?.status === 'running'}>
+                {refreshingSeriesPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate Series PDFs'}
               </button>
               {#if selectedSeriesRecord.series_graph_image_url}
                 <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_graph_image_url} target="_blank" rel="noreferrer">Open Series Graph</a>
@@ -1087,6 +1129,7 @@
             <div class="small text-body-secondary mb-3">
               Printed template: {seriesPdfTemplateLabels(selectedSeriesRecord).printed} · Online template: {seriesPdfTemplateLabels(selectedSeriesRecord).online}
             </div>
+            <JobProgressPanel job={refreshingSeriesPdfJob} label="Series PDF generation" />
 
             <div class="row g-3">
               <div class="col-12 col-lg-6">
