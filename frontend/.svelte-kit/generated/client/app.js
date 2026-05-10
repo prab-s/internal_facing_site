@@ -18,7 +18,8 @@ export const nodes = [
 	() => import('./nodes/14'),
 	() => import('./nodes/15'),
 	() => import('./nodes/16'),
-	() => import('./nodes/17')
+	() => import('./nodes/17'),
+	() => import('./nodes/18')
 ];
 
 export const server_loads = [];
@@ -38,8 +39,9 @@ export const dictionary = {
 		"/entry": [13],
 		"/map": [14],
 		"/setup": [15],
+		"/template-builder-v2": [17],
 		"/template-builder": [16],
-		"/viewer": [17]
+		"/viewer": [18]
 	};
 
 export const hooks = {

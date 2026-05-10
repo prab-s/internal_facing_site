@@ -1,11 +1,12 @@
 <script>
   import { onMount } from 'svelte';
-  import { createProductType, getProductTypes, refreshProductTypePdf, updateProductType } from '$lib/api.js';
+  import { createProductType, getProductTypes, getTemplates, refreshProductTypePdf, updateProductType } from '$lib/api.js';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
 
   export let initialMode = 'create';
 
   let productTypes = [];
+  let templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
   let selectedProductTypeId = '';
   let saving = false;
   let refreshingPdfId = null;
@@ -28,6 +29,7 @@
       graph_x_axis_unit: productType?.graph_x_axis_unit ?? '',
       graph_y_axis_label: productType?.graph_y_axis_label ?? '',
       graph_y_axis_unit: productType?.graph_y_axis_unit ?? '',
+      product_type_template_id: productType?.product_type_template_id ?? '',
       band_graph_background_color: productType?.band_graph_background_color ?? '#ffffff',
       band_graph_label_text_color: productType?.band_graph_label_text_color ?? '#000000',
       band_graph_faded_opacity:
@@ -66,7 +68,7 @@
 
   async function loadProductTypes() {
     try {
-      productTypes = await getProductTypes();
+      [productTypes, templateRegistry] = await Promise.all([getProductTypes(), getTemplates()]);
     } catch (e) {
       error = e.message;
     }
@@ -99,6 +101,7 @@
         graph_x_axis_unit: productTypeDraft.graph_x_axis_unit || null,
         graph_y_axis_label: productTypeDraft.graph_y_axis_label || null,
         graph_y_axis_unit: productTypeDraft.graph_y_axis_unit || null,
+        product_type_template_id: productTypeDraft.product_type_template_id || null,
         band_graph_background_color: productTypeDraft.band_graph_background_color || null,
         band_graph_label_text_color: productTypeDraft.band_graph_label_text_color || null,
         band_graph_faded_opacity:
@@ -215,6 +218,15 @@
               <input class="form-check-input" id="product-type-band" type="checkbox" bind:checked={productTypeDraft.supports_band_graph_style} />
               <label class="form-check-label" for="product-type-band">Supports band graph style</label>
             </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="product-type-template">Product type PDF template</label>
+            <select class="form-select" id="product-type-template" bind:value={productTypeDraft.product_type_template_id}>
+              <option value="">Use default template</option>
+              {#each templateRegistry.product_type_templates ?? [] as template}
+                <option value={template.id}>{template.label}</option>
+              {/each}
+            </select>
           </div>
           <div class="col-12">
             <hr class="my-2" />

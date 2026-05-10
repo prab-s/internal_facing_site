@@ -192,15 +192,17 @@ function ProductWorkspace($$renderer, $$props) {
       return value === "" || value == null ? null : parseFloat(value);
     }
     function createParameterDraft(parameter = {}) {
+      const unitValue = parameter.unit ?? "";
+      const isCustomUnit = unitValue !== "" && !GLOBAL_UNIT_OPTIONS.includes(unitValue);
       return {
         id: parameter.id ?? null,
         _pending_delete: parameter._pending_delete ?? false,
         parameter_name: parameter.parameter_name ?? "",
-        value_type: parameter.value_string != null && parameter.value_string !== "" ? "string" : parameter.value_number != null ? "number" : "string",
+        value_type: parameter.value_string != null && parameter.value_string !== "" ? "string" : parameter.value_number != null ? "number" : unitValue !== "" ? "number" : "string",
         value_string: parameter.value_string ?? "",
         value_number: parameter.value_number ?? "",
-        unit: parameter.unit ?? "",
-        custom_unit: parameter.unit && !GLOBAL_UNIT_OPTIONS.includes(parameter.unit) ? parameter.unit : ""
+        unit: isCustomUnit ? "__custom__" : unitValue,
+        custom_unit: isCustomUnit ? unitValue : ""
       };
     }
     function createPresetRpmPointDraft(point = {}) {

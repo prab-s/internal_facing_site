@@ -34,11 +34,14 @@ function _layout($$renderer, $$props) {
       } else if (isActive("/viewer")) {
         $$renderer2.push("<!--[1-->");
         $$renderer2.push(`Viewer`);
-      } else if (isActive("/template-builder")) {
+      } else if (isActive("/template-builder-v2")) {
         $$renderer2.push("<!--[2-->");
+        $$renderer2.push(`Template Builder V2`);
+      } else if (isActive("/template-builder")) {
+        $$renderer2.push("<!--[3-->");
         $$renderer2.push(`Template Builder`);
       } else if (isActive("/setup")) {
-        $$renderer2.push("<!--[3-->");
+        $$renderer2.push("<!--[4-->");
         $$renderer2.push(`Setup`);
       } else {
         $$renderer2.push("<!--[-1-->");

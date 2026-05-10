@@ -1,4 +1,5 @@
 import { h as head, a as attr, e as escape_html, i as ensure_array_like } from "../../../chunks/index2.js";
+/* empty css                         */
 import { d as getProductTypePdfContext } from "../../../chunks/api.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
@@ -42,7 +43,7 @@ function _page($$renderer, $$props) {
         $$renderer4.push(`<title>Template Builder | Internal Facing</title>`);
       });
     });
-    $$renderer2.push(`<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Visual Templates</p> <h1 class="h3 mb-1">Template Builder</h1> <p class="text-body-secondary mb-0">Edit the real HTML/CSS source safely, and use GrapesJS as a live preview sandbox for the template body.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-secondary" type="button"${attr("disabled", refreshing, true)}>${escape_html("Refresh template library")}</button> <button class="btn btn-primary" type="button"${attr("disabled", true, true)}>${escape_html("Save template")}</button></div></div> `);
+    $$renderer2.push(`<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Visual Templates</p> <h1 class="h3 mb-1">Template Builder</h1> <p class="text-body-secondary mb-0">Edit the real HTML/CSS source safely, and use GrapesJS as a live preview sandbox for the template body.</p></div> <div class="d-flex gap-2 flex-wrap"><a class="btn btn-outline-secondary" href="/template-builder-v2">Open v2 builder</a> <button class="btn btn-outline-secondary" type="button"${attr("disabled", refreshing, true)}>${escape_html("Refresh template library")}</button> <button class="btn btn-primary" type="button"${attr("disabled", true, true)}>${escape_html("Save template")}</button></div></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }

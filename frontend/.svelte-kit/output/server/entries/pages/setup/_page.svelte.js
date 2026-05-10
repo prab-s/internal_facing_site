@@ -1,8 +1,100 @@
-import { s as store_get, h as head, i as ensure_array_like, e as escape_html, a as attr, b as attr_class, u as unsubscribe_stores, ac as clsx } from "../../../chunks/index2.js";
+import { f as fallback, e as escape_html, a as attr, i as ensure_array_like, d as bind_props, s as store_get, h as head, b as attr_class, u as unsubscribe_stores, ac as clsx } from "../../../chunks/index2.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
 import { g as getUsers, a as getProductTypes } from "../../../chunks/api.js";
+function FileManager($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let currentPath, pathSegments, canModifyCurrentFolder;
+    let rootName = fallback($$props["rootName"], "");
+    let title = fallback($$props["title"], "");
+    let description = fallback($$props["description"], "");
+    let listing = { entries: [] };
+    let loading = false;
+    let createFolderName = "";
+    let uploadFiles = [];
+    let replaceExisting = false;
+    function formatBytes(value) {
+      if (value == null) return "";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let size = Number(value);
+      let unit = units[0];
+      for (const nextUnit of units) {
+        unit = nextUnit;
+        if (size < 1024 || nextUnit === units[units.length - 1]) break;
+        size /= 1024;
+      }
+      return `${size.toFixed(size >= 10 || unit === "B" ? 0 : 1)} ${unit}`;
+    }
+    function formatDate(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    }
+    currentPath = "";
+    pathSegments = currentPath ? currentPath.split("/") : [];
+    canModifyCurrentFolder = true;
+    $$renderer2.push(`<div class="card border shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">${escape_html(title)}</p> <h3 class="h5 mb-1">${escape_html(rootName)}/${escape_html(currentPath || "")}</h3> <p class="text-body-secondary mb-0">${escape_html(description)}</p></div> <div class="d-flex align-items-center gap-2 flex-wrap"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loading, true)}>${escape_html("Refresh")}</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !currentPath, true)}>Up</button></div></div> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="mt-3"><div class="d-flex flex-wrap gap-2 mb-2"><span class="badge text-bg-secondary">Root</span> `);
+    if (pathSegments.length) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<!--[-->`);
+      const each_array = ensure_array_like(pathSegments);
+      for (let index = 0, $$length = each_array.length; index < $$length; index++) {
+        let segment = each_array[index];
+        $$renderer2.push(`<button class="btn btn-link btn-sm p-0" type="button">${escape_html(segment)}</button>`);
+      }
+      $$renderer2.push(`<!--]-->`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+      $$renderer2.push(`<span class="text-body-secondary small">top level</span>`);
+    }
+    $$renderer2.push(`<!--]--></div> <div class="row g-2 align-items-end"><div class="col-12 col-lg-5"><label class="form-label form-label-sm"${attr("for", `create-folder-${rootName}`)}>Create folder</label> <input${attr("id", `create-folder-${rootName}`)} class="form-control form-control-sm" type="text"${attr("value", createFolderName)} placeholder="New folder name"${attr("disabled", loading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", !createFolderName.trim(), true)}>Create Folder</button></div> <div class="col-12 col-lg"><label class="form-label form-label-sm"${attr("for", `upload-${rootName}`)}>Upload files</label> <input${attr("id", `upload-${rootName}`)} class="form-control form-control-sm" type="file" multiple=""${attr("disabled", loading, true)}/></div> <div class="col-12 col-lg-auto d-flex align-items-center gap-2"><div class="form-check mb-0"><input${attr("checked", replaceExisting, true)} class="form-check-input" type="checkbox"${attr("id", `replace-${rootName}`)}${attr("disabled", !canModifyCurrentFolder, true)}/> <label class="form-check-label"${attr("for", `replace-${rootName}`)}>Replace existing</label></div> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", !canModifyCurrentFolder || !uploadFiles.length, true)}>Upload</button></div></div></div> <div class="table-responsive mt-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Modified</th><th class="text-end">Actions</th></tr></thead><tbody><!--[-->`);
+    const each_array_1 = ensure_array_like(listing?.entries || []);
+    for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
+      let entry = each_array_1[$$index_1];
+      $$renderer2.push(`<tr><td><div class="d-flex align-items-center gap-2 flex-wrap">`);
+      if (entry.type === "directory") {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<button class="btn btn-link p-0 text-decoration-none" type="button">${escape_html(entry.name)}</button>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+        $$renderer2.push(`<span>${escape_html(entry.name)}</span>`);
+      }
+      $$renderer2.push(`<!--]--> `);
+      if (entry.protected) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<span class="badge text-bg-warning">Protected</span>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></td><td class="text-body-secondary text-capitalize">${escape_html(entry.type)}</td><td class="text-body-secondary">${escape_html(entry.type === "file" ? formatBytes(entry.size_bytes) : "—")}</td><td class="text-body-secondary">${escape_html(formatDate(entry.modified_at))}</td><td class="text-end"><div class="d-flex justify-content-end gap-2 flex-wrap">`);
+      if (entry.type === "file") {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button">Download</button>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", entry.protected, true)}>Rename</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", entry.protected, true)}>Delete</button></div></td></tr>`);
+    }
+    $$renderer2.push(`<!--]-->`);
+    if (!(listing?.entries || []).length) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<tr><td colspan="5" class="text-body-secondary">This folder is empty.</td></tr>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></tbody></table></div></div></div>`);
+    bind_props($$props, { rootName, title, description });
+  });
+}
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
@@ -56,18 +148,19 @@ function _page($$renderer, $$props) {
     }
     function createPresetParameterDraft(parameter = {}) {
       const preferredUnit = parameter.preferred_unit ?? "";
+      const isCustomUnit = preferredUnit !== "" && !GLOBAL_UNIT_OPTIONS.includes(preferredUnit);
       const valueString = parameter.value_string ?? "";
       const valueNumber = parameter.value_number ?? "";
-      const valueType = valueString !== "" ? "string" : valueNumber !== "" && valueNumber != null ? "number" : "string";
+      const valueType = valueString !== "" ? "string" : valueNumber !== "" && valueNumber != null ? "number" : preferredUnit !== "" ? "number" : "string";
       return {
         id: parameter.id ?? null,
         _pending_delete: false,
         parameter_name: parameter.parameter_name ?? "",
-        preferred_unit: preferredUnit,
+        preferred_unit: isCustomUnit ? "__custom__" : preferredUnit,
         value_type: valueType,
         value_string: valueString,
         value_number: valueNumber,
-        custom_unit: preferredUnit && !GLOBAL_UNIT_OPTIONS.includes(preferredUnit) ? preferredUnit : ""
+        custom_unit: isCustomUnit ? preferredUnit : ""
       };
     }
     function createPresetGroupDraft(group = {}) {
@@ -134,6 +227,26 @@ function _page($$renderer, $$props) {
         band_graph_permissible_label_color: productType?.band_graph_permissible_label_color ?? "#000000"
       };
     }
+    function clearPresetDrafts() {
+      presetGroups = [];
+      presetRpmLines = [];
+      presetEfficiencyPoints = [];
+      presetPrintedProductTemplateId = "";
+      presetOnlineProductTemplateId = "";
+      presetBandGraphStyle = clonePresetBandGraphStyleForType("");
+    }
+    function syncPresetDraftsForSelectedType(productTypeId = selectedProductTypeId) {
+      if (!productTypeId) {
+        clearPresetDrafts();
+        return;
+      }
+      presetGroups = clonePresetGroupsForType(productTypeId);
+      presetRpmLines = clonePresetRpmLinesForType(productTypeId);
+      presetEfficiencyPoints = clonePresetEfficiencyPointsForType(productTypeId);
+      presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, "printed");
+      presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, "online");
+      presetBandGraphStyle = clonePresetBandGraphStyleForType(productTypeId);
+    }
     async function loadProductTypes() {
       loadingProductTypes = true;
       typePresetError = "";
@@ -143,20 +256,8 @@ function _page($$renderer, $$props) {
         const selectedStillExists = productTypes.some((item) => String(item.id) === String(selectedProductTypeId));
         if (!selectedStillExists) {
           selectedProductTypeId = "";
-          presetGroups = [];
-          presetRpmLines = [];
-          presetEfficiencyPoints = [];
-          presetPrintedProductTemplateId = "";
-          presetOnlineProductTemplateId = "";
-          presetBandGraphStyle = clonePresetBandGraphStyleForType("");
-        } else {
-          presetGroups = clonePresetGroupsForType(selectedProductTypeId);
-          presetRpmLines = clonePresetRpmLinesForType(selectedProductTypeId);
-          presetEfficiencyPoints = clonePresetEfficiencyPointsForType(selectedProductTypeId);
-          presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, "printed");
-          presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, "online");
-          presetBandGraphStyle = clonePresetBandGraphStyleForType(selectedProductTypeId);
         }
+        syncPresetDraftsForSelectedType();
       } catch (error) {
         typePresetError = error?.message || "Unable to load product types.";
       } finally {
@@ -168,6 +269,13 @@ function _page($$renderer, $$props) {
     }
     if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && !productTypesLoaded && !loadingProductTypes) {
       loadProductTypes();
+    }
+    if (productTypesLoaded) {
+      if (selectedProductTypeId) {
+        syncPresetDraftsForSelectedType(selectedProductTypeId);
+      } else {
+        clearPresetDrafts();
+      }
     }
     filteredUsers = users.filter((user) => {
       const needle = userFilter.trim().toLowerCase();
@@ -244,8 +352,19 @@ function _page($$renderer, $$props) {
       {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backups</h3> <p class="mb-2 text-body-secondary">Download a full backup ZIP of the deployed data, or restore one here. The backup bundle includes
-                    the app database and media, plus the WordPress database and \`wp-content\`.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Backup ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="backup-restore-file">Restore Backup ZIP</label> <input id="backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore Backup ZIP</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product PDFs in one pass using the current product templates and graph data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product PDFs</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
+      $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup DB Data</h3> <p class="mb-2 text-body-secondary">Download the PostgreSQL backup ZIP. This is the plug-and-play restore package for the app database.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download DB Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="db-backup-restore-file">Restore DB Data ZIP</label> <input id="db-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore DB Data ZIP</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup Media Data</h3> <p class="mb-2 text-body-secondary">Download the media-only ZIP for product images, graph images, generated PDFs, and templates. Backups are excluded.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Media Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIP</label> <input id="media-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore Media Data ZIP</button></div></div></div></div> <div class="mb-3">`);
+      FileManager($$renderer2, {
+        rootName: "data",
+        title: "Media File Manager",
+        description: "Browse and manage media folders in the deployment volume. Open a folder to upload, create folders, rename, or delete items."
+      });
+      $$renderer2.push(`<!----></div> <div class="mb-3">`);
+      FileManager($$renderer2, {
+        rootName: "templates",
+        title: "Template File Manager",
+        description: "Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
+      });
+      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product PDFs in one pass using the current product templates and graph data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product PDFs</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
                     flow into the product editor.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingProductTypes, true)}>${escape_html(loadingProductTypes ? "Refreshing..." : "Reload types")}</button></div> `);
       if (typePresetError) {
         $$renderer2.push("<!--[0-->");

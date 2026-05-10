@@ -149,18 +149,26 @@
 
   function createPresetParameterDraft(parameter = {}) {
     const preferredUnit = parameter.preferred_unit ?? '';
+    const isCustomUnit = preferredUnit !== '' && !GLOBAL_UNIT_OPTIONS.includes(preferredUnit);
     const valueString = parameter.value_string ?? '';
     const valueNumber = parameter.value_number ?? '';
-    const valueType = valueString !== '' ? 'string' : valueNumber !== '' && valueNumber != null ? 'number' : 'string';
+    const valueType =
+      valueString !== ''
+        ? 'string'
+        : valueNumber !== '' && valueNumber != null
+          ? 'number'
+          : preferredUnit !== ''
+            ? 'number'
+            : 'string';
     return {
       id: parameter.id ?? null,
       _pending_delete: false,
       parameter_name: parameter.parameter_name ?? '',
-      preferred_unit: preferredUnit,
+      preferred_unit: isCustomUnit ? '__custom__' : preferredUnit,
       value_type: valueType,
       value_string: valueString,
       value_number: valueNumber,
-      custom_unit: preferredUnit && !GLOBAL_UNIT_OPTIONS.includes(preferredUnit) ? preferredUnit : ''
+      custom_unit: isCustomUnit ? preferredUnit : ''
     };
   }
 
@@ -238,6 +246,29 @@
     };
   }
 
+  function clearPresetDrafts() {
+    presetGroups = [];
+    presetRpmLines = [];
+    presetEfficiencyPoints = [];
+    presetPrintedProductTemplateId = '';
+    presetOnlineProductTemplateId = '';
+    presetBandGraphStyle = clonePresetBandGraphStyleForType('');
+  }
+
+  function syncPresetDraftsForSelectedType(productTypeId = selectedProductTypeId) {
+    if (!productTypeId) {
+      clearPresetDrafts();
+      return;
+    }
+
+    presetGroups = clonePresetGroupsForType(productTypeId);
+    presetRpmLines = clonePresetRpmLinesForType(productTypeId);
+    presetEfficiencyPoints = clonePresetEfficiencyPointsForType(productTypeId);
+    presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, 'printed');
+    presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, 'online');
+    presetBandGraphStyle = clonePresetBandGraphStyleForType(productTypeId);
+  }
+
   async function loadProductTypes() {
     loadingProductTypes = true;
     typePresetError = '';
@@ -247,20 +278,8 @@
       const selectedStillExists = productTypes.some((item) => String(item.id) === String(selectedProductTypeId));
       if (!selectedStillExists) {
         selectedProductTypeId = '';
-        presetGroups = [];
-        presetRpmLines = [];
-        presetEfficiencyPoints = [];
-        presetPrintedProductTemplateId = '';
-        presetOnlineProductTemplateId = '';
-        presetBandGraphStyle = clonePresetBandGraphStyleForType('');
-      } else {
-        presetGroups = clonePresetGroupsForType(selectedProductTypeId);
-        presetRpmLines = clonePresetRpmLinesForType(selectedProductTypeId);
-        presetEfficiencyPoints = clonePresetEfficiencyPointsForType(selectedProductTypeId);
-        presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'printed');
-        presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'online');
-        presetBandGraphStyle = clonePresetBandGraphStyleForType(selectedProductTypeId);
       }
+      syncPresetDraftsForSelectedType();
     } catch (error) {
       typePresetError = error?.message || 'Unable to load product types.';
     } finally {
@@ -270,12 +289,14 @@
 
   function selectProductType(productTypeId) {
     selectedProductTypeId = String(productTypeId || '');
-    presetGroups = clonePresetGroupsForType(selectedProductTypeId);
-    presetRpmLines = clonePresetRpmLinesForType(selectedProductTypeId);
-    presetEfficiencyPoints = clonePresetEfficiencyPointsForType(selectedProductTypeId);
-    presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'printed');
-    presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'online');
-    presetBandGraphStyle = clonePresetBandGraphStyleForType(selectedProductTypeId);
+  }
+
+  $: if (productTypesLoaded) {
+    if (selectedProductTypeId) {
+      syncPresetDraftsForSelectedType(selectedProductTypeId);
+    } else {
+      clearPresetDrafts();
+    }
   }
 
   function addPresetGroup() {
@@ -450,6 +471,21 @@
           value_number: valueType === 'number' ? parameter.value_number : '',
           preferred_unit: valueType === 'number' ? parameter.preferred_unit : '',
           custom_unit: valueType === 'number' ? parameter.custom_unit : ''
+        };
+      });
+      return { ...group, parameters };
+    });
+  }
+
+  function updatePresetParameterUnit(groupIndex, parameterIndex, unitValue) {
+    presetGroups = presetGroups.map((group, index) => {
+      if (index !== groupIndex) return group;
+      const parameters = group.parameters.map((parameter, innerIndex) => {
+        if (innerIndex !== parameterIndex) return parameter;
+        return {
+          ...parameter,
+          preferred_unit: unitValue,
+          custom_unit: unitValue === '__custom__' ? parameter.custom_unit : ''
         };
       });
       return { ...group, parameters };
@@ -1179,7 +1215,7 @@
               <div class="row g-3 align-items-end">
                 <div class="col-12 col-md-6 col-lg-4">
                   <label class="form-label" for="type-preset-select">Product type</label>
-                  <select class="form-select" id="type-preset-select" bind:value={selectedProductTypeId} on:change={(event) => selectProductType(event.currentTarget.value)}>
+                  <select class="form-select" id="type-preset-select" bind:value={selectedProductTypeId}>
                     <option value="">-- Choose option --</option>
                     {#each productTypes as productType}
                       <option value={productType.id}>{productType.label}</option>
@@ -1315,7 +1351,12 @@
                                     </div>
                                     <div class="col-12 col-lg-3">
                                       <label class="form-label" for={`type-preset-${groupIndex}-parameter-${parameterIndex}-unit`}>Unit</label>
-                                      <select class="form-select" id={`type-preset-${groupIndex}-parameter-${parameterIndex}-unit`} bind:value={parameter.preferred_unit} on:change={() => (presetGroups = [...presetGroups])}>
+                                      <select
+                                        class="form-select"
+                                        id={`type-preset-${groupIndex}-parameter-${parameterIndex}-unit`}
+                                        bind:value={parameter.preferred_unit}
+                                        on:change={(event) => updatePresetParameterUnit(groupIndex, parameterIndex, event.currentTarget.value)}
+                                      >
                                         <option value="">No unit</option>
                                         {#each GLOBAL_UNIT_OPTIONS as unitOption}
                                           <option value={unitOption}>{unitOption}</option>

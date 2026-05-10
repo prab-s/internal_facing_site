@@ -411,7 +411,7 @@
           value_type: 'number',
           value_number: suggestion.value_number ?? '',
           value_string: '',
-          unit: suggestion.unit || '',
+          unit: suggestion.unit && !GLOBAL_UNIT_OPTIONS.includes(suggestion.unit) ? '__custom__' : (suggestion.unit || ''),
           custom_unit: suggestion.unit && !GLOBAL_UNIT_OPTIONS.includes(suggestion.unit) ? suggestion.unit : ''
         };
       });
@@ -424,6 +424,8 @@
   }
 
   function createParameterDraft(parameter = {}) {
+    const unitValue = parameter.unit ?? '';
+    const isCustomUnit = unitValue !== '' && !GLOBAL_UNIT_OPTIONS.includes(unitValue);
     return {
       id: parameter.id ?? null,
       _pending_delete: parameter._pending_delete ?? false,
@@ -433,11 +435,13 @@
           ? 'string'
           : parameter.value_number != null
             ? 'number'
+            : unitValue !== ''
+            ? 'number'
             : 'string',
       value_string: parameter.value_string ?? '',
       value_number: parameter.value_number ?? '',
-      unit: parameter.unit ?? '',
-      custom_unit: parameter.unit && !GLOBAL_UNIT_OPTIONS.includes(parameter.unit) ? parameter.unit : ''
+      unit: isCustomUnit ? '__custom__' : unitValue,
+      custom_unit: isCustomUnit ? unitValue : ''
     };
   }
 
@@ -865,6 +869,21 @@
           value_number: valueType === 'number' ? parameter.value_number : '',
           unit: valueType === 'number' ? parameter.unit : '',
           custom_unit: valueType === 'number' ? parameter.custom_unit : ''
+        };
+      });
+      return { ...group, parameters };
+    });
+  }
+
+  function updateParameterUnit(groupIndex, parameterIndex, unitValue) {
+    parameterGroups = parameterGroups.map((group, index) => {
+      if (index !== groupIndex) return group;
+      const parameters = group.parameters.map((parameter, innerIndex) => {
+        if (innerIndex !== parameterIndex) return parameter;
+        return {
+          ...parameter,
+          unit: unitValue,
+          custom_unit: unitValue === '__custom__' ? parameter.custom_unit : ''
         };
       });
       return { ...group, parameters };
@@ -2822,7 +2841,7 @@
                             </div>
                             <div class="col-12 col-lg-3">
                               <label class="form-label" for={`create-group-${groupIndex}-parameter-${parameterIndex}-unit`}>Unit</label>
-                            <select class="form-select" id={`create-group-${groupIndex}-parameter-${parameterIndex}-unit`} bind:value={parameter.unit} on:change={() => (parameterGroups = [...parameterGroups])}>
+                            <select class="form-select" id={`create-group-${groupIndex}-parameter-${parameterIndex}-unit`} bind:value={parameter.unit} on:change={(event) => updateParameterUnit(groupIndex, parameterIndex, event.currentTarget.value)}>
                               <option value="">No unit</option>
                               {#each GLOBAL_UNIT_OPTIONS as unitOption}
                                 <option value={unitOption}>{unitOption}</option>
@@ -3228,7 +3247,7 @@
                             </div>
                             <div class="col-12 col-lg-3">
                               <label class="form-label" for={`edit-group-${groupIndex}-parameter-${parameterIndex}-unit`}>Unit</label>
-                              <select class="form-select" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-unit`} bind:value={parameter.unit} on:change={() => (parameterGroups = [...parameterGroups])}>
+                              <select class="form-select" id={`edit-group-${groupIndex}-parameter-${parameterIndex}-unit`} bind:value={parameter.unit} on:change={(event) => updateParameterUnit(groupIndex, parameterIndex, event.currentTarget.value)}>
                                 <option value="">No unit</option>
                                 {#each GLOBAL_UNIT_OPTIONS as unitOption}
                                   <option value={unitOption}>{unitOption}</option>

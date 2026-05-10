@@ -1,4 +1,5 @@
 import csv
+import base64
 import datetime
 import hashlib
 import html
@@ -94,6 +95,8 @@ from backend.schemas import (
     SeriesResponse,
     SeriesUpdate,
     TemplateCreateRequest,
+    TemplateAssetUploadRequest,
+    TemplateAssetUploadResponse,
     TemplateFileResponse,
     TemplateFileUpdateRequest,
     TemplateRegistryResponse,
@@ -291,6 +294,14 @@ def apply_product_type_presets(
         or product_type.printed_product_template_id
         or validate_template_id(product_template_id, "product")
     )
+
+
+def resolve_product_type_pdf_template_id(product_type: ProductType) -> str | None:
+    candidate = product_type.product_type_template_id or "product_type-default"
+    try:
+        return validate_template_id(candidate, "product_type")
+    except HTTPException:
+        return None
 
 
 def resolve_product_type_default_template_id(product_type: ProductType, variant: str) -> str | None:
@@ -679,6 +690,19 @@ def require_template_definition(template_id: str, template_type: str) -> dict:
     return template_definition
 
 
+def resolve_template_stylesheet_path(template_definition: dict, template_path: Path) -> Path | None:
+    project_root = Path(__file__).resolve().parents[1]
+    stylesheet_value = str(template_definition.get("stylesheet") or "").strip()
+    candidate_paths: list[Path] = []
+    if stylesheet_value:
+        candidate_paths.append(project_root / stylesheet_value)
+    candidate_paths.append(template_path.parent / "template.css")
+    for candidate in candidate_paths:
+        if candidate.is_file():
+            return candidate
+    return candidate_paths[0] if candidate_paths else None
+
+
 def find_chromium_binary() -> str:
     candidates = [
         os.getenv("CHROMIUM_BIN", "").strip(),
@@ -862,7 +886,7 @@ def _build_pdf_overlay(page_width: float, page_height: float, page_number: int, 
     tab_x = page_width - SERIES_TAB_STRIP_WIDTH
     tab_layout = _series_tab_layout(page_height, len(tab_items))
 
-    for index, tab in enumerate(tab_items or [{}]):
+    for index, tab in enumerate(tab_items):
         tab_label = str(tab.get("tab_label") or "")
         tab_color = str(tab.get("tab_color") or SERIES_TAB_FALLBACK_COLOR)
         tab_opacity = float(tab.get("tab_opacity") if tab.get("tab_opacity") is not None else 1.0)
@@ -904,13 +928,18 @@ def stamp_pdf_file(input_path: Path, output_path: Path, page_decorations: list[d
         page_height = float(page.mediabox.height)
         overlay_tabs = decoration.get("tabs")
         if overlay_tabs is None:
-            overlay_tabs = [
-                {
-                    "tab_label": str(decoration.get("tab_label") or ""),
-                    "tab_color": str(decoration.get("tab_color") or SERIES_TAB_FALLBACK_COLOR),
-                    "tab_opacity": float(decoration.get("tab_opacity") if decoration.get("tab_opacity") is not None else 1.0),
-                }
-            ]
+            overlay_tabs = []
+            tab_label = str(decoration.get("tab_label") or "")
+            tab_color = decoration.get("tab_color")
+            tab_opacity = decoration.get("tab_opacity")
+            if tab_label or tab_color is not None or tab_opacity is not None:
+                overlay_tabs = [
+                    {
+                        "tab_label": tab_label,
+                        "tab_color": str(tab_color or SERIES_TAB_FALLBACK_COLOR),
+                        "tab_opacity": float(tab_opacity if tab_opacity is not None else 1.0),
+                    }
+                ]
         overlay_reader = _build_pdf_overlay(page_width, page_height, index + 1, list(overlay_tabs))
         page.merge_page(overlay_reader.pages[0])
         writer.add_page(page)
@@ -1268,10 +1297,10 @@ def build_product_pdf_html(product: Product, variant: str) -> str:
 
     project_root = Path(__file__).resolve().parents[1]
     template_path = project_root / template_definition["path"]
-    stylesheet_path = project_root / template_definition.get("stylesheet", "")
     if not template_path.is_file():
         raise RuntimeError(f"Product template file is missing: {template_path}")
 
+    stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
     html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
@@ -1321,21 +1350,7 @@ def generate_product_pdf(product: Product, variant: str) -> Path:
         temp_dir = Path(temp_dir_name)
         base_path = temp_dir / f"product_{variant}_{product_slug(product)}_base.pdf"
         render_pdf_from_html(build_product_pdf_html(product, variant), base_path)
-        series_color = (
-            (product.series.series_tab_color if product.series else None)
-            or series_tab_color_for_identity(product.series_id or product.series_name_value or product.id)
-        )
-        stamp_pdf_file(
-            base_path,
-            output_path,
-            [
-                {
-                    "tab_label": product.series_name_value or product.product_type_label or product.model or "Product",
-                    "tab_color": series_color,
-                }
-                for _ in range(pdf_page_count(base_path))
-            ],
-        )
+        shutil.copyfile(base_path, output_path)
 
     return output_path
 
@@ -1506,10 +1521,10 @@ def build_series_pdf_html(series: Series, variant: str) -> str:
 
     project_root = Path(__file__).resolve().parents[1]
     template_path = project_root / template_definition["path"]
-    stylesheet_path = project_root / template_definition.get("stylesheet", "")
     if not template_path.is_file():
         raise RuntimeError(f"Series template file is missing: {template_path}")
 
+    stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
     html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
@@ -1559,18 +1574,8 @@ def generate_series_pdf(series: Series, variant: str) -> Path:
     output_path = series_pdf_path(series, variant)
     with tempfile.TemporaryDirectory(prefix="series-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        base_path, page_count = build_series_pdf_base(series, variant, temp_dir)
-        stamp_pdf_file(
-            base_path,
-            output_path,
-            [
-                {
-                    "tab_label": series.name or "Series",
-                    "tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
-                }
-                for _ in range(page_count)
-            ],
-        )
+        base_path, _ = build_series_pdf_base(series, variant, temp_dir)
+        shutil.copyfile(base_path, output_path)
 
     return output_path
 
@@ -1655,16 +1660,17 @@ def build_product_type_contents_html(product_type: ProductType, series_summaries
 
 
 def build_product_type_pdf_html(product_type: ProductType, contents_html: str, series_legend_html: str) -> str:
-    template_definition = get_template_definition("product_type-default", "product_type")
+    template_id = resolve_product_type_pdf_template_id(product_type) or "product_type-default"
+    template_definition = get_template_definition(template_id, "product_type")
     if template_definition is None:
         raise RuntimeError("No product type PDF template is configured.")
 
     project_root = Path(__file__).resolve().parents[1]
     template_path = project_root / template_definition["path"]
-    stylesheet_path = project_root / template_definition.get("stylesheet", "")
     if not template_path.is_file():
         raise RuntimeError(f"Product type template file is missing: {template_path}")
 
+    stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
     html_template = html_template.replace('<link rel="stylesheet" href="./template.css" />', f"<style>\n{stylesheet_text}\n</style>")
@@ -1740,6 +1746,7 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
 def build_product_type_page_decorations(metadata: dict) -> list[dict]:
     decorations: list[dict] = []
     series_summaries = metadata.get("series_summaries") or []
+    intro_page_count = int(metadata.get("intro_page_count") or 0)
     series_tabs = [
         {
             "series_id": summary.get("id"),
@@ -1749,15 +1756,8 @@ def build_product_type_page_decorations(metadata: dict) -> list[dict]:
         for summary in series_summaries
     ]
 
-    for _ in range(int(metadata.get("intro_page_count") or 0)):
-        decorations.append(
-            {
-                "tabs": [
-                    {**tab, "tab_opacity": 0.2}
-                    for tab in series_tabs
-                ]
-            }
-        )
+    for _ in range(intro_page_count):
+        decorations.append({"tabs": []})
 
     for active_summary in series_summaries:
         active_id = active_summary.get("id")
@@ -2992,6 +2992,7 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
         graph_x_axis_unit=(body.graph_x_axis_unit or "").strip() or None,
         graph_y_axis_label=(body.graph_y_axis_label or "").strip() or None,
         graph_y_axis_unit=(body.graph_y_axis_unit or "").strip() or None,
+        product_type_template_id=validate_template_id(body.product_type_template_id, "product_type"),
         printed_product_template_id=printed_product_template_id,
         online_product_template_id=online_product_template_id,
         product_template_id=online_product_template_id or printed_product_template_id,
@@ -3045,6 +3046,9 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
             product_type.online_product_template_id
             or product_type.printed_product_template_id
         )
+
+    if "product_type_template_id" in updates:
+        product_type.product_type_template_id = validate_template_id(updates["product_type_template_id"], "product_type")
 
     for field in [
         "supports_graph",
@@ -3306,7 +3310,7 @@ def delete_template(template_type: str, template_id: str, db: Session = Depends(
             .count()
         )
     elif normalized_type == "product_type":
-        in_use = 1 if template_id == "product_type-default" else 0
+        in_use = 1 if template_id == "product_type-default" else db.query(ProductType).filter(ProductType.product_type_template_id == template_id).count()
     else:
         raise HTTPException(status_code=400, detail="Template type must be 'product', 'series', or 'product_type'.")
 
@@ -3344,17 +3348,14 @@ def get_template_files(template_type: str, template_id: str):
     if not template_path.is_file():
         raise HTTPException(status_code=404, detail="Template HTML file is missing.")
 
-    stylesheet_path = None
-    stylesheet_value = template_definition.get("stylesheet")
-    if stylesheet_value:
-        stylesheet_path = Path(__file__).resolve().parents[1] / str(stylesheet_value)
+    stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
 
     return TemplateFileResponse(
         id=str(template_definition.get("id") or template_id),
         label=str(template_definition.get("label") or template_id),
         type=normalized_type,
         html_path=str(template_path.relative_to(Path(__file__).resolve().parents[1])),
-        css_path=str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1])) if stylesheet_path and stylesheet_path.exists() else str(stylesheet_value or "") or None,
+        css_path=str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1])) if stylesheet_path else None,
         html_content=template_path.read_text(encoding="utf-8"),
         css_content=stylesheet_path.read_text(encoding="utf-8") if stylesheet_path and stylesheet_path.is_file() else "",
     )
@@ -3377,8 +3378,7 @@ def update_template_files(template_type: str, template_id: str, body: TemplateFi
     if not template_path.is_file():
         raise HTTPException(status_code=404, detail="Template HTML file is missing.")
 
-    stylesheet_value = str(template_definition.get("stylesheet") or "").strip()
-    stylesheet_path = (Path(__file__).resolve().parents[1] / stylesheet_value) if stylesheet_value else (template_path.parent / "template.css")
+    stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path) or (template_path.parent / "template.css")
 
     template_path.write_text(body.html_content, encoding="utf-8")
     stylesheet_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3400,6 +3400,49 @@ def update_template_files(template_type: str, template_id: str, body: TemplateFi
         css_path=str(stylesheet_path.relative_to(Path(__file__).resolve().parents[1])),
         html_content=body.html_content,
         css_content=body.css_content or "",
+    )
+
+
+@app.post(
+    "/api/templates/{template_type}/{template_id}/assets",
+    response_model=TemplateAssetUploadResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Templates"],
+    summary="Upload a template asset",
+)
+def upload_template_asset(template_type: str, template_id: str, body: TemplateAssetUploadRequest):
+    normalized_type = (template_type or "").strip().lower()
+    if normalized_type not in {"product", "series", "product_type"}:
+        raise HTTPException(status_code=400, detail="Template type must be 'product', 'series', or 'product_type'.")
+
+    template_definition = require_template_definition(template_id, normalized_type)
+    template_path = Path(__file__).resolve().parents[1] / str(template_definition.get("path") or "")
+    if not template_path.is_file():
+        raise HTTPException(status_code=404, detail="Template HTML file is missing.")
+
+    file_name = Path(body.filename or "").name.strip()
+    if not file_name or file_name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="A valid filename is required.")
+
+    data_url = (body.data_url or "").strip()
+    match = re.match(r"^data:([^;]+);base64,(.+)$", data_url, re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=400, detail="A valid base64 data URL is required.")
+
+    try:
+        payload = base64.b64decode(match.group(2), validate=False)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Unable to decode the uploaded asset.") from exc
+
+    asset_dir = template_path.parent / "assets"
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    asset_path = asset_dir / file_name
+    asset_path.write_bytes(payload)
+
+    return TemplateAssetUploadResponse(
+        filename=file_name,
+        relative_path=str(asset_path.relative_to(Path(__file__).resolve().parents[1])),
+        file_url=asset_path.resolve().as_uri(),
     )
 
 

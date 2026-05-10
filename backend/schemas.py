@@ -114,6 +114,7 @@ class ProductTypeResponse(BaseModel):
     graph_x_axis_unit: Optional[str] = None
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
+    product_type_template_id: Optional[str] = None
     product_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
@@ -141,6 +142,7 @@ class ProductTypeCreate(BaseModel):
     graph_x_axis_unit: Optional[str] = None
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
+    product_type_template_id: Optional[str] = None
     product_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
@@ -163,6 +165,7 @@ class ProductTypeUpdate(BaseModel):
     graph_x_axis_unit: Optional[str] = None
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
+    product_type_template_id: Optional[str] = None
     product_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
@@ -206,6 +209,17 @@ class TemplateFileResponse(BaseModel):
 class TemplateFileUpdateRequest(BaseModel):
     html_content: str
     css_content: str = ""
+
+
+class TemplateAssetUploadRequest(BaseModel):
+    filename: str
+    data_url: str
+
+
+class TemplateAssetUploadResponse(BaseModel):
+    filename: str
+    relative_path: str
+    file_url: str
 
 
 class FileManagerEntryResponse(BaseModel):

@@ -97,7 +97,7 @@
           <div>
             <p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p>
           </div>
-          <span class="small text-body-secondary">{#if isActive('/editor')}Editor{:else if isActive('/viewer')}Viewer{:else if isActive('/template-builder')}Template Builder{:else if isActive('/setup')}Setup{:else}Overview{/if}</span>
+          <span class="small text-body-secondary">{#if isActive('/editor')}Editor{:else if isActive('/viewer')}Viewer{:else if isActive('/template-builder-v2')}Template Builder V2{:else if isActive('/template-builder')}Template Builder{:else if isActive('/setup')}Setup{:else}Overview{/if}</span>
         </div>
 
         <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary">

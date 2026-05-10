@@ -52,6 +52,13 @@
       "type": "product_type",
       "path": "templates/product_type/default/template.html",
       "stylesheet": "templates/product_type/default/template.css"
+    },
+    {
+      "id": "product_type-printed_type_1",
+      "label": "Product Type Printed Type 1",
+      "type": "product_type",
+      "path": "templates/product_type/printed_type_1/template.html",
+      "stylesheet": "templates/product_type/printed_type_1/template.css"
     }
   ]
 }

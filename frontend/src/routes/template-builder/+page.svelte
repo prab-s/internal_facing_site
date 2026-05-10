@@ -9,9 +9,12 @@
     getProductTypes,
     getTemplates,
     refreshTemplates,
-    updateTemplateFiles
+    updateTemplateFiles,
+    uploadTemplateAsset
   } from '$lib/api.js';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
+  import { installAdvancedGradientControls } from '$lib/template-builder/advancedGradient.js';
+  import { installHtmlAttributeControls } from '$lib/template-builder/htmlAttributes.js';
 
   let grapesModule = null;
   let editorHost;
@@ -123,9 +126,14 @@
   }
 
   function applyTemplatePreviewSubstitutions(htmlContent) {
+    const withoutStylesheetLink = String(htmlContent || '').replace(
+      /<link\b[^>]*rel=(["'])stylesheet\1[^>]*href=(["'])\.\/template\.css\2[^>]*\/?>/gi,
+      ''
+    );
+
     return Object.entries(buildPreviewTokenMap()).reduce(
       (content, [token, placeholder]) => content.replaceAll(token, placeholder),
-      htmlContent
+      withoutStylesheetLink
     );
   }
 
@@ -459,6 +467,10 @@
     editor.on('style:property:update', scheduleCssPullFromEditor);
     editor.on('style:sector:update', scheduleCssPullFromEditor);
     editor.on('canvas:frame:load', syncCanvasCssIntoFrame);
+    installAdvancedGradientControls(editor);
+    installHtmlAttributeControls(editor, {
+      uploadImageAsset: uploadSelectedImageAsset
+    });
     editor.runCommand('open-blocks');
     setupBlocksResizer(editor.Blocks.getContainer());
   }
@@ -482,6 +494,19 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function uploadSelectedImageAsset(file, dataUrl) {
+    if (!loadedTemplate || !templateType || !templateId) {
+      return null;
+    }
+
+    const response = await uploadTemplateAsset(templateType, templateId, {
+      filename: file.name,
+      data_url: dataUrl
+    });
+
+    return response?.file_url || null;
   }
 
   async function saveTemplate() {
@@ -596,6 +621,7 @@
     <p class="text-body-secondary mb-0">Edit the real HTML/CSS source safely, and use GrapesJS as a live preview sandbox for the template body.</p>
   </div>
   <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="/template-builder-v2">Open v2 builder</a>
     <button class="btn btn-outline-secondary" type="button" on:click={handleRefreshRegistry} disabled={refreshing}>
       {refreshing ? 'Refreshing...' : 'Refresh template library'}
     </button>

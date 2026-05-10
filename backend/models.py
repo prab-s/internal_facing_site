@@ -47,6 +47,7 @@ class ProductType(Base):
     graph_x_axis_unit = Column(String(64), nullable=True)
     graph_y_axis_label = Column(String(128), nullable=True)
     graph_y_axis_unit = Column(String(64), nullable=True)
+    product_type_template_id = Column(String(128), nullable=True)
     product_template_id = Column(String(128), nullable=True)
     printed_product_template_id = Column(String(128), nullable=True)
     online_product_template_id = Column(String(128), nullable=True)

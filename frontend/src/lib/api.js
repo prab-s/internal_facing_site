@@ -153,6 +153,15 @@ export async function updateTemplateFiles(templateType, templateId, body) {
   return r.json();
 }
 
+export async function uploadTemplateAsset(templateType, templateId, body) {
+  const r = await apiFetch(`/templates/${templateType}/${encodeURIComponent(templateId)}/assets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
 export async function getSeries(params = {}) {
   const sp = new URLSearchParams(params).toString();
   const r = await apiFetch('/series' + (sp ? '?' + sp : ''));

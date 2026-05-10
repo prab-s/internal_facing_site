@@ -10,7 +10,7 @@ return {
 	assets: new Set(["favicon.png"]),
 	mimeTypes: {".png":"image/png"},
 	_: {
-		client: {start:"_app/immutable/entry/start.Bi2pFlIB.js",app:"_app/immutable/entry/app._0vTCCah.js",imports:["_app/immutable/entry/start.Bi2pFlIB.js","_app/immutable/chunks/Bra-KF-G.js","_app/immutable/chunks/PbUWhS88.js","_app/immutable/chunks/D6I27d9g.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/entry/app._0vTCCah.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/D6I27d9g.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/PbUWhS88.js","_app/immutable/chunks/DZFTWhPy.js","_app/immutable/chunks/CUqDR-R_.js","_app/immutable/chunks/DDEAEVKg.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.Dqn5ij3V.js",app:"_app/immutable/entry/app.B1AdOBQI.js",imports:["_app/immutable/entry/start.Dqn5ij3V.js","_app/immutable/chunks/B2lUp97e.js","_app/immutable/chunks/DpGFNBVJ.js","_app/immutable/chunks/rcSsnogX.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/entry/app.B1AdOBQI.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/rcSsnogX.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/DpGFNBVJ.js","_app/immutable/chunks/GpOppX6x.js","_app/immutable/chunks/CLmKwT8h.js","_app/immutable/chunks/BWD8c4EO.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -29,7 +29,8 @@ return {
 			__memo(() => import('./nodes/14.js')),
 			__memo(() => import('./nodes/15.js')),
 			__memo(() => import('./nodes/16.js')),
-			__memo(() => import('./nodes/17.js'))
+			__memo(() => import('./nodes/17.js')),
+			__memo(() => import('./nodes/18.js'))
 		],
 		remotes: {
 			
@@ -134,6 +135,13 @@ return {
 				endpoint: null
 			},
 			{
+				id: "/template-builder-v2",
+				pattern: /^\/template-builder-v2\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 17 },
+				endpoint: null
+			},
+			{
 				id: "/template-builder",
 				pattern: /^\/template-builder\/?$/,
 				params: [],
@@ -144,7 +152,7 @@ return {
 				id: "/viewer",
 				pattern: /^\/viewer\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 17 },
+				page: { layouts: [0,], errors: [1,], leaf: 18 },
 				endpoint: null
 			}
 		],
