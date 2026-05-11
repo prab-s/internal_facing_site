@@ -10,6 +10,14 @@
       "_internal.js"
     ]
   },
+  "_JobProgressPanel.js": {
+    "file": "chunks/JobProgressPanel.js",
+    "name": "JobProgressPanel",
+    "imports": [
+      "_index2.js",
+      "_index-server.js"
+    ]
+  },
   "_ManagePageShell.js": {
     "file": "chunks/ManagePageShell.js",
     "name": "ManagePageShell",
@@ -22,6 +30,8 @@
     "name": "ProductTypeWorkspace",
     "imports": [
       "_index2.js",
+      "_index-server.js",
+      "_JobProgressPanel.js",
       "_SeriesNamesBadgeList.js"
     ]
   },
@@ -396,7 +406,7 @@
       "_api.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.CXoniXGh.css"
+      "_app/immutable/assets/_page.C93yEzZB.css"
     ]
   },
   "src/routes/template-builder-v2/+page.svelte": {
@@ -432,9 +442,11 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
+      "_index-server.js",
       "_api.js",
       "_fullChart.js",
       "_config.js",
+      "_JobProgressPanel.js",
       "_SeriesNamesBadgeList.js"
     ],
     "css": [

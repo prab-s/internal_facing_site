@@ -1,7 +1,9 @@
 import { s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores } from "../../../chunks/index2.js";
+import { o as onDestroy } from "../../../chunks/index-server.js";
 import { d as getProducts, e as getProduct, f as getProductChartData } from "../../../chunks/api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../chunks/fullChart.js";
 import { t as theme } from "../../../chunks/config.js";
+import { J as JobProgressPanel } from "../../../chunks/JobProgressPanel.js";
 import { S as SeriesNamesBadgeList } from "../../../chunks/SeriesNamesBadgeList.js";
 function html(value) {
   var html2 = String(value ?? "");
@@ -35,7 +37,7 @@ function _page($$renderer, $$props) {
     let seriesTabSeriesId = "";
     let seriesTabOptions = [];
     let refreshingProductGraphId = null;
-    let refreshingProductPdfId = null;
+    let refreshingProductPdfJob = null;
     function productEditorUrl(productId) {
       const params = new URLSearchParams();
       if (productId != null && productId !== "") {
@@ -190,6 +192,8 @@ function _page($$renderer, $$props) {
     }
     let previousFilterKey = "";
     let previousSelectedProductId = null;
+    onDestroy(() => {
+    });
     if (store_get($$store_subs ??= {}, "$theme", theme), productTypes) {
       buildChartOptions();
     }
@@ -304,7 +308,7 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfId === currentProduct.id, true)}>${escape_html(refreshingProductPdfId === currentProduct.id ? "Generating PDFs..." : "Generate PDFs")}</button> <a class="btn btn-outline-primary btn-sm"${attr("href", productEditorUrl(currentProduct.id))}>Open in Editor</a> `);
+        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfJob?.status === "running", true)}>${escape_html("Generate PDFs")}</button> <a class="btn btn-outline-primary btn-sm"${attr("href", productEditorUrl(currentProduct.id))}>Open in Editor</a> `);
         if (currentProduct.graph_image_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.graph_image_url)} target="_blank" rel="noreferrer">Open Graph</a>`);
@@ -328,7 +332,12 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div> <div class="small text-body-secondary mt-2">Printed template: ${escape_html(productPdfTemplateLabels(currentProduct).printed)} · Online template: ${escape_html(productPdfTemplateLabels(currentProduct).online)}</div> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div> `);
+        $$renderer2.push(`<!--]--></div> <div class="small text-body-secondary mt-2">Printed template: ${escape_html(productPdfTemplateLabels(currentProduct).printed)} · Online template: ${escape_html(productPdfTemplateLabels(currentProduct).online)}</div> `);
+        JobProgressPanel($$renderer2, {
+          job: refreshingProductPdfJob,
+          label: "Product PDF generation"
+        });
+        $$renderer2.push(`<!----> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-1470g8z"><div class="viewer-metric-label svelte-1470g8z">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div> `);
         if (getCurrentProductType()) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="mt-3">`);

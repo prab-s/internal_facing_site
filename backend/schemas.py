@@ -616,6 +616,15 @@ class PdfMaintenanceResponse(BaseModel):
     products_processed: int = 0
 
 
+class SetupLogEntryResponse(BaseModel):
+    id: int
+    timestamp: str
+    level: str
+    logger: str
+    message: str
+    formatted: str
+
+
 class MaintenanceJobResponse(BaseModel):
     id: str
     job_type: str

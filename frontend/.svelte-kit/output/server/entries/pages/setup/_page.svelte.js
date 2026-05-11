@@ -303,11 +303,26 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <div class="mb-3"><div class="col-12 col-xxl-8"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Setup</p> <h1 class="h2 mb-2">Account and application setup.</h1> <p class="text-body-secondary">Manage your own password here. Admins can also create and manage internal user accounts.</p></div></div> <div class="row g-3"><div class="col-12 col-xl-5"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p> <h2 class="h4">Change Password</h2> <p class="text-body-secondary">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}.</p> <form class="vstack gap-3"><div><label class="form-label" for="current-password">Current Password</label> <input id="current-password" class="form-control" type="password"${attr("value", currentPassword)}/></div> <div><label class="form-label" for="new-own-password">New Password</label> <input id="new-own-password" class="form-control" type="password"${attr("value", newOwnPassword)}/></div> `);
+    $$renderer2.push(`<!--]--> <div class="setup-hero card shadow-sm mb-4 svelte-g40i6i"><div class="card-body bg-body-secondary bg-opacity-10 p-4 p-lg-5"><div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3"><div class="setup-hero-copy svelte-g40i6i"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Setup</p> <h1 class="h2 mb-2">Account and application setup.</h1> <p class="text-body-secondary mb-0">Manage your own password here. Admins can also create and manage internal user accounts, inspect live logs,
+          and run maintenance tasks from the same page.</p></div> `);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="setup-hero-badge svelte-g40i6i"><span class="badge text-bg-dark mb-2">Admin access</span> <p class="text-body-secondary mb-0">Debug logs are collapsed by default and only connect while the panel is open.</p></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div></div></div> <div class="row g-4 align-items-start"><div class="col-12 col-xl-4 d-flex flex-column gap-4"><div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p> <h2 class="h4">Change Password</h2> <p class="text-body-secondary">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}.</p> <form class="vstack gap-3"><div><label class="form-label" for="current-password">Current Password</label> <input id="current-password" class="form-control" type="password"${attr("value", currentPassword)}/></div> <div><label class="form-label" for="new-own-password">New Password</label> <input id="new-own-password" class="form-control" type="password"${attr("value", newOwnPassword)}/></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !currentPassword, true)}>${escape_html("Update Password")}</button></form></div></div></div> <div class="col-12 col-xl-7"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-center gap-2 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Current Users</p> <h2 class="h4 mb-0">Accounts</h2></div> <div class="d-flex align-items-center gap-2"><input class="form-control form-control-sm" type="search" placeholder="Filter users"${attr("value", userFilter)} style="max-width: 180px;"/> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingUsers, true)}>${escape_html(loadingUsers ? "Refreshing..." : "Refresh")}</button></div></div> `);
+    $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !currentPassword, true)}>${escape_html("Update Password")}</button></form></div></div> `);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p> <h2 class="h4">User Accounts</h2> <p class="text-body-secondary">Create and manage accounts for internal users.</p> <form class="vstack gap-3"><div><label class="form-label" for="new-user-username">Username</label> <input id="new-user-username" class="form-control"${attr("value", newUsername)}/></div> <div><label class="form-label" for="new-user-password">Password</label> <input id="new-user-password" class="form-control" type="password"${attr("value", newPassword)}/></div> <div class="form-check"><input id="new-user-admin" class="form-check-input" type="checkbox"${attr("checked", newIsAdmin, true)}/> <label class="form-check-label" for="new-user-admin">Admin access</label></div> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !newUsername, true)}>${escape_html("Create User")}</button></form></div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div> <div class="col-12 col-xl-8 d-flex flex-column gap-4"><div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Current Users</p> <h2 class="h4 mb-0">Accounts</h2></div> <div class="d-flex align-items-center gap-2 flex-wrap justify-content-lg-end"><input class="form-control form-control-sm" type="search" placeholder="Filter users"${attr("value", userFilter)} style="max-width: 180px;"/> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingUsers, true)}>${escape_html(loadingUsers ? "Refreshing..." : "Refresh")}</button></div></div> `);
     if (userError) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="alert alert-danger py-2">${escape_html(userError)}</div>`);
@@ -341,10 +356,21 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></tbody></table></div></div></div></div></div> `);
+    $$renderer2.push(`<!--]--></tbody></table></div></div></div> `);
     if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="row g-3 mt-1"><div class="col-12 col-xl-5"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p> <h2 class="h4">User Accounts</h2> <p class="text-body-secondary">Create and manage accounts for internal users.</p> <form class="vstack gap-3"><div><label class="form-label" for="new-user-username">Username</label> <input id="new-user-username" class="form-control"${attr("value", newUsername)}/></div> <div><label class="form-label" for="new-user-password">Password</label> <input id="new-user-password" class="form-control" type="password"${attr("value", newPassword)}/></div> <div class="form-check"><input id="new-user-admin" class="form-check-input" type="checkbox"${attr("checked", newIsAdmin, true)}/> <label class="form-check-label" for="new-user-admin">Admin access</label></div> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !newUsername, true)}>${escape_html("Create User")}</button></form></div></div></div> <div class="col-12 col-xl-7"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p> <h2 class="h4">Operational Tools</h2> <p class="text-body-secondary">Run special admin-only tasks that are otherwise only exposed through the API.</p> `);
+      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p> <h2 class="h4 mb-1">Live Logs</h2> <p class="text-body-secondary mb-0">Open a live terminal-style feed of the backend logs from this page.</p></div> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html("Show Logs")}</button></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div></div> `);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="mt-4"><div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Administration</p> <h2 class="h3 mb-0">Operational Tools</h2></div> <p class="text-body-secondary mb-0">Backup, restore, regeneration, file management, and preset editing live here.</p></div> <div class="row g-4 mt-0"><div class="col-12"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p> <h2 class="h4">Operational Tools</h2> <p class="text-body-secondary">Run special admin-only tasks that are otherwise only exposed through the API.</p> `);
       {
         $$renderer2.push("<!--[-1-->");
       }
@@ -579,7 +605,7 @@ function _page($$renderer, $$props) {
         $$renderer2.push("<!--[-1-->");
         $$renderer2.push(`<p class="text-body-secondary mt-3 mb-0">Choose a product type to edit its presets.</p>`);
       }
-      $$renderer2.push(`<!--]--></div></div></div></div></div></div>`);
+      $$renderer2.push(`<!--]--></div></div></div></div></div></div></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }

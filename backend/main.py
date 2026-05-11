@@ -1,8 +1,10 @@
+import asyncio
 import csv
 import base64
 import datetime
 import hashlib
 import html
+from collections import deque
 import io
 import json
 import logging
@@ -28,7 +30,7 @@ import html5lib
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session, selectinload, joinedload
@@ -111,6 +113,7 @@ from backend.schemas import (
     FileManagerRenameRequest,
     ProductTypePdfResponse,
     CmsCatalogueIndexResponse,
+    SetupLogEntryResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -141,9 +144,19 @@ PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_TYPE_PDFS_DIR.mkdir(parents=True, exist_ok=True)
+SERIES_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
+SERIES_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
+APP_LOG_LEVEL_NAME = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
+APP_LOG_LEVEL = getattr(logging, APP_LOG_LEVEL_NAME, logging.INFO)
+LOG_BUFFER_SIZE = int(os.getenv("SETUP_LOG_BUFFER_SIZE", "500"))
+LOG_BUFFER = deque(maxlen=LOG_BUFFER_SIZE)
+LOG_BUFFER_LOCK = threading.Lock()
+LOG_BUFFER_CONDITION = threading.Condition(LOG_BUFFER_LOCK)
+LOG_SEQUENCE = 0
+LOG_HANDLER_ATTACHED = False
 FINDER_DEBUG = os.getenv("FINDER_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -162,6 +175,54 @@ PASSWORD_HASH_ITERATIONS = 600_000
 POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
 MAINTENANCE_JOBS: dict[str, dict] = {}
 MAINTENANCE_JOBS_LOCK = threading.Lock()
+
+
+class InMemoryLogHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord):
+        global LOG_SEQUENCE
+
+        try:
+            timestamp = datetime.datetime.fromtimestamp(record.created, tz=APP_TIMEZONE).isoformat(timespec="seconds")
+            message = self.format(record)
+            entry = {
+                "id": 0,
+                "timestamp": timestamp,
+                "level": record.levelname,
+                "logger": record.name,
+                "message": message,
+                "formatted": f"{timestamp} [{record.levelname:<5}] {record.name}: {message}",
+            }
+        except Exception:
+            self.handleError(record)
+            return
+
+        with LOG_BUFFER_CONDITION:
+            LOG_SEQUENCE += 1
+            entry["id"] = LOG_SEQUENCE
+            LOG_BUFFER.append(entry)
+            LOG_BUFFER_CONDITION.notify_all()
+
+
+def attach_in_memory_log_handler():
+    global LOG_HANDLER_ATTACHED
+    if LOG_HANDLER_ATTACHED:
+        return
+
+    handler = InMemoryLogHandler()
+    handler.setLevel(APP_LOG_LEVEL)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(APP_LOG_LEVEL)
+    root_logger.addHandler(handler)
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logging.getLogger(name).addHandler(handler)
+
+    logging.captureWarnings(True)
+    LOG_HANDLER_ATTACHED = True
+
+
+attach_in_memory_log_handler()
 
 
 def trace_product_filter(message: str, *args):
@@ -1114,7 +1175,7 @@ def _series_tab_layout(page_height: float, tab_count: int) -> list[tuple[float, 
     return positions
 
 
-def render_pdf_from_html(html_content: str, output_path: Path) -> None:
+def render_pdf_from_html(html_content: str, output_path: Path, stylesheet_text: str | None = None) -> None:
     browser_binary = find_chromium_binary()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1122,6 +1183,8 @@ def render_pdf_from_html(html_content: str, output_path: Path) -> None:
         temp_dir = Path(temp_dir_name)
         html_path = temp_dir / "document.html"
         html_path.write_text(html_content, encoding="utf-8")
+        if stylesheet_text is not None:
+            (temp_dir / "template.css").write_text(stylesheet_text, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -1564,7 +1627,7 @@ def render_image_gallery_html(product: Product) -> str:
     return "".join(items) if items else '<p class="placeholder">No product images available.</p>'
 
 
-def build_product_pdf_html(product: Product, variant: str) -> str:
+def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
     template_id = product.printed_template_id if variant == "printed" else product.online_template_id
     template_definition = get_template_definition(template_id or product.template_id or "product-default", "product")
     if template_definition is None:
@@ -1616,7 +1679,7 @@ def build_product_pdf_html(product: Product, variant: str) -> str:
     rendered = html_template
     for token, value in replacements.items():
         rendered = rendered.replace(token, value)
-    return rendered
+    return rendered, stylesheet_text
 
 
 def generate_product_pdf(product: Product, variant: str) -> Path:
@@ -1624,7 +1687,8 @@ def generate_product_pdf(product: Product, variant: str) -> Path:
     with tempfile.TemporaryDirectory(prefix="product-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         base_path = temp_dir / f"product_{variant}_{product_slug(product)}_base.pdf"
-        render_pdf_from_html(build_product_pdf_html(product, variant), base_path)
+        html_content, stylesheet_text = build_product_pdf_html(product, variant)
+        render_pdf_from_html(html_content, base_path, stylesheet_text)
         shutil.copyfile(base_path, output_path)
 
     return output_path
@@ -1788,7 +1852,7 @@ def generate_series_graph(series: Series) -> Path:
     return final_path
 
 
-def build_series_pdf_html(series: Series, variant: str) -> str:
+def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
     template_id = series.printed_template_id if variant == "printed" else series.online_template_id
     template_definition = get_template_definition(template_id or series.template_id or "series-default", "series")
     if template_definition is None:
@@ -1827,17 +1891,19 @@ def build_series_pdf_html(series: Series, variant: str) -> str:
     rendered = html_template
     for token, value in replacements.items():
         rendered = rendered.replace(token, value)
-    return rendered
+    return rendered, stylesheet_text
 
 
 def build_series_pdf_base(series: Series, variant: str, temp_dir: Path) -> tuple[Path, int]:
     cover_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_cover.pdf"
-    render_pdf_from_html(build_series_pdf_html(series, variant), cover_base_path)
+    cover_html, cover_stylesheet_text = build_series_pdf_html(series, variant)
+    render_pdf_from_html(cover_html, cover_base_path, cover_stylesheet_text)
 
     product_base_paths: list[Path] = []
     for product in sorted(series.products or [], key=lambda item: (item.model or "").casefold()):
         product_base_path = temp_dir / f"product_{variant}_{product_slug(product)}_series_base.pdf"
-        render_pdf_from_html(build_product_pdf_html(product, variant), product_base_path)
+        product_html, product_stylesheet_text = build_product_pdf_html(product, variant)
+        render_pdf_from_html(product_html, product_base_path, product_stylesheet_text)
         product_base_paths.append(product_base_path)
 
     merged_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_base.pdf"
@@ -1965,7 +2031,7 @@ def build_product_type_pdf_html(
     series_names_html: str,
     series_groups_html: str,
     series_legend_html: str,
-) -> str:
+) -> tuple[str, str]:
     template_id = resolve_product_type_pdf_template_id(product_type) or "product_type-default"
     template_definition = get_template_definition(template_id, "product_type")
     if template_definition is None:
@@ -1995,7 +2061,7 @@ def build_product_type_pdf_html(
     rendered = html_template
     for token, value in replacements.items():
         rendered = rendered.replace(token, value)
-    return rendered
+    return rendered, stylesheet_text
 
 
 def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tuple[Path, dict]:
@@ -2035,10 +2101,13 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
     series_groups_html = build_product_type_series_groups_html(product_type, series_summaries)
     series_legend_html = build_product_type_series_legend_html(series_summaries)
     intro_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
-    render_pdf_from_html(
-        build_product_type_pdf_html(product_type, series_names_html, series_groups_html, series_legend_html),
-        intro_base_path,
+    intro_html, intro_stylesheet_text = build_product_type_pdf_html(
+        product_type,
+        series_names_html,
+        series_groups_html,
+        series_legend_html,
     )
+    render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
     intro_page_count = pdf_page_count(intro_base_path)
 
     page_start = intro_page_count + 1
@@ -2750,6 +2819,26 @@ def run_postgres_client_tool(arguments: list[str], *, input_bytes: bytes | None 
         " ".join([tool_name, '"$DATABASE_URL"'] + [shlex.quote(arg) for arg in arguments[1:]]),
     ]
     return run_command(container_command, input_bytes=input_bytes)
+
+
+def serialize_setup_log_entry(entry: dict) -> SetupLogEntryResponse:
+    return SetupLogEntryResponse(**entry)
+
+
+def get_recent_setup_log_entries(limit: int = 200) -> list[SetupLogEntryResponse]:
+    with LOG_BUFFER_LOCK:
+        entries = list(LOG_BUFFER)[-max(int(limit), 0) :]
+    return [serialize_setup_log_entry(entry) for entry in entries]
+
+
+def get_setup_log_entries_after_id(after_id: int) -> list[SetupLogEntryResponse]:
+    with LOG_BUFFER_LOCK:
+        entries = [entry for entry in LOG_BUFFER if entry["id"] > after_id]
+    return [serialize_setup_log_entry(entry) for entry in entries]
+
+
+def setup_log_sse_payload(entry: SetupLogEntryResponse) -> str:
+    return f"event: log\ndata: {entry.model_dump_json()}\n\n"
 
 
 def _copy_media_directories(staging_data_dir: Path, progress_callback=None, *, label_prefix: str = "Collecting", exclude_backup_dir: bool = False):
@@ -5204,6 +5293,50 @@ async def start_restore_media_backup_bundle_job_old(file: UploadFile = File(...)
 @app.get("/api/maintenance/jobs/{job_id}", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Get maintenance job status")
 def get_maintenance_job(job_id: str):
     return serialize_maintenance_job(get_maintenance_job_or_404(job_id))
+
+
+@app.get("/api/setup/logs/recent", response_model=list[SetupLogEntryResponse], dependencies=[Depends(require_admin_user)], tags=["Setup"], summary="Get recent setup logs")
+def get_setup_logs_recent(limit: int = Query(200, ge=1, le=500)):
+    return get_recent_setup_log_entries(limit)
+
+
+@app.get("/api/setup/logs/stream", dependencies=[Depends(require_admin_user)], tags=["Setup"], summary="Stream setup logs")
+async def stream_setup_logs(request: Request, after_id: int = Query(0, ge=0)):
+    async def event_stream():
+        last_id = after_id
+        heartbeat_ticks = 0
+
+        for entry in get_setup_log_entries_after_id(after_id):
+            last_id = entry.id
+            yield setup_log_sse_payload(entry)
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            new_entries = get_setup_log_entries_after_id(last_id)
+            if new_entries:
+                for entry in new_entries:
+                    last_id = entry.id
+                    yield setup_log_sse_payload(entry)
+                heartbeat_ticks = 0
+            else:
+                heartbeat_ticks += 1
+                if heartbeat_ticks >= 15:
+                    heartbeat_ticks = 0
+                    yield ": keep-alive\n\n"
+
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/maintenance/jobs/{job_id}/download", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Download a completed maintenance archive")
