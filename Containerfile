@@ -16,6 +16,8 @@ FROM docker.io/library/python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DATABASE_URL=sqlite:////app/data/fans.db
+ENV APP_TIMEZONE=Pacific/Auckland
+ENV TZ=Pacific/Auckland
 
 WORKDIR /app
 
@@ -26,6 +28,7 @@ RUN apt-get update \
         fonts-dejavu-core \
         mariadb-client \
         postgresql-client \
+        tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt /app/backend/requirements.txt

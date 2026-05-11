@@ -10,6 +10,15 @@ from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from backend.database import Base
+from backend.timezone import file_mtime_token
+
+
+def _versioned_media_url(file_path: str, route_prefix: str, file_name: str) -> str | None:
+    if not os.path.isfile(file_path):
+        return None
+
+    version = file_mtime_token(file_path)
+    return f"{route_prefix}/{file_name}?v={version}" if version is not None else f"{route_prefix}/{file_name}"
 
 
 def _stable_hex_color(identity: str | int) -> str:
@@ -94,17 +103,7 @@ class ProductType(Base):
         safe_key = re.sub(r"[^a-z0-9]+", "_", (self.key or "").strip().lower()).strip("_")
         file_name = f"product_type_printed_{safe_key or 'unknown'}.pdf"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/product_type_pdfs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/product_type_pdfs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/product_type_pdfs", file_name)
 
 
 class ProductTypeParameterGroupPreset(Base):
@@ -218,17 +217,7 @@ class Series(Base):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
         file_name = f"series_graph_{safe_name or 'unknown'}.png"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_graphs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/series_graphs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/series_graphs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/series_graphs", file_name)
 
     @property
     def series_pdf_url(self):
@@ -239,51 +228,21 @@ class Series(Base):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
         file_name = f"series_{safe_name or 'unknown'}.pdf"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/series_pdfs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/series_pdfs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/series_pdfs", file_name)
 
     @property
     def series_printed_pdf_url(self):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
         file_name = f"series_printed_{safe_name or 'unknown'}.pdf"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/series_pdfs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/series_pdfs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/series_pdfs", file_name)
 
     @property
     def series_online_pdf_url(self):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
         file_name = f"series_online_{safe_name or 'unknown'}.pdf"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/series_pdfs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/series_pdfs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/series_pdfs", file_name)
 
 
 class Product(Base):
@@ -360,17 +319,7 @@ class Product(Base):
         if not file_name:
             return None
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/product_pdfs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/product_pdfs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/product_pdfs", file_name)
 
     @property
     def product_printed_pdf_url(self):
@@ -379,17 +328,7 @@ class Product(Base):
         if not file_name:
             return None
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/product_pdfs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/product_pdfs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/product_pdfs", file_name)
 
     @property
     def product_online_pdf_url(self):
@@ -398,17 +337,7 @@ class Product(Base):
         if not file_name:
             return None
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
-        if not os.path.isfile(file_path):
-            return None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
-        return (
-            f"/api/cms/media/product_pdfs/{file_name}?v={version}"
-            if version is not None
-            else f"/api/cms/media/product_pdfs/{file_name}"
-        )
+        return _versioned_media_url(file_path, "/api/cms/media/product_pdfs", file_name)
 
     @property
     def product_type_key(self):

@@ -88,6 +88,7 @@ declare module '$env/static/private' {
 	export const LC_NAME: string;
 	export const npm_package_version: string;
 	export const npm_lifecycle_event: string;
+	export const APP_TIMEZONE: string;
 	export const LESSCLOSE: string;
 	export const LC_MEASUREMENT: string;
 	export const BOOTSTRAP_ADMIN_USERNAME: string;
@@ -102,6 +103,7 @@ declare module '$env/static/private' {
 	export const npm_config_global_prefix: string;
 	export const LC_NUMERIC: string;
 	export const npm_command: string;
+	export const TZ: string;
 	export const LC_PAPER: string;
 	export const INIT_CWD: string;
 	export const EDITOR: string;
@@ -244,6 +246,7 @@ declare module '$env/dynamic/private' {
 		LC_NAME: string;
 		npm_package_version: string;
 		npm_lifecycle_event: string;
+		APP_TIMEZONE: string;
 		LESSCLOSE: string;
 		LC_MEASUREMENT: string;
 		BOOTSTRAP_ADMIN_USERNAME: string;
@@ -258,6 +261,7 @@ declare module '$env/dynamic/private' {
 		npm_config_global_prefix: string;
 		LC_NUMERIC: string;
 		npm_command: string;
+		TZ: string;
 		LC_PAPER: string;
 		INIT_CWD: string;
 		EDITOR: string;

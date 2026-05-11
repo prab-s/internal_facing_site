@@ -46,12 +46,16 @@ POSTGRES_DB=fan_graphs
 POSTGRES_USER=fan_graphs_user
 POSTGRES_PASSWORD=change_me
 DATABASE_URL=postgresql+psycopg://fan_graphs_user:change_me@postgres:5432/fan_graphs
+APP_TIMEZONE=Pacific/Auckland
+TZ=Pacific/Auckland
 ```
 
 SIT should use a different database name on the same Postgres server, for example:
 
 ```bash
 DATABASE_URL=postgresql+psycopg://fan_graphs_user:change_me@127.0.0.1:5432/internal_facing_sit
+APP_TIMEZONE=Pacific/Auckland
+TZ=Pacific/Auckland
 BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=A_STRONG_ADMIN_PASSWORD
 SESSION_SECRET=A_LONG_RANDOM_SECRET

@@ -41,6 +41,8 @@ services:
       retries: 20
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Pacific/Auckland}
+      TZ: ${TZ:-Pacific/Auckland}
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}

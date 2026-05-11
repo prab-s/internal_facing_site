@@ -61,6 +61,7 @@ from backend.models import (
     User,
 )
 from backend.models import AppSettings
+from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso
 from backend.schemas import (
     BandGraphStyleSettings,
     CmsProductGraphValuesResponse,
@@ -483,7 +484,7 @@ def file_manager_entry_to_response(root_name: str, entry: Path, root_relative: s
         path=relative,
         type="directory" if entry.is_dir() else "file",
         size_bytes=None if entry.is_dir() else stat.st_size,
-        modified_at=datetime.datetime.fromtimestamp(stat.st_mtime, tz=datetime.UTC).isoformat(),
+        modified_at=datetime.datetime.fromtimestamp(stat.st_mtime, tz=APP_TIMEZONE).isoformat(),
         protected=file_manager_is_protected(root_name, relative),
     )
 
@@ -2751,10 +2752,6 @@ def run_postgres_client_tool(arguments: list[str], *, input_bytes: bytes | None 
     return run_command(container_command, input_bytes=input_bytes)
 
 
-def utc_now_iso() -> str:
-    return datetime.datetime.now(datetime.UTC).isoformat()
-
-
 def _copy_media_directories(staging_data_dir: Path, progress_callback=None, *, label_prefix: str = "Collecting", exclude_backup_dir: bool = False):
     backup_stage_total = len(DATA_BACKUP_DIRS) + 1
     for offset, media_dir in enumerate(DATA_BACKUP_DIRS, start=1):
@@ -2815,7 +2812,7 @@ def create_maintenance_job(job_type: str) -> dict:
         "error": None,
         "result_message": None,
         "result_download_url": None,
-        "created_at": utc_now_iso(),
+        "created_at": backend_now_iso(),
         "started_at": None,
         "completed_at": None,
     }
@@ -2848,7 +2845,7 @@ def start_maintenance_job(job_type: str, work):
     job = create_maintenance_job(job_type)
 
     def runner():
-        update_maintenance_job(job["id"], status="running", started_at=utc_now_iso(), progress_message="Starting")
+        update_maintenance_job(job["id"], status="running", started_at=backend_now_iso(), progress_message="Starting")
 
         def progress(message: str, current: int | None = None, total: int | None = None):
             updates = {"progress_message": message}
@@ -2869,7 +2866,7 @@ def start_maintenance_job(job_type: str, work):
             result_updates.setdefault("result_message", result.get("result_message"))
             result_updates.setdefault("result_download_url", result.get("result_download_url"))
             result_updates["status"] = "completed"
-            result_updates["completed_at"] = utc_now_iso()
+            result_updates["completed_at"] = backend_now_iso()
             update_maintenance_job(job["id"], **result_updates)
         except Exception as exc:
             logger.exception("Maintenance job failed: %s", job_type)
@@ -2878,7 +2875,7 @@ def start_maintenance_job(job_type: str, work):
                 status="failed",
                 error=str(exc),
                 progress_message="Failed",
-                completed_at=utc_now_iso(),
+                completed_at=backend_now_iso(),
             )
 
     thread = threading.Thread(target=runner, daemon=True, name=f"maintenance-{job['id']}")
@@ -2887,7 +2884,7 @@ def start_maintenance_job(job_type: str, work):
 
 
 def create_data_backup_bundle(progress_callback=None) -> Path:
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = backend_now().strftime("%Y%m%d_%H%M%S")
     archive_name = f"fan_graphs_media_data_backup_{timestamp}.zip"
     archive_path = BACKUP_OUTPUT_DIR / archive_name
     backup_stages_total = len(DATA_BACKUP_DIRS) + 2
@@ -2926,7 +2923,7 @@ def create_data_backup_bundle(progress_callback=None) -> Path:
 
 
 def create_database_backup_bundle(progress_callback=None) -> Path:
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = backend_now().strftime("%Y%m%d_%H%M%S")
     archive_name = f"fan_graphs_db_data_backup_{timestamp}.zip"
     archive_path = BACKUP_OUTPUT_DIR / archive_name
     backup_stages_total = 8
