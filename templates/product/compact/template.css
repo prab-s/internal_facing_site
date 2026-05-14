@@ -175,8 +175,61 @@ body {
 .table-slot table,
 .table-slot .spec-table,
 .table-slot .spec-groups table {
-    border-collapse: collapse;
-    font-size: 12px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.spec-group + .spec-group {
+  margin-top: 12px;
+}
+
+.spec-group h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.fan-acoustic-panel {
+    margin-top: 12px;
+}
+
+.fan-acoustic-panel__title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.fan-acoustic-panel__table-wrap {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.fan-acoustic-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.fan-acoustic-table th,
+.fan-acoustic-table td {
+    padding-top: 6px;
+    padding-right: 8px;
+    padding-bottom: 6px;
+    padding-left: 8px;
+    vertical-align: top;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.fan-acoustic-table thead th {
+    background-color: rgba(33, 64, 111, 0.08);
+    font-weight: 700;
 }
 
 .table-slot th,

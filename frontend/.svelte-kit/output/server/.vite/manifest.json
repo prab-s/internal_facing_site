@@ -161,17 +161,6 @@
       "_root.js"
     ]
   },
-  "_stores.js": {
-    "file": "chunks/stores.js",
-    "name": "stores",
-    "imports": [
-      "_index2.js",
-      "_exports.js",
-      "_utils.js",
-      "_root.js",
-      "_state.svelte.js"
-    ]
-  },
   "_utils.js": {
     "file": "chunks/utils.js",
     "name": "utils"
@@ -223,7 +212,10 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
-      "_stores.js",
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js",
       "_auth.js",
       "_config.js"
     ],
@@ -278,6 +270,12 @@
       "_ProductWorkspace.js"
     ]
   },
+  "src/routes/editor/edit/+page.js": {
+    "file": "entries/pages/editor/edit/_page.js",
+    "name": "entries/pages/editor/edit/_page",
+    "src": "src/routes/editor/edit/+page.js",
+    "isEntry": true
+  },
   "src/routes/editor/edit/+page.svelte": {
     "file": "entries/pages/editor/edit/_page.svelte.js",
     "name": "entries/pages/editor/edit/_page.svelte",
@@ -285,7 +283,6 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
-      "_stores.js",
       "_ManagePageShell.js",
       "_ProductWorkspace.js"
     ]
@@ -316,6 +313,12 @@
       "_ManagePageShell.js",
       "_ProductTypeWorkspace.js"
     ]
+  },
+  "src/routes/editor/product-types/edit/+page.js": {
+    "file": "entries/pages/editor/product-types/edit/_page.js",
+    "name": "entries/pages/editor/product-types/edit/_page",
+    "src": "src/routes/editor/product-types/edit/+page.js",
+    "isEntry": true
   },
   "src/routes/editor/product-types/edit/+page.svelte": {
     "file": "entries/pages/editor/product-types/edit/_page.svelte.js",
@@ -355,6 +358,12 @@
       "_SeriesWorkspace.js"
     ]
   },
+  "src/routes/editor/series/edit/+page.js": {
+    "file": "entries/pages/editor/series/edit/_page.js",
+    "name": "entries/pages/editor/series/edit/_page",
+    "src": "src/routes/editor/series/edit/+page.js",
+    "isEntry": true
+  },
   "src/routes/editor/series/edit/+page.svelte": {
     "file": "entries/pages/editor/series/edit/_page.svelte.js",
     "name": "entries/pages/editor/series/edit/_page.svelte",
@@ -362,7 +371,6 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
-      "_stores.js",
       "_ManagePageShell.js",
       "_SeriesWorkspace.js"
     ]
@@ -435,6 +443,12 @@
       "_state.svelte.js"
     ]
   },
+  "src/routes/viewer/+page.js": {
+    "file": "entries/pages/viewer/_page.js",
+    "name": "entries/pages/viewer/_page",
+    "src": "src/routes/viewer/+page.js",
+    "isEntry": true
+  },
   "src/routes/viewer/+page.svelte": {
     "file": "entries/pages/viewer/_page.svelte.js",
     "name": "entries/pages/viewer/_page.svelte",
@@ -450,7 +464,7 @@
       "_SeriesNamesBadgeList.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.DO8j5OqU.css"
+      "_app/immutable/assets/_page.j6psIWKi.css"
     ]
   }
 }

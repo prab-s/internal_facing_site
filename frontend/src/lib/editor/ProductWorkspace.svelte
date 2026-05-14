@@ -38,6 +38,7 @@
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
   import {
+    FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS,
     GLOBAL_UNIT_OPTIONS,
     emptyProductForm,
     getChartTheme,
@@ -149,8 +150,10 @@
   let createCoreDetailsOpen = true;
   let createProductAttributesOpen = true;
   let createGroupedSpecificationsOpen = true;
+  let createFanAcousticTableOpen = true;
   let editProductDetailsOpen = true;
   let editGroupedSpecificationsOpen = true;
+  let editFanAcousticTableOpen = true;
   let editMediaAssetsOpen = true;
   let editLineManagementOpen = true;
   let editGraphDataOpen = true;
@@ -197,6 +200,7 @@
 
   // Form state: new/edit fan
   let productForm = emptyProductForm();
+  let fanAcousticTable = createFanAcousticTableDraft();
 
   // Map point form (single)
   let rpmPointForm = {
@@ -214,6 +218,9 @@
   let graphCsvError = '';
   let graphCsvFileName = '';
   let graphCsvInput = null;
+  let fanAcousticCsvError = '';
+  let fanAcousticCsvFileName = '';
+  let fanAcousticCsvInput = null;
 
   function syncSpecificationGroupOpenState(groups, currentState) {
     const nextState = {};
@@ -425,6 +432,89 @@
     return value === '' || value == null ? null : parseFloat(value);
   }
 
+  function isBlankEditorNumericValue(value) {
+    return value === '' || value == null;
+  }
+
+  function isValidEditorNumericValue(value) {
+    if (isBlankEditorNumericValue(value)) return true;
+    return Number.isFinite(Number(value));
+  }
+
+  function editorNumericInputClass(value) {
+    return isValidEditorNumericValue(value) ? '' : 'is-invalid';
+  }
+
+  function collectEditorNumericValidationErrors() {
+    const errors = [];
+
+    if (!isValidEditorNumericValue(graphStyleForm.band_graph_faded_opacity)) {
+      errors.push('Band graph faded opacity must be numeric.');
+    }
+
+    const checkPointRow = (rowLabel, point, fields) => {
+      for (const [fieldLabel, value] of fields) {
+        if (!isValidEditorNumericValue(value)) {
+          errors.push(`${rowLabel} ${fieldLabel} must be numeric.`);
+        }
+      }
+    };
+
+    const checkRows = (rows, rowLabelPrefix, fieldsForRow) => {
+      rows.forEach((row, index) => {
+        const rowLabel = `${rowLabelPrefix} row ${index + 1}`;
+        fieldsForRow(rowLabel, row, index);
+      });
+    };
+
+    checkRows(rpmLines.filter((line) => !line?._pending_delete), 'Graph line', (rowLabel, line) => {
+      if (!isValidEditorNumericValue(line.rpm)) {
+        errors.push(`${rowLabel} RPM must be numeric.`);
+      }
+    });
+
+    checkRows(rpmPoints.filter((point) => !point?._pending_delete), 'Graph point', (rowLabel, point) => {
+      checkPointRow(rowLabel, point, [
+        ['Airflow', point.airflow],
+        ['Pressure', point.pressure]
+      ]);
+    });
+
+    checkRows(
+      efficiencyPoints.filter((point) => !point?._pending_delete),
+      'Efficiency point',
+      (rowLabel, point) => {
+        checkPointRow(rowLabel, point, [
+          ['Airflow', point.airflow],
+          ['Efficiency centre', point.efficiency_centre],
+          ['Efficiency lower end', point.efficiency_lower_end],
+          ['Efficiency higher end', point.efficiency_higher_end],
+          ['Permissible use', point.permissible_use]
+        ]);
+      }
+    );
+
+    if (isFanAcousticTableVisible() && fanAcousticTable) {
+      fanAcousticTable.rows.forEach((row, index) => {
+        const rowLabel = `Fan acoustic table row ${index + 1}`;
+        checkPointRow(rowLabel, row, [
+          ['Speed (rpm)', row.speed_rpm],
+          ['Peak Pressure (Pa)', row.peak_pressure_pa],
+          ['Peak Power (kW)', row.peak_power_kw],
+          ['Running Frequency', row.running_frequency_hz],
+          ['Sound Pressure Level dB @ 3 meters', row.sound_pressure_db_3m]
+        ]);
+        for (const column of fanAcousticTable.sound_power_columns ?? []) {
+          if (!isValidEditorNumericValue(row.sound_power_levels?.[column])) {
+            errors.push(`${rowLabel} ${column} must be numeric.`);
+          }
+        }
+      });
+    }
+
+    return errors;
+  }
+
   function createParameterDraft(parameter = {}) {
     const unitValue = parameter.unit ?? '';
     const isCustomUnit = unitValue !== '' && !GLOBAL_UNIT_OPTIONS.includes(unitValue);
@@ -484,6 +574,136 @@
       efficiency_lower_end: point.efficiency_lower_end ?? '',
       efficiency_higher_end: point.efficiency_higher_end ?? '',
       permissible_use: point.permissible_use ?? ''
+    };
+  }
+
+  function normalizeFanAcousticColumns(columns) {
+    const normalized = [];
+    const seen = new Set();
+    for (const column of columns ?? []) {
+      const label = String(column ?? '').trim();
+      if (!label || seen.has(label)) continue;
+      seen.add(label);
+      normalized.push(label);
+    }
+    return normalized.length ? normalized : [...FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS];
+  }
+
+  function createFanAcousticRowDraft(row = {}, columns = FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS) {
+    const soundPowerLevels = row.sound_power_levels && typeof row.sound_power_levels === 'object' ? row.sound_power_levels : {};
+    return {
+      speed_rpm: row.speed_rpm ?? '',
+      peak_pressure_pa: row.peak_pressure_pa ?? '',
+      peak_power_kw: row.peak_power_kw ?? '',
+      running_frequency_hz: row.running_frequency_hz ?? '',
+      sound_pressure_db_3m: row.sound_pressure_db_3m ?? '',
+      sound_power_levels: Object.fromEntries(columns.map((column) => [column, soundPowerLevels[column] ?? '']))
+    };
+  }
+
+  function createFanAcousticTableDraft(table = {}, rpmLineSource = []) {
+    const sound_power_columns = normalizeFanAcousticColumns(table.sound_power_columns ?? FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS);
+    const sourceRows = Array.isArray(table.rows) ? table.rows : [];
+    const rowCount = rpmLineSource.length || sourceRows.length;
+    const rows = Array.from({ length: rowCount }, (_, index) => {
+      const sourceRow = sourceRows[index] ?? {};
+      const rowDraft = createFanAcousticRowDraft(sourceRow, sound_power_columns);
+      const line = rpmLineSource[index];
+      if (line && line.rpm != null && line.rpm !== '') {
+        rowDraft.speed_rpm = line.rpm;
+      }
+      return rowDraft;
+    });
+
+    return {
+      sound_power_columns,
+      rows
+    };
+  }
+
+  function syncFanAcousticTableWithRpmLines(rpmLineSource = rpmLines) {
+    if (productForm.product_type_key !== 'fan') {
+      fanAcousticTable = null;
+      return;
+    }
+    fanAcousticTable = createFanAcousticTableDraft(fanAcousticTable || {}, rpmLineSource);
+  }
+
+  function isFanAcousticTableVisible() {
+    return productForm.product_type_key === 'fan';
+  }
+
+  function addFanAcousticColumn() {
+    if (!fanAcousticTable) {
+      fanAcousticTable = createFanAcousticTableDraft();
+    }
+    const label = window.prompt('Sound power column label', '');
+    const nextLabel = String(label ?? '').trim();
+    if (!nextLabel || fanAcousticTable.sound_power_columns.includes(nextLabel)) return;
+    fanAcousticTable = {
+      ...fanAcousticTable,
+      sound_power_columns: [...fanAcousticTable.sound_power_columns, nextLabel],
+      rows: fanAcousticTable.rows.map((row) => ({
+        ...row,
+        sound_power_levels: {
+          ...(row.sound_power_levels || {}),
+          [nextLabel]: ''
+        }
+      }))
+    };
+  }
+
+  function renameFanAcousticColumn(columnIndex) {
+    if (!fanAcousticTable) return;
+    const currentLabel = fanAcousticTable.sound_power_columns[columnIndex];
+    if (!currentLabel) return;
+    const nextLabel = String(window.prompt('Rename sound power column', currentLabel) ?? '').trim();
+    if (!nextLabel || nextLabel === currentLabel || fanAcousticTable.sound_power_columns.includes(nextLabel)) return;
+    fanAcousticTable = {
+      ...fanAcousticTable,
+      sound_power_columns: fanAcousticTable.sound_power_columns.map((label, index) => (index === columnIndex ? nextLabel : label)),
+      rows: fanAcousticTable.rows.map((row) => {
+        const nextLevels = { ...(row.sound_power_levels || {}) };
+        nextLevels[nextLabel] = nextLevels[currentLabel] ?? '';
+        delete nextLevels[currentLabel];
+        return { ...row, sound_power_levels: nextLevels };
+      })
+    };
+  }
+
+  function removeFanAcousticColumn(columnIndex) {
+    if (!fanAcousticTable) return;
+    const column = fanAcousticTable.sound_power_columns[columnIndex];
+    if (!column) return;
+    if (!window.confirm(`Remove sound power column "${column}"?`)) return;
+    fanAcousticTable = {
+      ...fanAcousticTable,
+      sound_power_columns: fanAcousticTable.sound_power_columns.filter((_, index) => index !== columnIndex),
+      rows: fanAcousticTable.rows.map((row) => {
+        const nextLevels = { ...(row.sound_power_levels || {}) };
+        delete nextLevels[column];
+        return { ...row, sound_power_levels: nextLevels };
+      })
+    };
+  }
+
+  function serializeFanAcousticTable() {
+    if (!isFanAcousticTableVisible() || !fanAcousticTable) {
+      return null;
+    }
+    const sound_power_columns = normalizeFanAcousticColumns(fanAcousticTable.sound_power_columns);
+    return {
+      sound_power_columns,
+      rows: fanAcousticTable.rows.map((row) => ({
+        speed_rpm: parseOptionalNumber(row.speed_rpm),
+        peak_pressure_pa: parseOptionalNumber(row.peak_pressure_pa),
+        peak_power_kw: parseOptionalNumber(row.peak_power_kw),
+        running_frequency_hz: parseOptionalNumber(row.running_frequency_hz),
+        sound_pressure_db_3m: parseOptionalNumber(row.sound_pressure_db_3m),
+        sound_power_levels: Object.fromEntries(
+          sound_power_columns.map((column) => [column, parseOptionalNumber(row.sound_power_levels?.[column])])
+        )
+      }))
     };
   }
 
@@ -562,6 +782,7 @@
     rpmLines = graphPresets.rpmLines;
     rpmPoints = graphPresets.rpmPoints;
     efficiencyPoints = graphPresets.efficiencyPoints;
+    fanAcousticTable = productTypeKey === 'fan' ? createFanAcousticTableDraft({}, graphPresets.rpmLines) : null;
     specificationGroupOpenState = {};
   }
 
@@ -588,11 +809,18 @@
       rpmLines = [];
       rpmPoints = [];
       efficiencyPoints = [];
+      fanAcousticTable = productTypeKey === 'fan' ? createFanAcousticTableDraft({}, []) : null;
       specificationGroupOpenState = {};
     }
     createCoreDetailsOpen = true;
     createProductAttributesOpen = true;
     createGroupedSpecificationsOpen = true;
+    createFanAcousticTableOpen = true;
+    fanAcousticCsvError = '';
+    fanAcousticCsvFileName = '';
+    if (fanAcousticCsvInput) {
+      fanAcousticCsvInput.value = '';
+    }
   }
 
   function getCurrentProductType() {
@@ -694,6 +922,14 @@
       applyCreateBandGraphStyleDefaults(nextKey, true);
     } else {
       parameterGroups = clonePresetGroups(nextKey);
+      fanAcousticTable = nextKey === 'fan' ? createFanAcousticTableDraft(fanAcousticTable || {}, rpmLines) : null;
+      if (nextKey !== 'fan') {
+        fanAcousticCsvError = '';
+        fanAcousticCsvFileName = '';
+        if (fanAcousticCsvInput) {
+          fanAcousticCsvInput.value = '';
+        }
+      }
       specificationGroupOpenState = {};
     }
   }
@@ -777,10 +1013,12 @@
       ? createCoreDetailsOpen &&
         createProductAttributesOpen &&
         createGroupedSpecificationsOpen &&
+        (!isFanAcousticTableVisible() || createFanAcousticTableOpen) &&
         allSpecificationGroupsOpen()
       : mode === 'editExisting' && editingProductId !== null
         ? editProductDetailsOpen &&
           editGroupedSpecificationsOpen &&
+          (!isFanAcousticTableVisible() || editFanAcousticTableOpen) &&
           editMediaAssetsOpen &&
           editLineManagementOpen &&
           (!productSupportsGraph() || editGraphDataOpen) &&
@@ -792,10 +1030,12 @@
       createCoreDetailsOpen = nextOpen;
       createProductAttributesOpen = nextOpen;
       createGroupedSpecificationsOpen = nextOpen;
+      createFanAcousticTableOpen = nextOpen;
     }
     if (mode === 'editExisting' && editingProductId !== null) {
       editProductDetailsOpen = nextOpen;
       editGroupedSpecificationsOpen = nextOpen;
+      editFanAcousticTableOpen = nextOpen;
       editMediaAssetsOpen = nextOpen;
       editLineManagementOpen = nextOpen;
       editGraphDataOpen = nextOpen;
@@ -1190,6 +1430,149 @@
     return `Example columns: airflow_l_s, pressure_650rpm, pressure_813rpm`;
   }
 
+  function formatFanAcousticCsvValue(value) {
+    if (value === '' || value == null) return '';
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return String(value).trim();
+    }
+    return `${numericValue}`.replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
+  }
+
+  function buildFanAcousticCsv() {
+    const sourceTable = fanAcousticTable || createFanAcousticTableDraft({}, rpmLines);
+    const soundPowerColumns = normalizeFanAcousticColumns(sourceTable.sound_power_columns ?? FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS);
+    const header = [
+      'speed_rpm',
+      'peak_pressure_pa',
+      'peak_power_kw',
+      'running_frequency_hz',
+      'sound_pressure_db_3m',
+      ...soundPowerColumns
+    ];
+
+    const rows = (sourceTable.rows ?? []).map((row) =>
+      [
+        row.speed_rpm,
+        row.peak_pressure_pa,
+        row.peak_power_kw,
+        row.running_frequency_hz,
+        row.sound_pressure_db_3m,
+        ...soundPowerColumns.map((column) => row.sound_power_levels?.[column])
+      ]
+        .map(formatFanAcousticCsvValue)
+        .join(',')
+    );
+
+    return [header.join(','), ...rows].join('\n');
+  }
+
+  function fanAcousticCsvPlaceholder() {
+    return `Example columns: speed_rpm, peak_pressure_pa, peak_power_kw, running_frequency_hz, sound_pressure_db_3m, 63, 125, 250`;
+  }
+
+  function buildImportedFanAcousticState(rows) {
+    const [headerRow, ...dataRows] = rows;
+    const normalizedHeaders = headerRow.map((header) => String(header ?? '').trim());
+    const requiredHeaders = [
+      'speed_rpm',
+      'peak_pressure_pa',
+      'peak_power_kw',
+      'running_frequency_hz',
+      'sound_pressure_db_3m'
+    ];
+
+    for (let index = 0; index < requiredHeaders.length; index += 1) {
+      if ((normalizedHeaders[index] ?? '').toLowerCase() !== requiredHeaders[index]) {
+        throw new Error(`The acoustic CSV must start with "${requiredHeaders[index]}" and follow the fixed column order.`);
+      }
+    }
+
+    const soundPowerColumns = normalizedHeaders.slice(requiredHeaders.length).filter(Boolean);
+    const importedRows = dataRows.map((row, rowIndex) => {
+      if (row.length < requiredHeaders.length) {
+        throw new Error(`Row ${rowIndex + 2} is missing one or more required acoustic values.`);
+      }
+      const rowData = {
+        speed_rpm: parseGraphCsvNumber(row[0], normalizedHeaders[0]),
+        peak_pressure_pa: parseGraphCsvNumber(row[1], normalizedHeaders[1]),
+        peak_power_kw: parseGraphCsvNumber(row[2], normalizedHeaders[2]),
+        running_frequency_hz: parseGraphCsvNumber(row[3], normalizedHeaders[3]),
+        sound_pressure_db_3m: parseGraphCsvNumber(row[4], normalizedHeaders[4]),
+        sound_power_levels: {}
+      };
+
+      soundPowerColumns.forEach((column, columnOffset) => {
+        const value = row[requiredHeaders.length + columnOffset];
+        rowData.sound_power_levels[column] = parseGraphCsvNumber(value, column);
+      });
+      return rowData;
+    });
+
+    return createFanAcousticTableDraft(
+      {
+        sound_power_columns: soundPowerColumns.length ? soundPowerColumns : FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS,
+        rows: importedRows
+      },
+      rpmLines
+    );
+  }
+
+  async function applyImportedFanAcousticCsvText(text, fileName = 'fan-acoustic-data.csv') {
+    fanAcousticCsvError = '';
+    if (!isFanAcousticTableVisible()) {
+      fanAcousticCsvError = 'Select a fan product first.';
+      return;
+    }
+
+    const rows = parseCsvRows(text);
+    if (rows.length < 2) {
+      fanAcousticCsvError = 'Choose a fan acoustic CSV file with a header row and at least one data row.';
+      return;
+    }
+
+    try {
+      fanAcousticTable = buildImportedFanAcousticState(rows);
+      fanAcousticCsvFileName = fileName;
+      addSuccess(`Loaded fan acoustic CSV from ${fileName}. Review the table, then save the product.`);
+    } catch (e) {
+      fanAcousticCsvError = e.message;
+    }
+  }
+
+  async function handleFanAcousticCsvFileChange(event) {
+    fanAcousticCsvError = '';
+    const file = event.currentTarget?.files?.[0];
+    if (!file) {
+      fanAcousticCsvFileName = '';
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      await applyImportedFanAcousticCsvText(text, file.name);
+    } catch (e) {
+      fanAcousticCsvError = e.message || 'Unable to read the selected acoustic CSV file.';
+    }
+  }
+
+  function clearFanAcousticCsvSelection() {
+    fanAcousticCsvError = '';
+    fanAcousticCsvFileName = '';
+    if (fanAcousticCsvInput) {
+      fanAcousticCsvInput.value = '';
+    }
+  }
+
+  function exportFanAcousticCsv() {
+    if (!isFanAcousticTableVisible()) {
+      error = 'Select a fan product first.';
+      return;
+    }
+    const base = currentProduct ? `${currentProduct.model}`.replace(/\s+/g, '_') : 'product';
+    downloadCsv(buildFanAcousticCsv(), `${base}-fan-acoustic-data.csv`);
+  }
+
   onMount(() => {
     function handleBeforeUnload(event) {
       if (!savingMapPoints) return;
@@ -1397,7 +1780,7 @@
       if (rpmLines.length) {
         rpmPointForm = { ...rpmPointForm, rpm_line_id: String(rpmLines[0].id) };
       }
-      addSuccess(`Loaded graph CSV from ${fileName}. Review the tables and chart, then press Save Map Points to commit it.`);
+      addSuccess(`Loaded graph CSV from ${fileName}. Review the tables and chart, then press Save Changes to commit it.`);
     } catch (e) {
       graphCsvError = e.message;
     }
@@ -1608,6 +1991,10 @@
       efficiencyPoints = nextEfficiencyPoints;
       originalRpmPointIds = nextRpmPoints.map((point) => point.id);
       originalEfficiencyPointIds = nextEfficiencyPoints.map((point) => point.id);
+      fanAcousticTable =
+        nextProductType?.key === 'fan'
+          ? createFanAcousticTableDraft(nextProduct?.fan_acoustic_table || {}, nextRpmLines)
+          : null;
       graphStyleForm = {
         band_graph_background_color: normalizeOptionalColor(nextProduct?.band_graph_background_color) || '#ffffff',
         band_graph_label_text_color: normalizeOptionalColor(nextProduct?.band_graph_label_text_color) || '#000000',
@@ -1645,6 +2032,7 @@
     }
     selectedProductId = nextProductId;
     editingProductId = nextProductId;
+    syncProductEditorUrl(nextProductId);
     loadingExistingProduct = true;
     try {
       await loadProductData();
@@ -1657,6 +2045,18 @@
     } finally {
       loadingExistingProduct = false;
     }
+  }
+
+  function syncProductEditorUrl(productId) {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete('product');
+    if (productId != null && productId !== '') {
+      params.set('product', String(productId));
+    }
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
   }
 
   $: if (initialProductId !== '' && Number(initialProductId) !== Number(selectedProductId)) {
@@ -1673,9 +2073,14 @@
     }
   });
 
-  async function saveProduct() {
+  async function saveProduct({ showSuccess = true, reloadAfterSave = true, saveMapData = mode !== 'create' } = {}) {
     error = '';
     clearSuccessToast();
+    const validationErrors = collectEditorNumericValidationErrors();
+    if (validationErrors.length > 0) {
+      error = `Please correct the numeric values before saving: ${validationErrors.slice(0, 8).join('; ')}${validationErrors.length > 8 ? '; ...' : ''}`;
+      return;
+    }
     const body = {
       model: productForm.model.trim(),
       product_type_key: productForm.product_type_key || null,
@@ -1695,7 +2100,8 @@
           : Number(graphStyleForm.band_graph_faded_opacity),
       band_graph_permissible_label_color:
         normalizeOptionalColor(graphStyleForm.band_graph_permissible_label_color) || null,
-      parameter_groups: serializeParameterGroups()
+      parameter_groups: serializeParameterGroups(),
+      fan_acoustic_table: serializeFanAcousticTable()
     };
     if (mode === 'create') {
       body.rpm_lines = serializeCreateRpmLines();
@@ -1714,20 +2120,31 @@
     try {
       if (editingProductId) {
         currentProduct = await updateProduct(editingProductId, body);
-        addSuccess('Product updated.');
+        products = await getProducts();
+        if (!saveMapData && showSuccess) {
+          addSuccess('Product updated.');
+        }
       } else {
         const created = await createProduct(body);
         currentProduct = created;
-        addSuccess('Product created. You can now upload product images and add graph data.');
+        if (showSuccess) {
+          addSuccess('Product created. You can now upload product images and add graph data.');
+        }
         selectedProductId = created.id;
         editingProductId = created.id;
         mode = 'editExisting';
       }
-      products = await getProducts();
-      await loadProductData();
-      if (currentProduct) editProduct(currentProduct);
+      if (mode !== 'create' && editingProductId && saveMapData) {
+        await saveMapPoints({ showSuccess: false, clearMessages: false, reloadAfterSave: true });
+        if (showSuccess) {
+          addSuccess('All changes saved.');
+        }
+      } else if (reloadAfterSave) {
+        await loadProductData();
+        if (currentProduct) editProduct(currentProduct);
+      }
     } catch (e) {
-      error = e.message;
+      error = e.status === 422 ? `Please correct the highlighted values before saving: ${e.message}` : e.message;
     } finally {
       loading = false;
       savingProductDetails = false;
@@ -1748,6 +2165,10 @@
       comments_html: product.comments_html || '',
       show_rpm_band_shading: product.show_rpm_band_shading ?? true
     };
+    fanAcousticTable =
+      product.product_type_key === 'fan'
+        ? createFanAcousticTableDraft(product.fan_acoustic_table || {}, rpmLines)
+        : null;
     graphStyleForm = {
       band_graph_background_color: normalizeOptionalColor(product.band_graph_background_color) || '#ffffff',
       band_graph_label_text_color: normalizeOptionalColor(product.band_graph_label_text_color) || '#000000',
@@ -1763,6 +2184,7 @@
     parameterGroups = (product.parameter_groups ?? []).map((group) => createGroupDraft(group));
     editProductDetailsOpen = true;
     editGroupedSpecificationsOpen = true;
+    editFanAcousticTableOpen = true;
     editMediaAssetsOpen = true;
     editLineManagementOpen = true;
     editGraphDataOpen = true;
@@ -1824,10 +2246,11 @@
     if (!isPersistedRpmLineId(line.id)) {
       rpmLines = rpmLines.filter((item) => item.id !== line.id);
       rpmPoints = applyRpmPointSort(rpmPoints.filter((point) => point.rpm_line_id !== line.id));
+      syncFanAcousticTableWithRpmLines(rpmLines);
       if (chartAddTarget === `rpm:${line.id}`) {
         chartAddTarget = 'off';
       }
-      addSuccess(`${graphLineValueLabel()} line removed locally. Save map points to persist the point changes.`);
+        addSuccess(`${graphLineValueLabel()} line removed locally. Save Changes to persist the point changes.`);
       return;
     }
 
@@ -1856,6 +2279,7 @@
             }
           : item
       );
+      syncFanAcousticTableWithRpmLines(rpmLines);
       rpmPoints = applyRpmPointSort(
         rpmPoints.map((point) =>
           point.rpm_line_id === line.id
@@ -1863,7 +2287,7 @@
             : point
         )
       );
-      addSuccess(`${formatGraphLineValue(line.rpm)} styling updated locally. Save map points to persist new points on this line.`);
+      addSuccess(`${formatGraphLineValue(line.rpm)} styling updated locally. Save Changes to persist new points on this line.`);
       return;
     }
 
@@ -1936,7 +2360,7 @@
       }
     ]);
     rpmPointForm = { rpm_line_id: rpmPointForm.rpm_line_id, airflow: '', pressure: '' };
-    addSuccess('Graph point added locally. Save map points to persist it.');
+    addSuccess('Graph point added locally. Save Changes to persist it.');
   }
 
   async function addEfficiencyPointFromForm() {
@@ -1964,7 +2388,7 @@
       efficiency_higher_end: '',
       permissible_use: ''
     };
-    addSuccess('Efficiency/permissible point added locally. Save map points to persist it.');
+    addSuccess('Efficiency/permissible point added locally. Save Changes to persist it.');
   }
 
   async function uploadImages() {
@@ -2252,7 +2676,7 @@
             pressure: Math.round(pressure)
           }
         ]);
-        addSuccess('Point added locally from chart. Save map points to persist it.');
+        addSuccess('Point added locally from chart. Save Changes to persist it.');
         return;
       }
 
@@ -2271,7 +2695,7 @@
             permissible_use: lineKey === 'permissible_use' ? Math.round(value) : null
           }
         ];
-        addSuccess('Point added locally from chart. Save map points to persist it.');
+        addSuccess('Point added locally from chart. Save Changes to persist it.');
       }
     }
 
@@ -2293,7 +2717,7 @@
         suppressNextClick = true;
         dragMoved = false;
         draggingPoint = null;
-        addSuccess('Point deleted locally from chart. Save map points to persist it.');
+        addSuccess('Point deleted locally from chart. Save Changes to persist it.');
         return;
       }
 
@@ -2362,9 +2786,11 @@
     }
   }
 
-  async function saveMapPoints() {
+  async function saveMapPoints({ showSuccess = true, clearMessages = true, reloadAfterSave = true } = {}) {
     error = '';
-    clearSuccessToast();
+    if (clearMessages) {
+      clearSuccessToast();
+    }
     if (savingMapPoints) return;
     try {
       const tempRpmLines = rpmLines.filter((line) => !isPersistedRpmLineId(line.id));
@@ -2485,8 +2911,12 @@
 
       await refreshGraphImage(selectedProductId);
       await advanceMapPointSave('Regenerated graph image');
-      await loadProductData();
-      addSuccess('All map points saved.');
+      if (reloadAfterSave) {
+        await loadProductData();
+      }
+      if (showSuccess) {
+        addSuccess('All map points saved.');
+      }
     } catch (e) {
       error = e.message;
     } finally {
@@ -2496,12 +2926,12 @@
 
   async function deleteRpmPointLocal(point) {
     rpmPoints = rpmPoints.filter((item) => item.id !== point.id);
-    addSuccess('Graph point deleted locally. Save map points to persist it.');
+    addSuccess('Graph point deleted locally. Save Changes to persist it.');
   }
 
   async function deleteEfficiencyPointLocal(point) {
     efficiencyPoints = efficiencyPoints.filter((item) => item.id !== point.id);
-    addSuccess('Efficiency/permissible point deleted locally. Save map points to persist it.');
+    addSuccess('Efficiency/permissible point deleted locally. Save Changes to persist it.');
   }
 </script>
 
@@ -2604,19 +3034,14 @@
           {allAccordionsOpen ? 'Collapse All' : 'Expand All'}
         </button>
         {#if mode === 'create'}
-          <button class="btn btn-primary" on:click={saveProduct} disabled={loading}>Save Product</button>
-          <button class="btn btn-outline-secondary" on:click={() => { mode = 'select'; resetProductEditor(''); productImages = []; pendingImageFiles = []; currentProduct = null; selectedProductId = null; }}>
+          <button class="btn btn-primary" on:click={saveProduct} disabled={loading}>{savingProductDetails ? 'Saving Product...' : 'Save Product'}</button>
+          <button class="btn btn-outline-secondary" on:click={() => { mode = 'select'; resetProductEditor(''); productImages = []; pendingImageFiles = []; currentProduct = null; selectedProductId = null; syncProductEditorUrl(''); }}>
             Cancel
           </button>
         {:else if editingProductId !== null}
           <button class="btn btn-primary" on:click={saveProduct} disabled={loading || savingProductDetails || savingMapPoints}>
-            {savingProductDetails ? 'Saving Product Details...' : 'Save Product Details'}
+            {savingProductDetails ? 'Saving Product Details...' : savingMapPoints ? (mapPointSaveProgressMessage || 'Saving Map Points...') : 'Save Changes'}
           </button>
-          {#if rpmPoints.length > 0 || efficiencyPoints.length > 0}
-            <button class="btn btn-primary" on:click={saveMapPoints} disabled={savingMapPoints}>
-              {savingMapPoints ? 'Saving Map Points...' : 'Save Map Points'}
-            </button>
-          {/if}
           <button
             class="btn btn-outline-danger"
             on:click={deleteCurrentProduct}
@@ -2784,7 +3209,7 @@
                   </div>
                 </div>
                 {#if group._pending_delete}
-                  <p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Product to apply the deletion.</p>
+                  <p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Changes to apply the deletion.</p>
                 {/if}
                 {#if specificationGroupOpenState[groupIndex] ?? true}
                 <div class="vstack gap-3">
@@ -2882,7 +3307,7 @@
                         </div>
                       </div>
                       {#if parameter._pending_delete}
-                        <p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Product to apply the deletion.</p>
+                        <p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Changes to apply the deletion.</p>
                       {/if}
                     </div>
                   {/each}
@@ -2895,6 +3320,67 @@
           <p class="text-body-secondary mt-3 mb-0">No parameter groups yet. Load type presets or add a group manually.</p>
         {/if}
       </AccordionCard>
+
+      {#if isFanAcousticTableVisible()}
+        <AccordionCard title="Fan Acoustic Table" description="Rows stay aligned to the current RPM graph rows. Sound power columns can be added, removed, and renamed." bind:open={createFanAcousticTableOpen}>
+          {#if fanAcousticTable}
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <p class="text-body-secondary mb-0">The speed column is read-only and follows the fan graph line order.</p>
+              <div class="d-flex flex-wrap gap-2">
+                <input class="form-control form-control-sm fan-acoustic-csv-input" bind:this={fanAcousticCsvInput} type="file" accept=".csv,text/csv" on:change={handleFanAcousticCsvFileChange} />
+                <button class="btn btn-outline-secondary btn-sm" type="button" on:click={clearFanAcousticCsvSelection}>Clear CSV</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" on:click={exportFanAcousticCsv} disabled={!fanAcousticTable && rpmLines.length === 0}>Export CSV</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" on:click={addFanAcousticColumn}>Add Column</button>
+              </div>
+            </div>
+            {#if fanAcousticCsvFileName}
+              <p class="small mb-2">Loaded file: <strong>{fanAcousticCsvFileName}</strong></p>
+            {/if}
+            {#if fanAcousticCsvError}
+              <p class="text-danger mb-2">{fanAcousticCsvError}</p>
+            {/if}
+            <div class="table-responsive fan-acoustic-table-wrap">
+              <table class="table table-sm align-middle editable-table fan-acoustic-table mb-0">
+                <thead>
+                  <tr>
+                    <th>Speed (rpm)</th>
+                    <th>Peak Pressure (Pa)</th>
+                    <th>Peak Power (kW)</th>
+                    <th>Running Frequency</th>
+                    <th>Sound Pressure Level dB @ 3 meters</th>
+                    {#each fanAcousticTable.sound_power_columns as column, columnIndex}
+                      <th>
+                        <div class="d-grid gap-1">
+                          <input class="form-control form-control-sm" type="text" bind:value={fanAcousticTable.sound_power_columns[columnIndex]} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                          <button class="btn btn-outline-secondary btn-sm" type="button" on:click={() => renameFanAcousticColumn(columnIndex)}>Rename</button>
+                          <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeFanAcousticColumn(columnIndex)} disabled={fanAcousticTable.sound_power_columns.length <= 1}>Delete</button>
+                        </div>
+                      </th>
+                    {/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each fanAcousticTable.rows as row, rowIndex}
+                    <tr>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`} type="number" step="any" bind:value={row.speed_rpm} disabled /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`} type="number" step="any" bind:value={row.peak_pressure_pa} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`} type="number" step="any" bind:value={row.peak_power_kw} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`} type="number" step="any" bind:value={row.sound_pressure_db_3m} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      {#each fanAcousticTable.sound_power_columns as column}
+                        <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.sound_power_levels[column])}`} type="number" step="any" bind:value={row.sound_power_levels[column]} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      {/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+            {#if fanAcousticTable.rows.length === 0}
+              <p class="text-body-secondary mt-3 mb-0">Save or load RPM lines first so the acoustic table can align itself.</p>
+            {/if}
+          {/if}
+        </AccordionCard>
+      {/if}
     </div>
     {#if productSupportsGraph() && (rpmLines.length > 0 || rpmPoints.length > 0 || efficiencyPoints.length > 0)}
       <div class="mt-3">
@@ -3190,7 +3676,7 @@
                     </div>
                   </div>
                   {#if group._pending_delete}
-                    <p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Product to apply the deletion.</p>
+                    <p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Changes to apply the deletion.</p>
                   {/if}
                   {#if specificationGroupOpenState[groupIndex] ?? true}
                   <div class="vstack gap-3">
@@ -3288,7 +3774,7 @@
                           </div>
                         </div>
                         {#if parameter._pending_delete}
-                          <p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Product to apply the deletion.</p>
+                          <p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Changes to apply the deletion.</p>
                         {/if}
                       </div>
                     {/each}
@@ -3410,7 +3896,7 @@
                   <button class="btn btn-outline-secondary" on:click={clearGraphCsvSelection}>Clear File Selection</button>
                   <button class="btn btn-outline-secondary" on:click={exportGraphCsv} disabled={rpmPoints.length === 0 && efficiencyPoints.length === 0}>Export Graph CSV</button>
                 </div>
-                <p class="small text-body-secondary mt-3 mb-0">Selecting a CSV overwrites the graph data shown on this page immediately. Review the tables and chart, then press <strong>Save Map Points</strong> to commit the imported changes to the database.</p>
+                <p class="small text-body-secondary mt-3 mb-0">Selecting a CSV overwrites the graph data shown on this page immediately. Review the tables and chart, then press <strong>Save Changes</strong> to commit the imported changes to the database.</p>
               </div>
             </div>
 
@@ -3439,8 +3925,8 @@
                       {#each rpmPoints as p}
                         <tr>
                           <td>{formatGraphLineValue(p.rpm)}</td>
-                          <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.airflow} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
-                          <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.pressure} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
+                          <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.airflow} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
+                          <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.pressure)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.pressure} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
                           <td><button class="btn btn-danger btn-sm" on:click={() => deleteRpmPointLocal(p)}>Delete</button></td>
                         </tr>
                       {/each}
@@ -3472,11 +3958,11 @@
                       <tbody>
                         {#each efficiencyPoints as p}
                           <tr>
-                            <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.airflow} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_centre} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_lower_end} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_higher_end} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class="form-control form-control-sm" style="min-width: 90px;" type="number" step="any" bind:value={p.permissible_use} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.airflow} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_centre)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_centre} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_lower_end)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_lower_end} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_higher_end)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_higher_end} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.permissible_use)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.permissible_use} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
                             <td><button class="btn btn-danger btn-sm" on:click={() => deleteEfficiencyPointLocal(p)}>Delete</button></td>
                           </tr>
                         {/each}
@@ -3521,6 +4007,68 @@
         {/if}
       </div>
     </div>
+    {#if isFanAcousticTableVisible()}
+      <div class="mt-3">
+        <AccordionCard title="Fan Acoustic Table" description="Rows stay aligned to the current RPM graph rows. Sound power columns can be added, removed, and renamed." bind:open={editFanAcousticTableOpen}>
+          {#if fanAcousticTable}
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <p class="text-body-secondary mb-0">The speed column is read-only and follows the fan graph line order.</p>
+              <div class="d-flex flex-wrap gap-2">
+                <input class="form-control form-control-sm fan-acoustic-csv-input" bind:this={fanAcousticCsvInput} type="file" accept=".csv,text/csv" on:change={handleFanAcousticCsvFileChange} />
+                <button class="btn btn-outline-secondary btn-sm" type="button" on:click={clearFanAcousticCsvSelection}>Clear CSV</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" on:click={exportFanAcousticCsv} disabled={!fanAcousticTable && rpmLines.length === 0}>Export CSV</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" on:click={addFanAcousticColumn}>Add Column</button>
+              </div>
+            </div>
+            {#if fanAcousticCsvFileName}
+              <p class="small mb-2">Loaded file: <strong>{fanAcousticCsvFileName}</strong></p>
+            {/if}
+            {#if fanAcousticCsvError}
+              <p class="text-danger mb-2">{fanAcousticCsvError}</p>
+            {/if}
+            <div class="table-responsive fan-acoustic-table-wrap">
+              <table class="table table-sm align-middle editable-table fan-acoustic-table mb-0">
+                <thead>
+                  <tr>
+                    <th>Speed (rpm)</th>
+                    <th>Peak Pressure (Pa)</th>
+                    <th>Peak Power (kW)</th>
+                    <th>Running Frequency</th>
+                    <th>Sound Pressure Level dB @ 3 meters</th>
+                    {#each fanAcousticTable.sound_power_columns as column, columnIndex}
+                      <th>
+                        <div class="d-grid gap-1">
+                        <input class="form-control form-control-sm" type="text" bind:value={fanAcousticTable.sound_power_columns[columnIndex]} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                          <button class="btn btn-outline-secondary btn-sm" type="button" on:click={() => renameFanAcousticColumn(columnIndex)}>Rename</button>
+                          <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeFanAcousticColumn(columnIndex)} disabled={fanAcousticTable.sound_power_columns.length <= 1}>Delete</button>
+                        </div>
+                      </th>
+                    {/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each fanAcousticTable.rows as row, rowIndex}
+                    <tr>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`} type="number" step="any" bind:value={row.speed_rpm} disabled /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`} type="number" step="any" bind:value={row.peak_pressure_pa} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`} type="number" step="any" bind:value={row.peak_power_kw} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`} type="number" step="any" bind:value={row.sound_pressure_db_3m} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      {#each fanAcousticTable.sound_power_columns as column}
+                        <td><input class={`form-control form-control-sm ${editorNumericInputClass(row.sound_power_levels[column])}`} type="number" step="any" bind:value={row.sound_power_levels[column]} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} /></td>
+                      {/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+            {#if fanAcousticTable.rows.length === 0}
+              <p class="text-body-secondary mt-3 mb-0">Load or create RPM lines first so the acoustic table can align itself.</p>
+            {/if}
+          {/if}
+        </AccordionCard>
+      </div>
+    {/if}
   </div>
 </div>
 </div>

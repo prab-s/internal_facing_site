@@ -30,6 +30,18 @@
 
   let seriesDraft = resetDraft();
 
+  function syncSeriesEditorUrl(seriesId) {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete('series');
+    if (seriesId != null && seriesId !== '') {
+      params.set('series', String(seriesId));
+    }
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }
+
   $: if (initialSeriesId !== '' && String(selectedSeriesId) !== String(initialSeriesId)) {
     selectedSeriesId = String(initialSeriesId);
     if (mode !== 'create') {
@@ -57,6 +69,7 @@
     mode = initialMode;
     selectedSeriesId = '';
     seriesDraft = resetDraft();
+    syncSeriesEditorUrl('');
     error = '';
     success = '';
   }
@@ -127,6 +140,7 @@
       mode = initialMode;
       selectedSeriesId = '';
       seriesDraft = resetDraft();
+      syncSeriesEditorUrl('');
       success = 'Series deleted.';
     } catch (e) {
       error = e.message;
@@ -173,6 +187,7 @@
                 on:change={(event) => {
                   const selected = seriesRecords.find((item) => String(item.id) === event.currentTarget.value);
                   seriesDraft = resetDraft(selected);
+                  syncSeriesEditorUrl(event.currentTarget.value);
                 }}
               >
                 <option value="">-- Choose option --</option>

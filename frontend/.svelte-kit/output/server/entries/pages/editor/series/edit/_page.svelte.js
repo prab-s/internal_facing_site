@@ -1,10 +1,9 @@
-import { h as head, s as store_get, u as unsubscribe_stores } from "../../../../../chunks/index2.js";
-import { p as page } from "../../../../../chunks/stores.js";
+import { f as fallback, h as head, d as bind_props } from "../../../../../chunks/index2.js";
 import { M as ManagePageShell } from "../../../../../chunks/ManagePageShell.js";
 import { S as SeriesWorkspace } from "../../../../../chunks/SeriesWorkspace.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
-    var $$store_subs;
+    let data = fallback($$props["data"], () => ({}), true);
     head("1jzodvh", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Edit Series — Editor</title>`);
@@ -17,14 +16,11 @@ function _page($$renderer, $$props) {
       backHref: "/editor",
       backLabel: "Back to Editor",
       children: ($$renderer3) => {
-        SeriesWorkspace($$renderer3, {
-          initialMode: "edit",
-          initialSeriesId: store_get($$store_subs ??= {}, "$page", page).url.searchParams.get("series") ?? ""
-        });
+        SeriesWorkspace($$renderer3, { initialMode: "edit", initialSeriesId: data.series ?? "" });
       },
       $$slots: { default: true }
     });
-    if ($$store_subs) unsubscribe_stores($$store_subs);
+    bind_props($$props, { data });
   });
 }
 export {

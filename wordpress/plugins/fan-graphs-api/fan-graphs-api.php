@@ -363,6 +363,76 @@ function internal_facing_render_parameter_groups($product) {
     return ob_get_clean();
 }
 
+function internal_facing_format_numeric_value($value) {
+    if ($value === null || $value === '') {
+        return '—';
+    }
+    if (is_bool($value)) {
+        return '—';
+    }
+    if (is_numeric($value)) {
+        $formatted = rtrim(rtrim(sprintf('%.12F', floatval($value)), '0'), '.');
+        return $formatted === '' ? '0' : $formatted;
+    }
+    return (string) $value;
+}
+
+function internal_facing_render_fan_acoustic_table($product) {
+    if (($product['product_type_key'] ?? '') !== 'fan') {
+        return '';
+    }
+
+    $table = $product['fan_acoustic_table'] ?? array();
+    $sound_power_columns = array_values(array_filter(array_map('strval', $table['sound_power_columns'] ?? array()), 'strlen'));
+    $rows = $table['rows'] ?? array();
+    if (empty($sound_power_columns)) {
+        $sound_power_columns = array('63', '125', '250', '500', '1k', '2k', '4k', '8k');
+    }
+
+    ob_start();
+    ?>
+    <section class="internal-facing-card__section">
+      <h4 class="internal-facing-card__section-title">Fan Acoustic Table</h4>
+      <?php if (!empty($rows) && is_array($rows)) : ?>
+        <div class="internal-facing-table-wrap internal-facing-acoustic-table-wrap">
+          <table class="internal-facing-acoustic-table">
+            <thead>
+              <tr>
+                <th>Speed (rpm)</th>
+                <th>Peak Pressure (Pa)</th>
+                <th>Peak Power (kW)</th>
+                <th>Running Frequency</th>
+                <th>Sound Pressure Level dB @ 3 meters</th>
+                <?php foreach ($sound_power_columns as $column) : ?>
+                  <th><?php echo esc_html($column); ?></th>
+                <?php endforeach; ?>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($rows as $row) : ?>
+                <?php $levels = $row['sound_power_levels'] ?? array(); ?>
+                <tr>
+                  <td><?php echo esc_html(internal_facing_format_numeric_value($row['speed_rpm'] ?? null)); ?></td>
+                  <td><?php echo esc_html(internal_facing_format_numeric_value($row['peak_pressure_pa'] ?? null)); ?></td>
+                  <td><?php echo esc_html(internal_facing_format_numeric_value($row['peak_power_kw'] ?? null)); ?></td>
+                  <td><?php echo esc_html(internal_facing_format_numeric_value($row['running_frequency_hz'] ?? null)); ?></td>
+                  <td><?php echo esc_html(internal_facing_format_numeric_value($row['sound_pressure_db_3m'] ?? null)); ?></td>
+                  <?php foreach ($sound_power_columns as $column) : ?>
+                    <td><?php echo esc_html(internal_facing_format_numeric_value($levels[$column] ?? null)); ?></td>
+                  <?php endforeach; ?>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php else : ?>
+        <p class="internal-facing-empty-note">No fan acoustic rows have been entered yet.</p>
+      <?php endif; ?>
+    </section>
+    <?php
+    return ob_get_clean();
+}
+
 function internal_facing_render_product_card($product, $detailed = false) {
     $product_id = intval($product['id'] ?? 0);
     $model = esc_html($product['model'] ?? '');
@@ -402,6 +472,7 @@ function internal_facing_render_product_card($product, $detailed = false) {
         <?php echo internal_facing_render_rich_section('Description2', $product['description2_html'] ?? ''); ?>
         <?php echo internal_facing_render_rich_section('Description3', $product['description3_html'] ?? ''); ?>
         <?php echo internal_facing_render_parameter_groups($product); ?>
+        <?php echo internal_facing_render_fan_acoustic_table($product); ?>
         <?php echo internal_facing_render_rich_section('Comments', $product['comments_html'] ?? ''); ?>
         <?php if ($graph_image_url !== '') : ?>
           <section class="internal-facing-card__section">
@@ -1082,6 +1153,11 @@ function internal_facing_enqueue_styles() {
       .internal-facing-card__specs div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.75rem}
       .internal-facing-card__specs dt{font-weight:600}
       .internal-facing-card__specs dd{margin:0}
+      .internal-facing-table-wrap{width:100%;overflow-x:auto}
+      .internal-facing-acoustic-table{width:100%;min-width:900px;border-collapse:collapse;font-size:.92rem;background:#fff}
+      .internal-facing-acoustic-table th,.internal-facing-acoustic-table td{padding:.55rem .7rem;border:1px solid #d7dde8;text-align:center;vertical-align:middle;white-space:nowrap}
+      .internal-facing-acoustic-table thead th{background:#eef4fb;font-weight:700}
+      .internal-facing-empty-note{margin:0;color:#64748b;font-style:italic}
       .internal-facing-graph-preview{border:1px solid #d7dde8;border-radius:10px;overflow:hidden;background:#f8fafc;padding:.75rem}
       .internal-facing-graph-preview img{display:block;width:100%;height:auto;border-radius:8px;background:#fff}
       .internal-facing-pdf-preview{border:1px solid #d7dde8;border-radius:10px;overflow:hidden;background:#f8fafc}

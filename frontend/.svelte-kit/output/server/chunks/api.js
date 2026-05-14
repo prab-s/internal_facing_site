@@ -8,7 +8,28 @@ async function apiFetch(path, options = {}) {
     ...options
   });
   if (!response.ok) {
-    const error = new Error(await response.text());
+    const contentType = response.headers.get("content-type") || "";
+    const rawText = await response.text();
+    let message = rawText;
+    if (contentType.includes("application/json")) {
+      try {
+        const payload = JSON.parse(rawText);
+        if (typeof payload?.detail === "string") {
+          message = payload.detail;
+        } else if (Array.isArray(payload?.detail)) {
+          message = payload.detail.map((item) => {
+            const location = Array.isArray(item?.loc) ? item.loc.filter(Boolean).join(".") : "";
+            const prefix = location ? `${location}: ` : "";
+            return `${prefix}${item?.msg || "Invalid value"}`;
+          }).join("; ");
+        } else if (typeof payload?.message === "string") {
+          message = payload.message;
+        }
+      } catch {
+        message = rawText;
+      }
+    }
+    const error = new Error(message);
     error.status = response.status;
     throw error;
   }
@@ -39,6 +60,10 @@ async function getProducts(params = {}) {
 }
 async function getProductTypes() {
   const r = await apiFetch("/product-types");
+  return r.json();
+}
+async function getProductTypePdfContext(id) {
+  const r = await apiFetch(`/product-types/${id}/pdf-context`);
   return r.json();
 }
 async function getProduct(id) {
@@ -73,9 +98,10 @@ export {
   getProductTypes as a,
   login as b,
   getAuthSession as c,
-  getProducts as d,
-  getProduct as e,
-  getProductChartData as f,
+  getProductChartData as d,
+  getProductTypePdfContext as e,
+  getProducts as f,
   getUsers as g,
+  getProduct as h,
   logout as l
 };

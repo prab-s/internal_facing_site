@@ -13,6 +13,7 @@ const GLOBAL_UNIT_OPTIONS = [
   "V",
   "°C"
 ];
+const FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS = ["63", "125", "250", "500", "1k", "2k", "4k", "8k"];
 function emptyProductForm() {
   return {
     model: "",
@@ -33,6 +34,7 @@ function emptyProductForm() {
 const theme = writable("light");
 export {
   API_BASE as A,
+  FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS as F,
   GLOBAL_UNIT_OPTIONS as G,
   emptyProductForm as e,
   theme as t

@@ -2,7 +2,7 @@
 Pydantic schemas for request/response validation.
 """
 from typing import Optional
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat
 
 
 # --- Product ---
@@ -337,6 +337,23 @@ class ProductParameterGroupInput(BaseModel):
     parameters: list[ProductParameterInput] = Field(default_factory=list)
 
 
+NumericValue = confloat(strict=True)
+
+
+class FanAcousticTableRow(BaseModel):
+    speed_rpm: Optional[NumericValue] = None
+    peak_pressure_pa: Optional[NumericValue] = None
+    peak_power_kw: Optional[NumericValue] = None
+    running_frequency_hz: Optional[NumericValue] = None
+    sound_pressure_db_3m: Optional[NumericValue] = None
+    sound_power_levels: dict[str, Optional[NumericValue]] = Field(default_factory=dict)
+
+
+class FanAcousticTable(BaseModel):
+    sound_power_columns: list[str] = Field(default_factory=list)
+    rows: list[FanAcousticTableRow] = Field(default_factory=list)
+
+
 class ProductBase(BaseModel):
     model: str
     product_type_key: Optional[str] = "fan"
@@ -355,6 +372,7 @@ class ProductBase(BaseModel):
     band_graph_faded_opacity: Optional[float] = None
     band_graph_permissible_label_color: Optional[str] = None
     parameter_groups: list[ProductParameterGroupInput] = Field(default_factory=list)
+    fan_acoustic_table: Optional[FanAcousticTable] = None
 
 
 class ProductCreate(ProductBase):
@@ -380,6 +398,7 @@ class ProductUpdate(BaseModel):
     band_graph_faded_opacity: Optional[float] = None
     band_graph_permissible_label_color: Optional[str] = None
     parameter_groups: Optional[list[ProductParameterGroupInput]] = None
+    fan_acoustic_table: Optional[FanAcousticTable] = None
 
 
 class ProductResponse(ProductBase):
@@ -564,6 +583,7 @@ class CmsCatalogueIndexProductResponse(BaseModel):
     parameter_groups: list[CmsCatalogueIndexParameterGroupResponse] = Field(default_factory=list)
     rpm_lines: list[CmsCatalogueIndexRpmLineResponse] = Field(default_factory=list)
     efficiency_points: list[CmsCatalogueIndexEfficiencyPointResponse] = Field(default_factory=list)
+    fan_acoustic_table: Optional[FanAcousticTable] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -710,6 +730,7 @@ class CmsProductResponse(BaseModel):
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
     rpm_lines: list[RpmLineResponse] = Field(default_factory=list)
     efficiency_points: list[EfficiencyPointResponse] = Field(default_factory=list)
+    fan_acoustic_table: Optional[FanAcousticTable] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -24,36 +24,7 @@
               class="hero-image"
             />
           </div>
-
-          <section class="spec-card">
-            <h2 class="spec-card__title">Impeller</h2>
-            <dl class="spec-list">
-              <div class="spec-list__row">
-                <dt>Series</dt>
-                <dd>{{product.series_name}}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section class="spec-card">
-            <h2 class="spec-card__title">Motor</h2>
-            <dl class="spec-list">
-              <div class="spec-list__row">
-                <dt>Series</dt>
-                <dd>{{product.series_name}}</dd>
-              </div>
-            </dl>
-          </section>
-          
-          <section class="spec-card">
-            <h2 class="spec-card__title">Fan</h2>
-            <dl class="spec-list">
-              <div class="spec-list__row">
-                <dt>Series</dt>
-                <dd>{{product.series_name}}</dd>
-              </div>
-            </dl>
-          </section>
+          {{product.grouped_specs_cards}}
 
           <section class="spec-card">
             <h2 class="spec-card__title">Comments</h2>
@@ -78,9 +49,7 @@
         </section>
       </section>
 
-      <section class="performance-band">
-        <div class="performance-table">{{product.grouped_specs_table}}</div>
-      </section>
+      {{product.fan_acoustic_table}}
 
       <section class="lower-grid">
         <section class="drawing-panel">

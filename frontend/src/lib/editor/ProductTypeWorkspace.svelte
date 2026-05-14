@@ -6,6 +6,7 @@
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
 
   export let initialMode = 'create';
+  export let initialProductTypeId = '';
 
   let productTypes = [];
   let templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
@@ -16,6 +17,18 @@
   let success = '';
   let mode = initialMode;
   let destroyed = false;
+
+  function syncProductTypeEditorUrl(productTypeId) {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete('product_type');
+    if (productTypeId != null && productTypeId !== '') {
+      params.set('product_type', String(productTypeId));
+    }
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }
 
   function resetDraft(productType = null) {
     return {
@@ -66,6 +79,7 @@
     mode = initialMode;
     selectedProductTypeId = '';
     productTypeDraft = resetDraft();
+    syncProductTypeEditorUrl('');
     error = '';
     success = '';
   }
@@ -84,6 +98,13 @@
     const requestedId = params.get('product_type');
     if (requestedId) {
       selectedProductTypeId = requestedId;
+    }
+  }
+
+  $: if (initialProductTypeId !== '' && String(selectedProductTypeId) !== String(initialProductTypeId)) {
+    selectedProductTypeId = String(initialProductTypeId);
+    if (mode !== 'create') {
+      mode = 'edit';
     }
   }
 
@@ -201,6 +222,7 @@
                 on:change={(event) => {
                   const selected = productTypes.find((item) => String(item.id) === event.currentTarget.value);
                   productTypeDraft = resetDraft(selected);
+                  syncProductTypeEditorUrl(event.currentTarget.value);
                 }}
               >
                 <option value="">-- Choose option --</option>

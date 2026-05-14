@@ -6,6 +6,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let selectedProductType;
     let initialMode = fallback($$props["initialMode"], "create");
+    let initialProductTypeId = fallback($$props["initialProductTypeId"], "");
     let productTypes = [];
     let templateRegistry = {
       product_type_templates: []
@@ -40,6 +41,12 @@ function ProductTypeWorkspace($$renderer, $$props) {
     let productTypeDraft = resetDraft();
     onDestroy(() => {
     });
+    if (initialProductTypeId !== "" && String(selectedProductTypeId) !== String(initialProductTypeId)) {
+      selectedProductTypeId = String(initialProductTypeId);
+      if (mode !== "create") {
+        mode = "edit";
+      }
+    }
     selectedProductType = productTypes.find((item) => String(item.id) === String(selectedProductTypeId)) || null;
     head("1b6bpt1", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
@@ -128,7 +135,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html("Save Product Type")}</button> <button class="btn btn-outline-secondary">Cancel</button></div></div></div></div></div>`);
-    bind_props($$props, { initialMode });
+    bind_props($$props, { initialMode, initialProductTypeId });
   });
 }
 export {

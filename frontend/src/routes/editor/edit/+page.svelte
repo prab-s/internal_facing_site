@@ -1,7 +1,8 @@
 <script>
-  import { page } from '$app/stores';
   import ManagePageShell from '$lib/editor/ManagePageShell.svelte';
   import ProductWorkspace from '$lib/editor/ProductWorkspace.svelte';
+
+  export let data = {};
 </script>
 
 <svelte:head>
@@ -17,6 +18,6 @@
 >
   <ProductWorkspace
     initialMode="editExisting"
-    initialProductId={$page.url.searchParams.get('product') ?? ''}
+    initialProductId={data.product ?? ''}
   />
 </ManagePageShell>

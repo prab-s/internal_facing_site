@@ -164,6 +164,56 @@
     `;
   }
 
+  function createPreviewFanAcousticTable() {
+    const columns = ['63', '125', '250', '500', '1k', '2k', '4k'];
+    const row = {
+      speed_rpm: 1550,
+      peak_pressure_pa: 1046,
+      peak_power_kw: 3.0,
+      running_frequency_hz: 55,
+      sound_pressure_db_3m: 58,
+      sound_power_levels: {
+        '63': 69,
+        '125': 82,
+        '250': 81,
+        '500': 75,
+        '1k': 72,
+        '2k': 68,
+        '4k': 66
+      }
+    };
+
+    return `
+      <section class="preview-fan-acoustic">
+        <div class="preview-fan-acoustic__title">Fan Acoustic Table</div>
+        <div class="preview-data-table-wrap">
+          <table class="preview-data-table preview-fan-acoustic__table">
+            <thead>
+              <tr>
+                <th>Speed (rpm)</th>
+                <th>Peak Pressure (Pa)</th>
+                <th>Peak Power (kW)</th>
+                <th>Running Frequency</th>
+                <th>Sound Pressure Level dB @ 3 meters</th>
+                ${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>${row.speed_rpm}</td>
+                <td>${row.peak_pressure_pa}</td>
+                <td>${row.peak_power_kw}</td>
+                <td>${row.running_frequency_hz}</td>
+                <td>${row.sound_pressure_db_3m}</td>
+                ${columns.map((column) => `<td>${row.sound_power_levels[column]}</td>`).join('')}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
   function buildPreviewTokenMap() {
     const previewSeriesNames = previewProductType?.series_names?.length ? previewProductType.series_names : ['Series A', 'Series B'];
     const previewSeriesGroups = previewProductTypeContext?.series?.length ? previewProductTypeContext.series : [];
@@ -200,6 +250,7 @@
         ['Frame', 'Cast aluminum'],
         ['Finish', 'Powder coated']
       ]),
+      '{{product.fan_acoustic_table}}': createPreviewFanAcousticTable(),
       '{{product.fan_map_points_table}}': createPreviewTable('Fan Map Points', [
         ['Point A', '1,250 m3/h'],
         ['Point B', '1,100 m3/h'],

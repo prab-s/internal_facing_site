@@ -22,6 +22,8 @@ export const GLOBAL_UNIT_OPTIONS = [
   '°C'
 ];
 
+export const FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS = ['63', '125', '250', '500', '1k', '2k', '4k', '8k'];
+
 export function emptyProductForm() {
   return {
     model: '',

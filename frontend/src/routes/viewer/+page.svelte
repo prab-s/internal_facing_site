@@ -22,11 +22,13 @@
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
 
+  export let data = {};
+
   let products = [];
   let productTypes = [];
   let templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
   let seriesRecords = [];
-  let selectedProductId = null;
+  let selectedProductId = normalizeViewerId(data?.product);
   let rpmLines = [];
   let rpmPoints = [];
   let efficiencyPoints = [];
@@ -42,11 +44,27 @@
   let filteredProducts = [];
   let seriesOptions = [];
   let selectedProduct = null;
-  let activeViewerTab = 'product';
-  let selectedProductTypeId = '';
+  function normalizeViewerTab(value) {
+    return value === 'series' || value === 'product-type' ? value : 'product';
+  }
+
+  function normalizeViewerId(value) {
+    if (value == null || value === '') return null;
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? null : numeric;
+  }
+
+  function normalizeViewerStringId(value) {
+    if (value == null) return '';
+    const stringValue = String(value);
+    return stringValue === 'null' || stringValue === 'undefined' ? '' : stringValue;
+  }
+
+  let activeViewerTab = normalizeViewerTab(data?.tab);
+  let selectedProductTypeId = normalizeViewerStringId(data?.product_type);
   let selectedProductTypeContext = null;
   let seriesTabProductTypeFilter = '';
-  let seriesTabSeriesId = '';
+  let seriesTabSeriesId = normalizeViewerStringId(data?.series);
   let seriesTabOptions = [];
   let selectedSeriesRecord = null;
   let viewerUrlStateReady = false;
@@ -57,31 +75,6 @@
   let refreshingSeriesGraphId = null;
   let refreshingSeriesPdfJob = null;
   let destroyed = false;
-
-  function parseViewerStateFromUrl() {
-    if (!browser) return;
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab');
-    const product = params.get('product');
-    const productType = params.get('product_type');
-    const series = params.get('series');
-
-    if (tab === 'product' || tab === 'series' || tab === 'product-type') {
-      activeViewerTab = tab;
-    }
-
-    if (product && !Number.isNaN(Number(product))) {
-      selectedProductId = Number(product);
-    }
-
-    if (productType && !Number.isNaN(Number(productType))) {
-      selectedProductTypeId = String(Number(productType));
-    }
-
-    if (series && !Number.isNaN(Number(series))) {
-      seriesTabSeriesId = String(Number(series));
-    }
-  }
 
   function syncViewerUrl() {
     if (!browser || !viewerUrlStateReady) return;
@@ -238,6 +231,16 @@
     return '—';
   }
 
+  function formatNumericValue(value) {
+    if (value == null || value === '') return '—';
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? String(value) : `${numeric}`;
+  }
+
+  function productHasFanAcousticTable(product) {
+    return product?.product_type_key === 'fan';
+  }
+
   function buildChartOptions() {
     const currentProduct = selectedProduct;
     const chartTheme = getChartTheme($theme);
@@ -289,7 +292,7 @@
           seriesTabProductTypeFilter = selectedSeries.product_type_key || '';
         }
       }
-      if (!selectedProductId) {
+      if (!selectedProductId && activeViewerTab === 'product') {
         selectedProductId = products[0]?.id != null ? Number(products[0].id) : null;
       }
     } catch (e) {
@@ -519,7 +522,7 @@
       if (selectedProductId && !filteredProducts.some((product) => Number(product.id) === Number(selectedProductId))) {
         selectedProductId = filteredProducts[0]?.id != null ? Number(filteredProducts[0].id) : null;
       }
-      if (!selectedProductId && filteredProducts.length) {
+      if (!selectedProductId && filteredProducts.length && activeViewerTab === 'product') {
         selectedProductId = Number(filteredProducts[0].id);
       }
     } catch (e) {
@@ -606,12 +609,12 @@
   $: if (viewerUrlStateReady) {
     activeViewerTab;
     selectedProductId;
+    selectedProductTypeId;
     seriesTabSeriesId;
     syncViewerUrl();
   }
 
   onMount(async () => {
-    parseViewerStateFromUrl();
     await loadEverything();
     await loadSeriesOptions();
     await loadSeriesTabOptions();
@@ -890,6 +893,68 @@
           {/if}
         </div>
       </div>
+
+      {#if productHasFanAcousticTable(currentProduct)}
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h3 class="h5">Fan Acoustic Table</h3>
+            <p class="text-body-secondary mb-3">Rows track the current RPM graph rows. Octave-band columns appear in the configured order.</p>
+            <div class="table-responsive fan-acoustic-viewer-table-wrap">
+              <table class="table table-sm align-middle fan-acoustic-viewer-table mb-0">
+                <colgroup>
+                  <col style="width: 7.5rem" />
+                  <col style="width: 8.5rem" />
+                  <col style="width: 7.5rem" />
+                  <col style="width: 7.5rem" />
+                  <col style="width: 10.5rem" />
+                  {#each currentProduct.fan_acoustic_table.sound_power_columns as _column}
+                    <col style="width: 4.75rem" />
+                  {/each}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th rowspan="2">Speed (rpm)</th>
+                    <th rowspan="2">Peak Pressure (Pa)</th>
+                    <th rowspan="2">Peak Power (kW)</th>
+                    <th rowspan="2">Running Frequency</th>
+                    <th rowspan="2">Sound Pressure Level dB @ 3 meters</th>
+                    <th colspan={currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0} class="text-center">
+                      Sound Power Level SWL dB re 1pw
+                    </th>
+                  </tr>
+                  <tr>
+                    {#each currentProduct.fan_acoustic_table.sound_power_columns as column}
+                      <th>{column}</th>
+                    {/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#if (currentProduct.fan_acoustic_table.rows?.length ?? 0) > 0}
+                    {#each currentProduct.fan_acoustic_table.rows as row}
+                      <tr>
+                        <td>{formatNumericValue(row.speed_rpm)}</td>
+                        <td>{formatNumericValue(row.peak_pressure_pa)}</td>
+                        <td>{formatNumericValue(row.peak_power_kw)}</td>
+                        <td>{formatNumericValue(row.running_frequency_hz)}</td>
+                        <td>{formatNumericValue(row.sound_pressure_db_3m)}</td>
+                        {#each currentProduct.fan_acoustic_table.sound_power_columns as column}
+                          <td>{formatNumericValue(row.sound_power_levels?.[column])}</td>
+                        {/each}
+                      </tr>
+                    {/each}
+                  {:else}
+                    <tr>
+                      <td colspan={5 + (currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0)} class="text-body-secondary">
+                        No fan acoustic rows yet.
+                      </td>
+                    </tr>
+                  {/if}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       <div class="card shadow-sm">
         <div class="card-body">
@@ -1254,6 +1319,21 @@
     height: 160px;
     object-fit: contain;
     display: block;
+  }
+
+  .fan-acoustic-viewer-table {
+    width: max-content;
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .fan-acoustic-viewer-table th,
+  .fan-acoustic-viewer-table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.25;
+    vertical-align: top;
   }
 
   .viewer-html :global(:first-child) {

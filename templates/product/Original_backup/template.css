@@ -197,6 +197,57 @@ body.vt-sheet-body {
   width: 100%;
 }
 
+.spec-group + .spec-group {
+  margin-top: 3.5mm;
+}
+
+.spec-group h3 {
+  margin: 0 0 1.2mm;
+  color: var(--deep-blue);
+  font-size: 3.8mm;
+  font-weight: 700;
+}
+
+.fan-acoustic-panel {
+  margin-top: 3mm;
+}
+
+.fan-acoustic-panel__title {
+  margin: 0 0 1.4mm;
+  color: var(--deep-red);
+  font-size: 4.2mm;
+  font-weight: 700;
+}
+
+.fan-acoustic-panel__table-wrap {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.fan-acoustic-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 3.05mm;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.fan-acoustic-table th,
+.fan-acoustic-table td {
+  border: 0.25mm solid var(--line);
+  padding: 1.1mm 1.4mm;
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.fan-acoustic-table thead th {
+  background: var(--soft-blue);
+  font-weight: 700;
+}
+
 .performance-table table,
 .performance-table .spec-table,
 .spec-groups table,

@@ -1566,44 +1566,126 @@ def build_grouped_spec_group_token_map(product: Product) -> dict[str, str]:
     return replacements
 
 
-def render_fan_map_points_table(product: Product) -> str:
-    ordered_lines = sorted(product.rpm_lines, key=lambda line: (line.rpm, line.id))
-    if not ordered_lines:
-        return '<p class="placeholder">No fan map points available.</p>'
+def render_grouped_specs_cards(product: Product) -> str:
+    groups = sorted(product.parameter_groups, key=lambda group: (group.sort_order, group.id))
+    if not groups:
+        return '<p class="placeholder">No grouped specifications available.</p>'
 
-    rows: list[str] = []
-    for line in ordered_lines:
-        ordered_points = sorted(line.points or [], key=lambda point: (point.airflow, point.id))
-        if not ordered_points:
+    cards: list[str] = []
+    for group in groups:
+        group_key = template_token_slug(group.group_name or "")
+        rows: list[str] = []
+        for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+            if parameter.value_string not in {None, ""}:
+                value_html = html.escape(parameter.value_string)
+            elif parameter.value_number is not None:
+                number_value = f"{parameter.value_number:g}"
+                value_html = html.escape(f"{number_value} {parameter.unit}".strip())
+            else:
+                value_html = "—"
             rows.append(
-                "<tr>"
-                f"<td>{html.escape(f'{line.rpm:g}')}</td>"
-                "<td colspan=\"3\">No points recorded</td>"
-                "</tr>"
+                "<div class=\"spec-list__row\">"
+                f"<dt>{html.escape(parameter.parameter_name)}</dt>"
+                f"<dd>{value_html}</dd>"
+                "</div>"
             )
-            continue
+        if not rows:
+            rows.append('<p class="placeholder">No specifications available.</p>')
 
-        for index, point in enumerate(ordered_points, start=1):
-            rows.append(
-                "<tr>"
-                f"<td>{html.escape(f'{line.rpm:g}')}</td>"
-                f"<td>{html.escape(str(index))}</td>"
-                f"<td>{html.escape(f'{point.airflow:g}')}</td>"
-                f"<td>{html.escape(f'{point.pressure:g}')}</td>"
-                "</tr>"
+        group_class = f"grouped-spec-group--{group_key}" if group_key else "grouped-spec-group--custom"
+        cards.append(
+            '<section class="spec-card">'
+            f'<h2 class="spec-card__title">{html.escape(group.group_name)}</h2>'
+            f'<div class="grouped-spec-group {group_class}">'
+            + (
+                '<dl class="spec-list">'
+                + "".join(rows)
+                + "</dl>"
+                if rows and rows[0].startswith("<div class=\"spec-list__row\">")
+                else "".join(rows)
             )
+            + "</div></section>"
+        )
+
+    if not cards:
+        return '<p class="placeholder">No grouped specifications available.</p>'
+
+    return "".join(cards)
+
+
+def render_fan_acoustic_table(product: Product) -> str:
+    table = product.fan_acoustic_table or {}
+    if product.product_type_key != "fan":
+        return ""
+    sound_power_columns = table.get("sound_power_columns") or []
+    if not sound_power_columns:
+        sound_power_columns = ["63", "125", "250", "500", "1k", "2k", "4k", "8k"]
+    rows = table.get("rows") or []
+
+    def format_numeric(value):
+        if value is None or value == "":
+            return ""
+        try:
+            return html.escape(f"{float(value):g}")
+        except (TypeError, ValueError):
+            return html.escape(str(value))
+
+    header_cells = [
+        '<th rowspan="2">Speed (rpm)</th>',
+        '<th rowspan="2">Peak Pressure (Pa)</th>',
+        '<th rowspan="2">Peak Power (kW)</th>',
+        '<th rowspan="2">Running Frequency</th>',
+        '<th rowspan="2">Sound Pressure Level dB @ 3 meters</th>',
+    ]
+
+    body_rows: list[str] = []
+    if rows:
+        for row in rows:
+            sound_power_levels = row.get("sound_power_levels") or {}
+            body_rows.append(
+                "<tr>"
+                f"<td>{format_numeric(row.get('speed_rpm'))}</td>"
+                f"<td>{format_numeric(row.get('peak_pressure_pa'))}</td>"
+                f"<td>{format_numeric(row.get('peak_power_kw'))}</td>"
+                f"<td>{format_numeric(row.get('running_frequency_hz'))}</td>"
+                f"<td>{format_numeric(row.get('sound_pressure_db_3m'))}</td>"
+                + "".join(f"<td>{format_numeric(sound_power_levels.get(column))}</td>" for column in sound_power_columns)
+                + "</tr>"
+            )
+    else:
+        body_rows.append(
+            "<tr>"
+            f'<td colspan="{5 + len(sound_power_columns)}">No fan acoustic rows available.</td>'
+            "</tr>"
+        )
+
+    colgroup = (
+        '<colgroup>'
+        '<col style="width: 16mm" />'
+        '<col style="width: 18mm" />'
+        '<col style="width: 16mm" />'
+        '<col style="width: 16mm" />'
+        '<col style="width: 32mm" />'
+        + "".join('<col style="width: 8mm" />' for _ in sound_power_columns)
+        + "</colgroup>"
+    )
 
     return (
-        '<table class="fan-map-points-table">'
-        '<caption>Fan Map Points</caption>'
-        "<thead><tr>"
-        "<th>RPM Line</th>"
-        "<th>Point</th>"
-        "<th>Airflow</th>"
-        "<th>Pressure</th>"
-        "</tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table>"
+        '<section class="fan-acoustic-panel">'
+        '<h2 class="fan-acoustic-panel__title">Fan Acoustic Table</h2>'
+        '<div class="fan-acoustic-panel__table-wrap">'
+        '<table class="fan-acoustic-table">'
+        + colgroup
+        + "<thead>"
+        + "<tr>"
+        + "".join(header_cells)
+        + f'<th colspan="{len(sound_power_columns)}" class="fan-acoustic-table__band-heading">Sound Power Level SWL dB re 1pw</th>'
+        + "</tr>"
+        + "<tr>"
+        + "".join(f"<th>{html.escape(str(column))}</th>" for column in sound_power_columns)
+        + "</tr></thead><tbody>"
+        + "".join(body_rows)
+        + "</tbody></table></div></section>"
     )
 
 
@@ -1667,8 +1749,9 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
         "{{product.features_html}}": render_richtext_html(product.description2_html),
         "{{product.specifications_html}}": render_richtext_html(product.description3_html),
         "{{product.comments_html}}": render_richtext_html(product.comments_html),
+        "{{product.grouped_specs_cards}}": render_grouped_specs_cards(product),
         "{{product.grouped_specs_table}}": render_grouped_specs_table(product),
-        "{{product.fan_map_points_table}}": render_fan_map_points_table(product),
+        "{{product.fan_acoustic_table}}": render_fan_acoustic_table(product),
         "{{product.image_gallery}}": render_image_gallery_html(product),
         "{{product.primary_product_image_url}}": primary_image_uri,
         "{{product.graph_image_url}}": graph_image_uri,
@@ -2351,6 +2434,7 @@ def build_cms_catalogue_index_product(product: Product) -> dict:
             }
             for index, point in enumerate(sorted(product.efficiency_points or [], key=lambda item: (item.airflow, item.id)))
         ],
+        "fan_acoustic_table": product.fan_acoustic_table,
     }
 
 
@@ -2641,6 +2725,17 @@ def delete_product_assets(product: Product):
 def refresh_graph_for_product(db: Session, product: Product):
     db.refresh(product)
     sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
+
+
+def sync_fan_acoustic_table_for_product(db: Session, product: Product):
+    if product.product_type_key != "fan":
+        product.fan_acoustic_table = None
+        return
+    try:
+        db.expire(product, ["rpm_lines"])
+    except Exception:
+        pass
+    product.fan_acoustic_table = product.fan_acoustic_table
 
 
 def clear_all_graph_images(db: Session) -> int:
@@ -4413,6 +4508,7 @@ def get_cms_product(product_id: int, db: Session = Depends(get_db)):
             joinedload(Product.series),
             selectinload(Product.product_images),
             selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+            selectinload(Product.rpm_lines),
             selectinload(Product.rpm_lines).selectinload(RpmLine.points),
             selectinload(Product.efficiency_points),
         )
@@ -4451,6 +4547,7 @@ def get_cms_product_graph_values(
     q = db.query(Product).options(
         joinedload(Product.product_type),
         selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+        selectinload(Product.rpm_lines),
         selectinload(Product.rpm_lines).selectinload(RpmLine.points),
         selectinload(Product.efficiency_points),
     )
@@ -4538,6 +4635,7 @@ def list_products(
         joinedload(Product.series),
         selectinload(Product.product_images),
         selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+        selectinload(Product.rpm_lines),
     )
     if search:
         s = f"%{search}%"
@@ -4561,6 +4659,7 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
     series = get_series_by_id(db, product_data.pop("series_id", None))
     parameter_groups = product_data.pop("parameter_groups", [])
+    fan_acoustic_table = product_data.pop("fan_acoustic_table", None)
     rpm_line_presets = product_data.pop("rpm_lines", [])
     efficiency_point_presets = product_data.pop("efficiency_points", [])
     if not rpm_line_presets:
@@ -4639,6 +4738,10 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(product)
+    if product.product_type_key == "fan":
+        product.fan_acoustic_table = fan_acoustic_table
+        db.commit()
+        db.refresh(product)
     sync_graph_image(product, created_rpm_lines or list(product.rpm_lines), list(product.efficiency_points))
     db.commit()
     db.refresh(product)
@@ -4649,7 +4752,18 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
 @app.get("/api/fans/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
 @app.get("/api/products/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Get one product")
 def get_product(product_id: int, db: Session = Depends(get_db)):
-    product = db.get(Product, product_id)
+    product = (
+        db.query(Product)
+        .options(
+            joinedload(Product.product_type),
+            joinedload(Product.series),
+            selectinload(Product.product_images),
+            selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+            selectinload(Product.rpm_lines),
+        )
+        .filter(Product.id == product_id)
+        .first()
+    )
     if not product:
         raise HTTPException(404, "Product not found")
     return product
@@ -4660,6 +4774,8 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
     product = require_product(db, product_id)
     updates = body.model_dump(exclude_unset=True)
+    fan_acoustic_table_specified = "fan_acoustic_table" in body.model_fields_set
+    fan_acoustic_table = updates.pop("fan_acoustic_table", None) if fan_acoustic_table_specified else None
     next_product_type = product.product_type
     if "product_type_key" in updates:
         product_type = get_product_type_by_key(db, updates.pop("product_type_key"))
@@ -4696,6 +4812,13 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
             setattr(product, k, v)
     if product.series is not None:
         product.series_name = product.series.name
+    if product.product_type_key == "fan":
+        if fan_acoustic_table_specified:
+            product.fan_acoustic_table = fan_acoustic_table
+        elif product._fan_acoustic_table_json is None:
+            product.fan_acoustic_table = None
+    else:
+        product.fan_acoustic_table = None
     sync_product_image_files(product)
     db.commit()
     db.refresh(product)
@@ -4744,6 +4867,9 @@ def create_rpm_line(product_id: int, body: RpmLineCreate, db: Session = Depends(
     line = RpmLine(product_id=product_id, rpm=body.rpm, band_color=normalize_color_value(body.band_color))
     db.add(line)
     db.commit()
+    db.refresh(product)
+    sync_fan_acoustic_table_for_product(db, product)
+    db.commit()
     refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(line)
@@ -4773,6 +4899,9 @@ def update_rpm_line(product_id: int, line_id: int, body: RpmLineUpdate, db: Sess
         line.band_color = normalize_color_value(updates["band_color"])
 
     db.commit()
+    db.refresh(product)
+    sync_fan_acoustic_table_for_product(db, product)
+    db.commit()
     refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(line)
@@ -4788,6 +4917,9 @@ def delete_rpm_line(product_id: int, line_id: int, db: Session = Depends(get_db)
     if not line or line.product_id != product_id:
         raise HTTPException(404, "RPM line not found")
     db.delete(line)
+    db.commit()
+    db.refresh(product)
+    sync_fan_acoustic_table_for_product(db, product)
     db.commit()
     refresh_graph_for_product(db, product)
     db.commit()
@@ -4932,6 +5064,7 @@ def update_efficiency_point(
         refresh_graph_for_product(db, product)
         db.commit()
     db.refresh(point)
+    notify_public_catalogue_cache_refresh()
     return point
 
 
@@ -5393,6 +5526,7 @@ async def upload_product_images(
     sync_product_image_files(product)
     db.commit()
     db.refresh(product)
+    notify_public_catalogue_cache_refresh()
     return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
@@ -5410,6 +5544,7 @@ def reorder_product_images(product_id: int, body: ProductImageReorder, db: Sessi
     sync_product_image_files(product)
     db.commit()
     db.refresh(product)
+    notify_public_catalogue_cache_refresh()
     return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
 
 
@@ -5426,6 +5561,7 @@ def delete_product_image(product_id: int, image_id: int, db: Session = Depends(g
     db.flush()
     sync_product_image_files(product)
     db.commit()
+    notify_public_catalogue_cache_refresh()
     return {"deleted": image_id}
 
 

@@ -1,7 +1,8 @@
 <script>
-  import { page } from '$app/stores';
   import ManagePageShell from '$lib/editor/ManagePageShell.svelte';
   import SeriesWorkspace from '$lib/editor/SeriesWorkspace.svelte';
+
+  export let data = {};
 </script>
 
 <svelte:head>
@@ -17,6 +18,6 @@
 >
   <SeriesWorkspace
     initialMode="edit"
-    initialSeriesId={$page.url.searchParams.get('series') ?? ''}
+    initialSeriesId={data.series ?? ''}
   />
 </ManagePageShell>

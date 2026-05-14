@@ -5,6 +5,7 @@ import os
 import re
 import hashlib
 import colorsys
+import json
 
 from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -28,6 +29,183 @@ def _stable_hex_color(identity: str | int) -> str:
     lightness = 0.44 + (digest[3] / 255.0) * 0.08
     red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
     return "#{:02x}{:02x}{:02x}".format(int(red * 255), int(green * 255), int(blue * 255))
+
+
+FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS = ["63", "125", "250", "500", "1k", "2k", "4k", "8k"]
+
+
+def _fan_acoustic_default_table() -> dict:
+    return {"sound_power_columns": list(FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS), "rows": []}
+
+
+def _fan_acoustic_normalize_columns(columns) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for column in columns or []:
+        label = str(column or "").strip()
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        normalized.append(label)
+    return normalized or list(FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS)
+
+
+def _fan_acoustic_coerce_number(value):
+    if value in {None, ""}:
+        return None
+    try:
+        if isinstance(value, bool):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fan_acoustic_normalize_row(row: dict | None, sound_power_columns: list[str], rpm_line_id: int | None = None) -> dict:
+    row = row or {}
+    sound_power_levels = row.get("sound_power_levels") if isinstance(row.get("sound_power_levels"), dict) else {}
+    normalized_row = {
+        "speed_rpm": _fan_acoustic_coerce_number(row.get("speed_rpm")),
+        "peak_pressure_pa": _fan_acoustic_coerce_number(row.get("peak_pressure_pa")),
+        "peak_power_kw": _fan_acoustic_coerce_number(row.get("peak_power_kw")),
+        "running_frequency_hz": _fan_acoustic_coerce_number(row.get("running_frequency_hz")),
+        "sound_pressure_db_3m": _fan_acoustic_coerce_number(row.get("sound_pressure_db_3m")),
+        "sound_power_levels": {
+            column: _fan_acoustic_coerce_number(sound_power_levels.get(column))
+            for column in sound_power_columns
+        },
+    }
+    if rpm_line_id is not None:
+        normalized_row["_rpm_line_id"] = int(rpm_line_id)
+    elif row.get("_rpm_line_id") is not None:
+        normalized_row["_rpm_line_id"] = int(row.get("_rpm_line_id"))
+    return normalized_row
+
+
+def _fan_acoustic_public_table(table: dict | None) -> dict:
+    table = table or {}
+    sound_power_columns = _fan_acoustic_normalize_columns(table.get("sound_power_columns"))
+    rows = []
+    for row in table.get("rows") or []:
+        if not isinstance(row, dict):
+            row = {}
+        public_row = {key: value for key, value in row.items() if not str(key).startswith("_")}
+        public_row["sound_power_levels"] = {
+            column: _fan_acoustic_coerce_number((row.get("sound_power_levels") or {}).get(column))
+            for column in sound_power_columns
+        }
+        rows.append(
+            {
+                "speed_rpm": _fan_acoustic_coerce_number(public_row.get("speed_rpm")),
+                "peak_pressure_pa": _fan_acoustic_coerce_number(public_row.get("peak_pressure_pa")),
+                "peak_power_kw": _fan_acoustic_coerce_number(public_row.get("peak_power_kw")),
+                "running_frequency_hz": _fan_acoustic_coerce_number(public_row.get("running_frequency_hz")),
+                "sound_pressure_db_3m": _fan_acoustic_coerce_number(public_row.get("sound_pressure_db_3m")),
+                "sound_power_levels": public_row["sound_power_levels"],
+            }
+        )
+    return {"sound_power_columns": sound_power_columns, "rows": rows}
+
+
+def _fan_acoustic_lines_by_id(rpm_lines) -> dict[int, object]:
+    return {int(line.id): line for line in rpm_lines or [] if getattr(line, "id", None) is not None}
+
+
+def _fan_acoustic_sync_rows(table: dict | None, rpm_lines=None) -> dict:
+    table = table or _fan_acoustic_default_table()
+    sound_power_columns = _fan_acoustic_normalize_columns(table.get("sound_power_columns"))
+    source_rows = [row for row in (table.get("rows") or []) if isinstance(row, dict)]
+    current_lines = list(rpm_lines or [])
+
+    if not current_lines:
+        return {
+            "sound_power_columns": sound_power_columns,
+            "rows": [_fan_acoustic_normalize_row(row, sound_power_columns) for row in source_rows],
+        }
+
+    rows_by_line_id: dict[int, dict] = {}
+    fallback_rows: list[dict] = []
+    for row in source_rows:
+        line_id = row.get("_rpm_line_id")
+        if line_id is not None:
+            try:
+                rows_by_line_id[int(line_id)] = row
+                continue
+            except (TypeError, ValueError):
+                pass
+        fallback_rows.append(row)
+
+    fallback_index = 0
+    synced_rows: list[dict] = []
+    for line in current_lines:
+        line_id = getattr(line, "id", None)
+        line_rpm = getattr(line, "rpm", None)
+        source_row = None
+        if line_id is not None and int(line_id) in rows_by_line_id:
+            source_row = rows_by_line_id.pop(int(line_id))
+        elif fallback_index < len(fallback_rows):
+            source_row = fallback_rows[fallback_index]
+            fallback_index += 1
+        else:
+            source_row = {}
+
+        synced_rows.append(
+            {
+                **_fan_acoustic_normalize_row(source_row, sound_power_columns, rpm_line_id=int(line_id) if line_id is not None else None),
+                "speed_rpm": _fan_acoustic_coerce_number(line_rpm),
+            }
+        )
+
+    return {"sound_power_columns": sound_power_columns, "rows": synced_rows}
+
+
+def _fan_acoustic_merge_tables(existing_table: dict | None, incoming_table: dict | None, rpm_lines=None) -> dict:
+    existing_table = existing_table or _fan_acoustic_default_table()
+    incoming_table = incoming_table or {}
+    sound_power_columns = _fan_acoustic_normalize_columns(
+        incoming_table.get("sound_power_columns") if incoming_table.get("sound_power_columns") is not None else existing_table.get("sound_power_columns")
+    )
+
+    existing_rows = [row for row in (existing_table.get("rows") or []) if isinstance(row, dict)]
+    incoming_rows = [row for row in (incoming_table.get("rows") or []) if isinstance(row, dict)]
+
+    merged_rows: list[dict] = []
+    max_rows = max(len(existing_rows), len(incoming_rows))
+    for index in range(max_rows):
+        source_row = incoming_rows[index] if index < len(incoming_rows) else {}
+        fallback_row = existing_rows[index] if index < len(existing_rows) else {}
+        merged_rows.append(
+            {
+                "_rpm_line_id": fallback_row.get("_rpm_line_id"),
+                "speed_rpm": source_row.get("speed_rpm", fallback_row.get("speed_rpm")),
+                "peak_pressure_pa": source_row.get("peak_pressure_pa", fallback_row.get("peak_pressure_pa")),
+                "peak_power_kw": source_row.get("peak_power_kw", fallback_row.get("peak_power_kw")),
+                "running_frequency_hz": source_row.get("running_frequency_hz", fallback_row.get("running_frequency_hz")),
+                "sound_pressure_db_3m": source_row.get("sound_pressure_db_3m", fallback_row.get("sound_pressure_db_3m")),
+                "sound_power_levels": {
+                    column: (source_row.get("sound_power_levels") or {}).get(
+                        column,
+                        (fallback_row.get("sound_power_levels") or {}).get(column),
+                    )
+                    for column in sound_power_columns
+                },
+            }
+        )
+
+    return _fan_acoustic_sync_rows({"sound_power_columns": sound_power_columns, "rows": merged_rows}, rpm_lines=rpm_lines)
+
+
+def _fan_acoustic_parse_table(raw_value) -> dict | None:
+    if raw_value is None or raw_value == "":
+        return None
+    if isinstance(raw_value, str):
+        try:
+            raw_value = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(raw_value, dict):
+        return None
+    return raw_value
 
 
 class User(Base):
@@ -266,6 +444,7 @@ class Product(Base):
     band_graph_label_text_color = Column(String(32), nullable=True)
     band_graph_faded_opacity = Column(Float, nullable=True)
     band_graph_permissible_label_color = Column(String(32), nullable=True)
+    _fan_acoustic_table_json = Column("fan_acoustic_table", Text, nullable=True)
 
     product_type = relationship("ProductType", back_populates="products")
     series = relationship("Series", back_populates="products")
@@ -374,6 +553,28 @@ class Product(Base):
     @specifications_html.setter
     def specifications_html(self, value):
         self.description3_html = value
+
+    @property
+    def fan_acoustic_table(self):
+        if self.product_type_key != "fan":
+            return None
+        raw_table = _fan_acoustic_parse_table(self._fan_acoustic_table_json) or _fan_acoustic_default_table()
+        synced_table = _fan_acoustic_sync_rows(raw_table, self.rpm_lines)
+        return _fan_acoustic_public_table(synced_table)
+
+    @fan_acoustic_table.setter
+    def fan_acoustic_table(self, value):
+        if self.product_type_key != "fan":
+            self._fan_acoustic_table_json = None
+            return
+
+        incoming_table = _fan_acoustic_parse_table(value)
+        if incoming_table is None:
+            incoming_table = _fan_acoustic_default_table()
+
+        existing_table = _fan_acoustic_parse_table(self._fan_acoustic_table_json) or _fan_acoustic_default_table()
+        merged_table = _fan_acoustic_merge_tables(existing_table, incoming_table, self.rpm_lines)
+        self._fan_acoustic_table_json = json.dumps(merged_table)
 
 
 def _series_description_alias_property(field_name):

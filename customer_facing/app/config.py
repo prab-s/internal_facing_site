@@ -28,7 +28,7 @@ class Settings:
     catalogue_startup_max_wait_seconds = float(os.getenv("CATALOGUE_STARTUP_MAX_WAIT_SECONDS", "30"))
     cms_api_token = os.getenv("CMS_API_TOKEN", "").strip()
     catalogue_cache_path = Path(os.getenv("CATALOGUE_CACHE_PATH", "/tmp/vent-tech-catalogue-cache.json")).expanduser()
-    catalogue_refresh_interval_seconds = float(os.getenv("CATALOGUE_REFRESH_INTERVAL_SECONDS", "300"))
+    catalogue_refresh_interval_seconds = float(os.getenv("CATALOGUE_REFRESH_INTERVAL_SECONDS", "3600"))
 
 
 settings = Settings()

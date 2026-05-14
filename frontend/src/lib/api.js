@@ -11,7 +11,30 @@ async function apiFetch(path, options = {}) {
   });
 
   if (!response.ok) {
-    const error = new Error(await response.text());
+    const contentType = response.headers.get('content-type') || '';
+    const rawText = await response.text();
+    let message = rawText;
+    if (contentType.includes('application/json')) {
+      try {
+        const payload = JSON.parse(rawText);
+        if (typeof payload?.detail === 'string') {
+          message = payload.detail;
+        } else if (Array.isArray(payload?.detail)) {
+          message = payload.detail
+            .map((item) => {
+              const location = Array.isArray(item?.loc) ? item.loc.filter(Boolean).join('.') : '';
+              const prefix = location ? `${location}: ` : '';
+              return `${prefix}${item?.msg || 'Invalid value'}`;
+            })
+            .join('; ');
+        } else if (typeof payload?.message === 'string') {
+          message = payload.message;
+        }
+      } catch {
+        message = rawText;
+      }
+    }
+    const error = new Error(message);
     error.status = response.status;
     throw error;
   }

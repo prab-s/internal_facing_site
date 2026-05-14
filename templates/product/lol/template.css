@@ -202,6 +202,46 @@ body.product-template {
   font-weight: 700;
 }
 
+.fan-acoustic-panel {
+  margin-top: 18px;
+}
+
+.fan-acoustic-panel__title {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fan-acoustic-panel__table-wrap {
+    width: 100%;
+    overflow-x: hidden;
+}
+
+.fan-acoustic-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.fan-acoustic-table th,
+.fan-acoustic-table td {
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  text-align: center;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.fan-acoustic-table th {
+  background: #f8fafc;
+  font-weight: 700;
+}
+
 .image-gallery-slot {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

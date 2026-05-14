@@ -1,6 +1,8 @@
 <script>
   import ManagePageShell from '$lib/editor/ManagePageShell.svelte';
   import ProductTypeWorkspace from '$lib/editor/ProductTypeWorkspace.svelte';
+
+  export let data = {};
 </script>
 
 <svelte:head>
@@ -14,5 +16,5 @@
   backHref="/editor"
   backLabel="Back to Editor"
 >
-  <ProductTypeWorkspace initialMode="edit" />
+  <ProductTypeWorkspace initialMode="edit" initialProductTypeId={data.product_type ?? ''} />
 </ManagePageShell>

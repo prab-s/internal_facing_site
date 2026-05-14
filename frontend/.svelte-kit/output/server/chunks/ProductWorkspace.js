@@ -6,7 +6,7 @@ import "./utils.js";
 import "@sveltejs/kit/internal/server";
 import "./root.js";
 import "./state.svelte.js";
-import { t as theme, e as emptyProductForm, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
+import { F as FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS, t as theme, e as emptyProductForm, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts, R as RPM_BAND_FALLBACK_COLORS, F as FULL_CHART_LINE_DEFINITIONS } from "./fullChart.js";
 import { S as SeriesNamesBadgeList } from "./SeriesNamesBadgeList.js";
 function AccordionCard($$renderer, $$props) {
@@ -72,6 +72,7 @@ function ProductWorkspace($$renderer, $$props) {
     let createCoreDetailsOpen = true;
     let createProductAttributesOpen = true;
     let createGroupedSpecificationsOpen = true;
+    let createFanAcousticTableOpen = true;
     let allAccordionsOpen = false;
     let specificationGroupOpenState = {};
     const SPECIFICATION_GROUP_TINTS = [
@@ -113,6 +114,7 @@ function ProductWorkspace($$renderer, $$props) {
       }
     ];
     let productForm = emptyProductForm();
+    let fanAcousticTable = createFanAcousticTableDraft();
     function syncSpecificationGroupOpenState(groups, currentState) {
       const nextState = {};
       groups.forEach((_, index) => {
@@ -191,6 +193,16 @@ function ProductWorkspace($$renderer, $$props) {
     function parseOptionalNumber(value) {
       return value === "" || value == null ? null : parseFloat(value);
     }
+    function isBlankEditorNumericValue(value) {
+      return value === "" || value == null;
+    }
+    function isValidEditorNumericValue(value) {
+      if (isBlankEditorNumericValue(value)) return true;
+      return Number.isFinite(Number(value));
+    }
+    function editorNumericInputClass(value) {
+      return isValidEditorNumericValue(value) ? "" : "is-invalid";
+    }
     function createParameterDraft(parameter = {}) {
       const unitValue = parameter.unit ?? "";
       const isCustomUnit = unitValue !== "" && !GLOBAL_UNIT_OPTIONS.includes(unitValue);
@@ -232,6 +244,46 @@ function ProductWorkspace($$renderer, $$props) {
         efficiency_higher_end: point.efficiency_higher_end ?? "",
         permissible_use: point.permissible_use ?? ""
       };
+    }
+    function normalizeFanAcousticColumns(columns) {
+      const normalized = [];
+      const seen = /* @__PURE__ */ new Set();
+      for (const column of columns ?? []) {
+        const label = String(column ?? "").trim();
+        if (!label || seen.has(label)) continue;
+        seen.add(label);
+        normalized.push(label);
+      }
+      return normalized.length ? normalized : [...FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS];
+    }
+    function createFanAcousticRowDraft(row = {}, columns = FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS) {
+      const soundPowerLevels = row.sound_power_levels && typeof row.sound_power_levels === "object" ? row.sound_power_levels : {};
+      return {
+        speed_rpm: row.speed_rpm ?? "",
+        peak_pressure_pa: row.peak_pressure_pa ?? "",
+        peak_power_kw: row.peak_power_kw ?? "",
+        running_frequency_hz: row.running_frequency_hz ?? "",
+        sound_pressure_db_3m: row.sound_pressure_db_3m ?? "",
+        sound_power_levels: Object.fromEntries(columns.map((column) => [column, soundPowerLevels[column] ?? ""]))
+      };
+    }
+    function createFanAcousticTableDraft(table = {}, rpmLineSource = []) {
+      const sound_power_columns = normalizeFanAcousticColumns(table.sound_power_columns ?? FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS);
+      const sourceRows = Array.isArray(table.rows) ? table.rows : [];
+      const rowCount = rpmLineSource.length || sourceRows.length;
+      const rows = Array.from({ length: rowCount }, (_, index) => {
+        const sourceRow = sourceRows[index] ?? {};
+        const rowDraft = createFanAcousticRowDraft(sourceRow, sound_power_columns);
+        const line = rpmLineSource[index];
+        if (line && line.rpm != null && line.rpm !== "") {
+          rowDraft.speed_rpm = line.rpm;
+        }
+        return rowDraft;
+      });
+      return { sound_power_columns, rows };
+    }
+    function isFanAcousticTableVisible() {
+      return productForm.product_type_key === "fan";
     }
     function clonePresetGroups(productTypeKey) {
       const productType = productTypes.find((item) => item.key === productTypeKey);
@@ -287,6 +339,7 @@ function ProductWorkspace($$renderer, $$props) {
       rpmLines = graphPresets.rpmLines;
       rpmPoints = graphPresets.rpmPoints;
       efficiencyPoints = graphPresets.efficiencyPoints;
+      fanAcousticTable = productTypeKey === "fan" ? createFanAcousticTableDraft({}, graphPresets.rpmLines) : null;
       specificationGroupOpenState = {};
     }
     function getCurrentProductType() {
@@ -412,7 +465,7 @@ function ProductWorkspace($$renderer, $$props) {
       applyCreateTemplateDefault(productForm.product_type_key);
     }
     currentProductTypeForForm = getCurrentProductType();
-    allAccordionsOpen = mode === "create" ? createCoreDetailsOpen && createProductAttributesOpen && createGroupedSpecificationsOpen && allSpecificationGroupsOpen() : false;
+    allAccordionsOpen = mode === "create" ? createCoreDetailsOpen && createProductAttributesOpen && createGroupedSpecificationsOpen && (!isFanAcousticTableVisible() || createFanAcousticTableOpen) && allSpecificationGroupsOpen() : false;
     {
       store_get($$store_subs ??= {}, "$theme", theme);
       buildMapChartOption();
@@ -457,7 +510,7 @@ function ProductWorkspace($$renderer, $$props) {
         $$renderer3.push(`<!--]--></div> <div class="d-flex flex-wrap gap-2 align-items-center"><button class="btn btn-outline-secondary"${attr("disabled", savingMapPoints, true)}>${escape_html(allAccordionsOpen ? "Collapse All" : "Expand All")}</button> `);
         if (mode === "create") {
           $$renderer3.push("<!--[0-->");
-          $$renderer3.push(`<button class="btn btn-primary"${attr("disabled", loading, true)}>Save Product</button> <button class="btn btn-outline-secondary">Cancel</button>`);
+          $$renderer3.push(`<button class="btn btn-primary"${attr("disabled", loading, true)}>${escape_html("Save Product")}</button> <button class="btn btn-outline-secondary">Cancel</button>`);
         } else {
           $$renderer3.push("<!--[-1-->");
         }
@@ -658,7 +711,7 @@ function ProductWorkspace($$renderer, $$props) {
                 )}${attr_style(group._pending_delete ? "" : `background-color: ${specificationGroupBackgroundColor(groupIndex)}; border-color: ${specificationGroupBorderColor(groupIndex)};`)}><div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><button class="btn btn-link p-0 text-decoration-none text-reset fw-semibold spec-group-toggle svelte-py4xdp" type="button">${escape_html(specificationGroupOpenState[groupIndex] ?? true ? "Hide" : "Show")} ${escape_html(group.group_name || `Group ${groupIndex + 1}`)}</button> <div class="d-flex flex-wrap gap-2 align-items-center"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === parameterGroups.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${group._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-py4xdp")}>${escape_html(group._pending_delete ? "Undo Delete" : "Delete Group")}</button> <button class="btn btn-outline-primary btn-sm"${attr("disabled", group._pending_delete, true)}>Add Parameter</button></div></div> `);
                 if (group._pending_delete) {
                   $$renderer4.push("<!--[0-->");
-                  $$renderer4.push(`<p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Product to apply the deletion.</p>`);
+                  $$renderer4.push(`<p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Changes to apply the deletion.</p>`);
                 } else {
                   $$renderer4.push("<!--[-1-->");
                 }
@@ -769,7 +822,7 @@ function ProductWorkspace($$renderer, $$props) {
                     $$renderer4.push(`<!--]--> <div class="col-12 col-lg-2"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === group.parameters.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${parameter._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-py4xdp")}${attr("disabled", group._pending_delete, true)}>${escape_html(parameter._pending_delete ? "Undo Delete" : "Delete")}</button></div></div></div> `);
                     if (parameter._pending_delete) {
                       $$renderer4.push("<!--[0-->");
-                      $$renderer4.push(`<p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Product to apply the deletion.</p>`);
+                      $$renderer4.push(`<p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Changes to apply the deletion.</p>`);
                     } else {
                       $$renderer4.push("<!--[-1-->");
                     }
@@ -790,7 +843,67 @@ function ProductWorkspace($$renderer, $$props) {
           },
           $$slots: { default: true }
         });
-        $$renderer3.push(`<!----></div> `);
+        $$renderer3.push(`<!----> `);
+        if (isFanAcousticTableVisible()) {
+          $$renderer3.push("<!--[0-->");
+          AccordionCard($$renderer3, {
+            title: "Fan Acoustic Table",
+            description: "Rows stay aligned to the current RPM graph rows. Sound power columns can be added, removed, and renamed.",
+            get open() {
+              return createFanAcousticTableOpen;
+            },
+            set open($$value) {
+              createFanAcousticTableOpen = $$value;
+              $$settled = false;
+            },
+            children: ($$renderer4) => {
+              if (fanAcousticTable) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><p class="text-body-secondary mb-0">The speed column is read-only and follows the fan graph line order.</p> <div class="d-flex flex-wrap gap-2"><input class="form-control form-control-sm fan-acoustic-csv-input" type="file" accept=".csv,text/csv"/> <button class="btn btn-outline-secondary btn-sm" type="button">Clear CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !fanAcousticTable && rpmLines.length === 0, true)}>Export CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button">Add Column</button></div></div> `);
+                {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--> `);
+                {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>Running Frequency</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
+                const each_array_10 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                for (let columnIndex = 0, $$length = each_array_10.length; columnIndex < $$length; columnIndex++) {
+                  each_array_10[columnIndex];
+                  $$renderer4.push(`<th><div class="d-grid gap-1"><input class="form-control form-control-sm" type="text"${attr("value", fanAcousticTable.sound_power_columns[columnIndex])}/> <button class="btn btn-outline-secondary btn-sm" type="button">Rename</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", fanAcousticTable.sound_power_columns.length <= 1, true)}>Delete</button></div></th>`);
+                }
+                $$renderer4.push(`<!--]--></tr></thead><tbody><!--[-->`);
+                const each_array_11 = ensure_array_like(fanAcousticTable.rows);
+                for (let rowIndex = 0, $$length = each_array_11.length; rowIndex < $$length; rowIndex++) {
+                  let row = each_array_11[rowIndex];
+                  $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.speed_rpm)} disabled=""/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_pressure_pa)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_power_kw)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.running_frequency_hz)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_pressure_db_3m)}/></td><!--[-->`);
+                  const each_array_12 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                  for (let $$index_11 = 0, $$length2 = each_array_12.length; $$index_11 < $$length2; $$index_11++) {
+                    let column = each_array_12[$$index_11];
+                    $$renderer4.push(`<td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_power_levels[column])}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_power_levels[column])}/></td>`);
+                  }
+                  $$renderer4.push(`<!--]--></tr>`);
+                }
+                $$renderer4.push(`<!--]--></tbody></table></div> `);
+                if (fanAcousticTable.rows.length === 0) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">Save or load RPM lines first so the acoustic table can align itself.</p>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]-->`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]-->`);
+            },
+            $$slots: { default: true }
+          });
+        } else {
+          $$renderer3.push("<!--[-1-->");
+        }
+        $$renderer3.push(`<!--]--></div> `);
         if (productSupportsGraph() && (rpmLines.length > 0 || rpmPoints.length > 0 || efficiencyPoints.length > 0)) {
           $$renderer3.push("<!--[0-->");
           $$renderer3.push(`<div class="mt-3">`);
@@ -802,9 +915,9 @@ function ProductWorkspace($$renderer, $$props) {
               if (rpmLines.length > 0) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">${escape_html(graphLineValueLabel())} lines</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphLineValueLabel())}</th><th>Band colour</th></tr></thead><tbody><!--[-->`);
-                const each_array_10 = ensure_array_like(rpmLines);
-                for (let $$index_10 = 0, $$length = each_array_10.length; $$index_10 < $$length; $$index_10++) {
-                  let line = each_array_10[$$index_10];
+                const each_array_13 = ensure_array_like(rpmLines);
+                for (let $$index_13 = 0, $$length = each_array_13.length; $$index_13 < $$length; $$index_13++) {
+                  let line = each_array_13[$$index_13];
                   $$renderer4.push(`<tr><td>${escape_html(formatGraphLineValue(line.rpm))}</td><td><code>${escape_html(line.band_color || "None")}</code></td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div></div></div>`);
@@ -815,9 +928,9 @@ function ProductWorkspace($$renderer, $$props) {
               if (rpmPoints.length > 0) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">${escape_html(graphLineValueLabel())} points</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphLineValueLabel())}</th><th>${escape_html(graphXAxisLabel())}</th><th>${escape_html(graphYAxisLabel())}</th></tr></thead><tbody><!--[-->`);
-                const each_array_11 = ensure_array_like(rpmPoints);
-                for (let $$index_11 = 0, $$length = each_array_11.length; $$index_11 < $$length; $$index_11++) {
-                  let p = each_array_11[$$index_11];
+                const each_array_14 = ensure_array_like(rpmPoints);
+                for (let $$index_14 = 0, $$length = each_array_14.length; $$index_14 < $$length; $$index_14++) {
+                  let p = each_array_14[$$index_14];
                   $$renderer4.push(`<tr><td>${escape_html(formatGraphLineValue(p.rpm))}</td><td>${escape_html(p.airflow)}</td><td>${escape_html(p.pressure)}</td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div></div></div>`);
@@ -828,9 +941,9 @@ function ProductWorkspace($$renderer, $$props) {
               if (productSupportsGraphOverlays() && efficiencyPoints.length > 0) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Efficiency / permissible points</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th></tr></thead><tbody><!--[-->`);
-                const each_array_12 = ensure_array_like(efficiencyPoints);
-                for (let $$index_12 = 0, $$length = each_array_12.length; $$index_12 < $$length; $$index_12++) {
-                  let p = each_array_12[$$index_12];
+                const each_array_15 = ensure_array_like(efficiencyPoints);
+                for (let $$index_15 = 0, $$length = each_array_15.length; $$index_15 < $$length; $$index_15++) {
+                  let p = each_array_15[$$index_15];
                   $$renderer4.push(`<tr><td>${escape_html(p.airflow)}</td><td>${escape_html(p.efficiency_centre ?? "")}</td><td>${escape_html(p.efficiency_lower_end ?? "")}</td><td>${escape_html(p.efficiency_higher_end ?? "")}</td><td>${escape_html(p.permissible_use ?? "")}</td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div></div></div>`);
@@ -878,9 +991,9 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer5.push(`— Select product type —`);
             });
             $$renderer4.push(`<!--[-->`);
-            const each_array_13 = ensure_array_like(productTypes);
-            for (let $$index_13 = 0, $$length = each_array_13.length; $$index_13 < $$length; $$index_13++) {
-              let productType = each_array_13[$$index_13];
+            const each_array_16 = ensure_array_like(productTypes);
+            for (let $$index_16 = 0, $$length = each_array_16.length; $$index_16 < $$length; $$index_16++) {
+              let productType = each_array_16[$$index_16];
               $$renderer4.option({ value: productType.key }, ($$renderer5) => {
                 $$renderer5.push(`${escape_html(productType.label)}`);
               });
@@ -901,9 +1014,9 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer5.push(`All series`);
             });
             $$renderer4.push(`<!--[-->`);
-            const each_array_14 = ensure_array_like(seriesForType(editExistingProductTypeKey));
-            for (let $$index_14 = 0, $$length = each_array_14.length; $$index_14 < $$length; $$index_14++) {
-              let series = each_array_14[$$index_14];
+            const each_array_17 = ensure_array_like(seriesForType(editExistingProductTypeKey));
+            for (let $$index_17 = 0, $$length = each_array_17.length; $$index_17 < $$length; $$index_17++) {
+              let series = each_array_17[$$index_17];
               $$renderer4.option({ value: series.id }, ($$renderer5) => {
                 $$renderer5.push(`${escape_html(series.name)}`);
               });
@@ -924,9 +1037,9 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer5.push(`— Select product —`);
             });
             $$renderer4.push(`<!--[-->`);
-            const each_array_15 = ensure_array_like(editableProductsForSelection());
-            for (let $$index_15 = 0, $$length = each_array_15.length; $$index_15 < $$length; $$index_15++) {
-              let product = each_array_15[$$index_15];
+            const each_array_18 = ensure_array_like(editableProductsForSelection());
+            for (let $$index_18 = 0, $$length = each_array_18.length; $$index_18 < $$length; $$index_18++) {
+              let product = each_array_18[$$index_18];
               $$renderer4.option({ value: product.id }, ($$renderer5) => {
                 $$renderer5.push(`${escape_html(product.model)}`);
               });
