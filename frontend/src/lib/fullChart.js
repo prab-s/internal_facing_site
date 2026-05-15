@@ -7,21 +7,21 @@ export const FULL_CHART_LINE_DEFINITIONS = [
     label: 'Efficiency Centre',
     colorKey: 'efficiency',
     tooltipLabel: 'Efficiency centre',
-    lineWidth: 2
+    lineWidth: 3
   },
   {
     key: 'efficiency_lower_end',
     label: 'Efficiency Lower End',
     colorKey: 'permissible',
     tooltipLabel: 'Efficiency lower end',
-    lineWidth: 2
+    lineWidth: 3
   },
   {
     key: 'efficiency_higher_end',
     label: 'Efficiency Higher End',
     colorKey: 'permissible',
     tooltipLabel: 'Efficiency higher end',
-    lineWidth: 2
+    lineWidth: 3
   },
   {
     key: 'permissible_use',
@@ -35,13 +35,13 @@ export const FULL_CHART_LINE_DEFINITIONS = [
 export const OVERLAY_LINE_DECORATION = {
   outline: {
     color: '#000000',
-    width: 2,
-    opacity: 0.35
+    width: 3,
+    opacity: 0.5
   },
   glow: {
-    color: '#ffffff',
-    width: 4,
-    opacity: 0.18
+    color: '#000000',
+    width: 6,
+    opacity: 0.14
   }
 };
 

@@ -58,6 +58,8 @@
   let rpmLines = [];
   let rpmPoints = [];
   let efficiencyPoints = [];
+  let originalRpmLineSnapshots = new Map();
+  let originalRpmPointSnapshots = new Map();
   let mapChartOption = {};
   let loading = false;
   let savingProductDetails = false;
@@ -218,9 +220,24 @@
   let graphCsvError = '';
   let graphCsvFileName = '';
   let graphCsvInput = null;
+  let graphCsvDownsampleImportedCurves = true;
+  let graphCsvDownsamplePointCount = 5;
+  let graphCsvNormalizeEfficiencyOverlays = false;
+  let graphCsvImportSource = {
+    text: '',
+    fileName: '',
+    productId: null
+  };
+  let graphCsvImportSignature = '';
   let fanAcousticCsvError = '';
   let fanAcousticCsvFileName = '';
   let fanAcousticCsvInput = null;
+  let efficiencyScaleFactors = {
+    efficiency_centre: '1',
+    efficiency_lower_end: '1',
+    efficiency_higher_end: '1',
+    permissible_use: '1'
+  };
 
   function syncSpecificationGroupOpenState(groups, currentState) {
     const nextState = {};
@@ -232,6 +249,20 @@
 
   $: specificationGroupOpenState = syncSpecificationGroupOpenState(parameterGroups, specificationGroupOpenState);
   $: productTemplateOptions = templateRegistry.product_templates ?? [];
+  $: if (
+    graphCsvImportSource.text &&
+    graphCsvImportSource.productId === selectedProductId &&
+    `${selectedProductId ?? ''}|${graphCsvDownsampleImportedCurves ? '1' : '0'}|${String(
+      graphCsvDownsamplePointCount ?? ''
+    )}|${graphCsvNormalizeEfficiencyOverlays ? '1' : '0'}` !== graphCsvImportSignature
+  ) {
+    applyImportedGraphCsvSource({
+      text: graphCsvImportSource.text,
+      fileName: graphCsvImportSource.fileName || 'graph-data.csv',
+      showSuccess: false,
+      rememberSource: false
+    });
+  }
   $: if (mode === 'create' && productForm.product_type_key && productTypes.length > 0 && templateRegistry) {
     applyCreateTypePresets(productForm.product_type_key);
     applyCreateTemplateDefault(productForm.product_type_key);
@@ -432,6 +463,51 @@
     return value === '' || value == null ? null : parseFloat(value);
   }
 
+  function parseOptionalInteger(value) {
+    if (value === '' || value == null) return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return null;
+    return Math.round(parsed);
+  }
+
+  function sanitizeIntegerInputValue(value) {
+    if (value === '' || value == null) return '';
+    const text = String(value).trim();
+    const numeric = Number(text.replace(/,/g, '.'));
+    if (Number.isFinite(numeric)) {
+      return String(Math.round(numeric));
+    }
+    return text.replace(/[^\d]/g, '');
+  }
+
+  function handleIntegerInputKeydown(event) {
+    const allowedKeys = new Set([
+      'Backspace',
+      'Delete',
+      'Tab',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowUp',
+      'ArrowDown',
+      'Home',
+      'End',
+      'Enter',
+      'Escape'
+    ]);
+    if (allowedKeys.has(event.key)) return;
+    if (event.ctrlKey || event.metaKey) return;
+    if (/^\d$/.test(event.key)) return;
+    event.preventDefault();
+  }
+
+  function parseScaleFactor(value) {
+    if (value === '' || value == null) {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   function isBlankEditorNumericValue(value) {
     return value === '' || value == null;
   }
@@ -441,8 +517,83 @@
     return Number.isFinite(Number(value));
   }
 
+  function isValidEditorIntegerValue(value) {
+    if (isBlankEditorNumericValue(value)) return true;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && Math.round(parsed) === parsed;
+  }
+
   function editorNumericInputClass(value) {
     return isValidEditorNumericValue(value) ? '' : 'is-invalid';
+  }
+
+  function normalizeGraphLineDraft(line = {}) {
+    return {
+      ...line,
+      rpm: parseOptionalInteger(line.rpm)
+    };
+  }
+
+  function snapshotGraphLine(line = {}) {
+    return {
+      rpm: parseOptionalInteger(line.rpm),
+      band_color: normalizeOptionalColor(line.band_color) || null
+    };
+  }
+
+  function normalizeGraphPointDraft(point = {}) {
+    return {
+      ...point,
+      rpm: parseOptionalInteger(point.rpm),
+      airflow: parseOptionalInteger(point.airflow),
+      pressure: parseOptionalInteger(point.pressure)
+    };
+  }
+
+  function resolveRpmLineIdForPoint(point) {
+    const numericLineId = Number(point?.rpm_line_id);
+    if (Number.isFinite(numericLineId) && isPersistedRpmLineId(numericLineId)) {
+      return numericLineId;
+    }
+
+    const pointRpm = parseOptionalInteger(point?.rpm);
+    if (pointRpm != null) {
+      const currentLine = rpmLines.find((line) => Number(line?.rpm) === Number(pointRpm));
+      if (currentLine && isPersistedRpmLineId(currentLine.id)) {
+        return currentLine.id;
+      }
+    }
+
+    return numericLineId;
+  }
+
+  function normalizeGraphEfficiencyPointDraft(point = {}) {
+    return {
+      ...point,
+      airflow: parseOptionalInteger(point.airflow),
+      efficiency_centre: parseOptionalInteger(point.efficiency_centre),
+      efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
+      efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
+      permissible_use: parseOptionalInteger(point.permissible_use)
+    };
+  }
+
+  function applyEfficiencyScaleFactor(field, factor) {
+    const parsedFactor = parseScaleFactor(factor);
+    if (parsedFactor == null) {
+      throw new Error(`Enter a valid scaling factor for ${field.replaceAll('_', ' ')}.`);
+    }
+
+    efficiencyPoints = efficiencyPoints.map((point) => {
+      const currentValue = Number(point?.[field]);
+      if (!Number.isFinite(currentValue)) return point;
+      return {
+        ...point,
+        [field]: Math.round(currentValue * parsedFactor)
+      };
+    });
+
+    addSuccess(`Scaled ${field.replaceAll('_', ' ')} values locally.`);
   }
 
   function collectEditorNumericValidationErrors() {
@@ -468,8 +619,8 @@
     };
 
     checkRows(rpmLines.filter((line) => !line?._pending_delete), 'Graph line', (rowLabel, line) => {
-      if (!isValidEditorNumericValue(line.rpm)) {
-        errors.push(`${rowLabel} RPM must be numeric.`);
+      if (!isValidEditorIntegerValue(line.rpm)) {
+        errors.push(`${rowLabel} RPM must be a whole number.`);
       }
     });
 
@@ -478,6 +629,9 @@
         ['Airflow', point.airflow],
         ['Pressure', point.pressure]
       ]);
+      if (!isValidEditorIntegerValue(point.airflow) || !isValidEditorIntegerValue(point.pressure)) {
+        errors.push(`${rowLabel} airflow and pressure must be whole numbers.`);
+      }
     });
 
     checkRows(
@@ -491,6 +645,15 @@
           ['Efficiency higher end', point.efficiency_higher_end],
           ['Permissible use', point.permissible_use]
         ]);
+        if (
+          !isValidEditorIntegerValue(point.airflow) ||
+          !isValidEditorIntegerValue(point.efficiency_centre) ||
+          !isValidEditorIntegerValue(point.efficiency_lower_end) ||
+          !isValidEditorIntegerValue(point.efficiency_higher_end) ||
+          !isValidEditorIntegerValue(point.permissible_use)
+        ) {
+          errors.push(`${rowLabel} values must be whole numbers.`);
+        }
       }
     );
 
@@ -938,13 +1101,13 @@
     return rpmLines
       .filter((line) => !line._pending_delete)
       .map((line) => ({
-        rpm: parseOptionalNumber(line.rpm),
+        rpm: parseOptionalInteger(line.rpm),
         band_color: normalizeOptionalColor(line.band_color) || null,
         points: rpmPoints
           .filter((point) => Number(point.rpm_line_id) === Number(line.id))
           .map((point) => ({
-            airflow: parseOptionalNumber(point.airflow),
-            pressure: parseOptionalNumber(point.pressure)
+            airflow: parseOptionalInteger(point.airflow),
+            pressure: parseOptionalInteger(point.pressure)
           }))
       }));
   }
@@ -1360,7 +1523,7 @@
   function parseGraphCsvLineToken(header) {
     const match = String(header ?? '').trim().toLowerCase().match(/^pressure_(.+?)(?:rpm)?$/);
     if (!match) return null;
-    const rpm = parseFloat(match[1]);
+    const rpm = Math.round(parseFloat(match[1]));
     return Number.isFinite(rpm) ? rpm : null;
   }
 
@@ -1371,6 +1534,164 @@
       throw new Error(`Column "${columnName}" contains a non-numeric value: "${value}".`);
     }
     return parsed;
+  }
+
+  function parseGraphCsvInteger(value, columnName) {
+    const parsed = parseGraphCsvNumber(value, columnName);
+    return parsed == null ? null : Math.round(parsed);
+  }
+
+  function normalizeGraphCsvDownsampleCount(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      throw new Error('The downsample count must be a whole number.');
+    }
+    const count = Math.floor(parsed);
+    if (count < 1) {
+      throw new Error('The downsample count must be at least 1.');
+    }
+    return count;
+  }
+
+  function interpolateGraphCsvValue(points, axisValue) {
+    if (!points.length) return null;
+    if (points.length === 1) return points[0].value;
+
+    if (axisValue <= points[0].axis) return points[0].value;
+    if (axisValue >= points[points.length - 1].axis) return points[points.length - 1].value;
+
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const left = points[index];
+      const right = points[index + 1];
+      if (axisValue < left.axis || axisValue > right.axis) continue;
+      const span = right.axis - left.axis;
+      if (span === 0) return right.value;
+      const ratio = (axisValue - left.axis) / span;
+      return left.value + (right.value - left.value) * ratio;
+    }
+
+    return points[points.length - 1].value;
+  }
+
+  function downsampleGraphCsvSeries(points, axisKey = 'airflow', valueKey = 'pressure', targetCount = 5) {
+    const numericPoints = (points ?? [])
+      .map((point) => ({
+        point,
+        axis: Number(point?.[axisKey]),
+        value: Number(point?.[valueKey])
+      }))
+      .filter(({ axis, value }) => Number.isFinite(axis) && Number.isFinite(value))
+      .sort((a, b) => a.axis - b.axis);
+
+    if (numericPoints.length <= targetCount) {
+      return numericPoints.map(({ point }) => point);
+    }
+
+    const sampleAxes = Array.from({ length: targetCount }, (_, index) => {
+      const t = targetCount === 1 ? 0 : index / (targetCount - 1);
+      return Math.round(
+        numericPoints[0].axis + (numericPoints[numericPoints.length - 1].axis - numericPoints[0].axis) * t
+      );
+    });
+
+    const templatePoint = numericPoints[0].point;
+    const sampledPoints = sampleAxes.map((axis) => ({
+      ...templatePoint,
+      id: createTempPointId(),
+      [axisKey]: axis,
+      [valueKey]: Math.round(interpolateGraphCsvValue(numericPoints, axis))
+    }));
+    const seenAxes = new Set();
+    return sampledPoints.filter((point) => {
+      const axisValue = point?.[axisKey];
+      if (seenAxes.has(axisValue)) return false;
+      seenAxes.add(axisValue);
+      return true;
+    });
+  }
+
+  function downsampleGraphCsvOverlayPoints(points, valueKeys, targetCount = 5) {
+    const mergedPoints = new Map();
+
+    for (const valueKey of valueKeys) {
+      const seriesPoints = (points ?? []).filter((point) => point?.[valueKey] != null);
+      const sampledPoints = downsampleGraphCsvSeries(seriesPoints, 'airflow', valueKey, targetCount);
+      for (const sampledPoint of sampledPoints) {
+        const airflow = Number(sampledPoint?.airflow);
+        const value = Number(sampledPoint?.[valueKey]);
+        if (!Number.isFinite(airflow) || !Number.isFinite(value)) continue;
+
+        const mergeKey = `${airflow}`;
+        if (!mergedPoints.has(mergeKey)) {
+          mergedPoints.set(mergeKey, {
+            id: createTempPointId(),
+            product_id: selectedProductId,
+            airflow,
+            efficiency_centre: null,
+            efficiency_lower_end: null,
+            efficiency_higher_end: null,
+            permissible_use: null
+          });
+        }
+
+        mergedPoints.get(mergeKey)[valueKey] = value;
+      }
+    }
+
+    return [...mergedPoints.values()].sort((a, b) => Number(a.airflow) - Number(b.airflow));
+  }
+
+  function normalizeGraphCsvOverlaySeries(points, valueKey) {
+    const orderedPoints = [...(points ?? [])].sort((a, b) => Number(a.airflow) - Number(b.airflow));
+    const numericValues = orderedPoints
+      .map((point) => Number(point?.[valueKey]))
+      .filter((value) => Number.isFinite(value));
+
+    if (!numericValues.length) {
+      return orderedPoints;
+    }
+
+    const minValue = Math.min(...numericValues);
+    const maxValue = Math.max(...numericValues);
+    const span = maxValue - minValue;
+    let zeroKept = false;
+
+    return orderedPoints.map((point) => {
+      const currentValue = Number(point?.[valueKey]);
+      if (!Number.isFinite(currentValue)) {
+        return point;
+      }
+
+      let normalizedValue;
+      if (span === 0) {
+        normalizedValue = 0;
+      } else {
+        normalizedValue = Math.round(((currentValue - minValue) / span) * 100);
+      }
+
+      if (normalizedValue === 0) {
+        if (zeroKept) {
+          return {
+            ...point,
+            [valueKey]: null
+          };
+        }
+        zeroKept = true;
+      }
+
+      return {
+        ...point,
+        [valueKey]: normalizedValue
+      };
+    });
+  }
+
+  function normalizeImportedGraphOverlayPoints(points) {
+    let nextPoints = [...(points ?? [])];
+    for (const valueKey of ['efficiency_centre', 'efficiency_lower_end', 'efficiency_higher_end', 'permissible_use']) {
+      nextPoints = normalizeGraphCsvOverlaySeries(nextPoints, valueKey);
+    }
+    return nextPoints;
   }
 
   function buildGraphCsv() {
@@ -1608,7 +1929,7 @@
     downloadCsv(buildGraphCsv(), `${base}-graph-data.csv`);
   }
 
-  function buildImportedGraphState(rows) {
+  function buildImportedGraphState(rows, { downsampleImportedCurves = true, downsamplePointCount = 5 } = {}) {
       const [headerRow, ...dataRows] = rows;
       const normalizedHeaders = headerRow.map((header) => String(header ?? '').trim());
       const airflowHeader = normalizedHeaders[0]?.toLowerCase();
@@ -1645,61 +1966,62 @@
         pressureColumns.push({ index, header, rpm });
       }
 
-      const existingLines = new Map(
-        rpmLines
-          .map((line) => {
-            const rpm = Number(line?.rpm);
-            if (!Number.isFinite(rpm)) return null;
-            return [formatGraphCsvLineToken(rpm), line];
-          })
-          .filter(Boolean)
+      const nextRpmLines = pressureColumns.map((column, index) => {
+        const existingLine = (rpmLines ?? []).find((line) => Number(line?.rpm) === Number(column.rpm));
+        return existingLine
+          ? {
+              ...existingLine,
+              rpm: column.rpm,
+              band_color:
+                normalizeOptionalColor(existingLine.band_color) ||
+                RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+            }
+          : {
+              id: createTempRpmLineId(),
+              product_id: selectedProductId,
+              rpm: column.rpm,
+              band_color: RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+            };
+      });
+      const nextRpmLineByKey = new Map(
+        nextRpmLines.map((line) => [formatGraphCsvLineToken(line.rpm), line])
       );
 
       let previousAirflow = null;
       const seenAirflows = new Set();
       const nextRpmPoints = [];
       const nextEfficiencyPoints = [];
-      const importedLineKeys = new Set();
 
       for (const [rowIndex, row] of dataRows.entries()) {
-        const airflow = parseGraphCsvNumber(row[0], normalizedHeaders[0]);
-        if (airflow == null) {
+        const roundedAirflow = parseGraphCsvInteger(row[0], normalizedHeaders[0]);
+        if (roundedAirflow == null) {
           throw new Error(`Row ${rowIndex + 2} is missing an airflow_l_s value.`);
         }
-        if (seenAirflows.has(airflow)) {
-          throw new Error(`Duplicate airflow_l_s value found: ${airflow}.`);
+        if (seenAirflows.has(roundedAirflow)) {
+          throw new Error(`Duplicate airflow_l_s value found: ${roundedAirflow}.`);
         }
-        if (previousAirflow != null && airflow <= previousAirflow) {
+        if (previousAirflow != null && roundedAirflow <= previousAirflow) {
           throw new Error(`airflow_l_s must increase strictly row by row. Row ${rowIndex + 2} is out of order.`);
         }
 
-        seenAirflows.add(airflow);
-        previousAirflow = airflow;
+        seenAirflows.add(roundedAirflow);
+        previousAirflow = roundedAirflow;
 
         for (const column of pressureColumns) {
           const pressure = parseGraphCsvNumber(row[column.index], column.header);
           if (pressure == null) continue;
+          const roundedPressure = parseGraphCsvInteger(row[column.index], column.header);
 
           const lineKey = formatGraphCsvLineToken(column.rpm);
-          let line = existingLines.get(lineKey);
-          if (!line) {
-            line = {
-              id: createTempRpmLineId(),
-              product_id: selectedProductId,
-              rpm: column.rpm,
-              band_color: RPM_BAND_FALLBACK_COLORS[existingLines.size % RPM_BAND_FALLBACK_COLORS.length]
-            };
-            existingLines.set(lineKey, line);
-          }
-          importedLineKeys.add(lineKey);
+          const line = nextRpmLineByKey.get(lineKey);
 
           nextRpmPoints.push({
             id: createTempPointId(),
             product_id: selectedProductId,
             rpm_line_id: line.id,
             rpm: line.rpm,
-            airflow,
-            pressure
+            airflow: roundedAirflow,
+            pressure: roundedPressure
           });
         }
 
@@ -1707,7 +2029,7 @@
           const efficiencyPoint = {
             id: createTempPointId(),
             product_id: selectedProductId,
-            airflow,
+            airflow: roundedAirflow,
             efficiency_centre: null,
             efficiency_lower_end: null,
             efficiency_higher_end: null,
@@ -1718,7 +2040,7 @@
           for (let index = 1; index < normalizedHeaders.length; index += 1) {
             const normalizedHeader = normalizedHeaders[index]?.toLowerCase();
             if (!overlayColumns.has(normalizedHeader)) continue;
-            const value = parseGraphCsvNumber(row[index], normalizedHeaders[index]);
+            const value = parseGraphCsvInteger(row[index], normalizedHeaders[index]);
             efficiencyPoint[normalizedHeader] = value;
             if (value != null) hasOverlayValue = true;
           }
@@ -1729,29 +2051,58 @@
         }
       }
 
-      const nextRpmLines = rpmLines.map((line, index) => ({
-        ...line,
-        band_color: normalizeOptionalColor(line.band_color) || RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
-      }));
-
-      for (const column of pressureColumns) {
-        const lineKey = formatGraphCsvLineToken(column.rpm);
-        if (importedLineKeys.has(lineKey) || existingLines.has(lineKey)) {
-          const line = existingLines.get(lineKey);
-          if (!nextRpmLines.some((existing) => Number(existing.id) === Number(line.id))) {
-            nextRpmLines.push(line);
-          }
+      const nextRpmPointsByLineId = new Map();
+      for (const point of nextRpmPoints) {
+        const lineId = Number(point?.rpm_line_id);
+        if (!Number.isFinite(lineId)) continue;
+        if (!nextRpmPointsByLineId.has(lineId)) {
+          nextRpmPointsByLineId.set(lineId, []);
         }
+        nextRpmPointsByLineId.get(lineId).push(point);
       }
+
+      const adjustedRpmPoints = downsampleImportedCurves
+        ? [...nextRpmPointsByLineId.values()].flatMap((linePoints) =>
+            downsampleGraphCsvSeries(linePoints, 'airflow', 'pressure', downsamplePointCount)
+          )
+        : nextRpmPoints;
+      const adjustedEfficiencyPoints = downsampleImportedCurves
+        ? downsampleGraphCsvOverlayPoints(
+            nextEfficiencyPoints,
+            ['efficiency_centre', 'efficiency_lower_end', 'efficiency_higher_end', 'permissible_use'],
+            downsamplePointCount
+          )
+        : nextEfficiencyPoints;
+      const finalEfficiencyPoints = graphCsvNormalizeEfficiencyOverlays
+        ? normalizeImportedGraphOverlayPoints(adjustedEfficiencyPoints)
+        : adjustedEfficiencyPoints;
 
       return {
         rpmLines: nextRpmLines.sort((a, b) => Number(a.rpm) - Number(b.rpm)),
-        rpmPoints: applyRpmPointSort(nextRpmPoints),
-        efficiencyPoints: nextEfficiencyPoints
+        rpmPoints: applyRpmPointSort(adjustedRpmPoints),
+        efficiencyPoints: finalEfficiencyPoints
       };
   }
 
-  async function applyImportedGraphCsvText(text, fileName = 'graph-data.csv') {
+  function setGraphCsvImportSource(text, fileName) {
+    graphCsvImportSource = {
+      text,
+      fileName,
+      productId: selectedProductId
+    };
+    graphCsvImportSignature = '';
+  }
+
+  function clearGraphCsvImportSource() {
+    graphCsvImportSource = {
+      text: '',
+      fileName: '',
+      productId: null
+    };
+    graphCsvImportSignature = '';
+  }
+
+  function applyImportedGraphCsvSource({ text, fileName = 'graph-data.csv', showSuccess = true, rememberSource = true } = {}) {
     graphCsvError = '';
     if (!selectedProductId) {
       graphCsvError = 'Select a product first.';
@@ -1765,11 +2116,25 @@
     }
 
     try {
-      const imported = buildImportedGraphState(rows);
+      if (rememberSource) {
+        setGraphCsvImportSource(text, fileName);
+      }
+      const downsampleImportedCurves = !!graphCsvDownsampleImportedCurves;
+      const downsamplePointCount = downsampleImportedCurves
+        ? normalizeGraphCsvDownsampleCount(graphCsvDownsamplePointCount)
+        : null;
+      const imported = buildImportedGraphState(rows, {
+        downsampleImportedCurves,
+        downsamplePointCount: downsamplePointCount ?? 5
+      });
       rpmLines = imported.rpmLines;
       rpmPoints = imported.rpmPoints;
       efficiencyPoints = imported.efficiencyPoints;
+      syncFanAcousticTableWithRpmLines(rpmLines);
       graphCsvFileName = fileName;
+      graphCsvImportSignature = `${selectedProductId ?? ''}|${downsampleImportedCurves ? '1' : '0'}|${
+        downsampleImportedCurves ? downsamplePointCount : 'full'
+      }|${graphCsvNormalizeEfficiencyOverlays ? '1' : '0'}`;
       const validTargets = new Set([
         ...rpmLines.map((line) => `rpm:${line.id}`),
         ...currentOverlayLineDefinitions().map((definition) => `efficiency:${definition.key}`)
@@ -1780,7 +2145,17 @@
       if (rpmLines.length) {
         rpmPointForm = { ...rpmPointForm, rpm_line_id: String(rpmLines[0].id) };
       }
-      addSuccess(`Loaded graph CSV from ${fileName}. Review the tables and chart, then press Save Changes to commit it.`);
+      if (showSuccess) {
+        addSuccess(
+          `${`Loaded graph CSV from ${fileName}`}${
+            graphCsvNormalizeEfficiencyOverlays ? ' and normalized the overlay columns to a 0-100 draft range' : ''
+          }${
+            downsampleImportedCurves
+              ? `, downsampled each imported curve to ${downsamplePointCount} representative point${downsamplePointCount === 1 ? '' : 's'}`
+              : ''
+          }. Review the tables and chart, then press Save Changes to commit it.`
+        );
+      }
     } catch (e) {
       graphCsvError = e.message;
     }
@@ -1791,12 +2166,16 @@
     const file = event.currentTarget?.files?.[0];
     if (!file) {
       graphCsvFileName = '';
+      clearGraphCsvImportSource();
       return;
     }
 
     try {
       const text = await file.text();
-      await applyImportedGraphCsvText(text, file.name);
+      applyImportedGraphCsvSource({ text, fileName: file.name, showSuccess: true, rememberSource: true });
+      if (graphCsvInput) {
+        graphCsvInput.value = '';
+      }
     } catch (e) {
       graphCsvError = e.message || 'Unable to read the selected CSV file.';
     }
@@ -1805,6 +2184,7 @@
   function clearGraphCsvSelection() {
     graphCsvError = '';
     graphCsvFileName = '';
+    clearGraphCsvImportSource();
     if (graphCsvInput) {
       graphCsvInput.value = '';
     }
@@ -1971,6 +2351,10 @@
   async function loadProductData() {
     if (!selectedProductId) return;
     try {
+      if (graphCsvImportSource.productId != null && graphCsvImportSource.productId !== selectedProductId) {
+        clearGraphCsvImportSource();
+        graphCsvFileName = '';
+      }
       const nextProduct = await getProduct(selectedProductId);
       currentProduct = nextProduct;
       const nextProductType = productTypes.find((item) => item.key === (nextProduct?.product_type_key || 'fan')) || null;
@@ -1983,12 +2367,22 @@
       const nextRpmLines = rpmLinesResult.status === 'fulfilled' ? rpmLinesResult.value : [];
       const nextRpmPoints = rpmPointsResult.status === 'fulfilled' ? rpmPointsResult.value : [];
       const nextEfficiencyPoints = efficiencyPointsResult.status === 'fulfilled' ? efficiencyPointsResult.value : [];
-      rpmLines = nextRpmLines.map((line, index) => ({
-        ...line,
-        band_color: normalizeOptionalColor(line.band_color) || RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
-      }));
-      rpmPoints = applyRpmPointSort(hydrateRpmPointsWithLineValues(nextRpmPoints, rpmLines));
-      efficiencyPoints = nextEfficiencyPoints;
+      rpmLines = nextRpmLines.map((line, index) =>
+        normalizeGraphLineDraft({
+          ...line,
+          band_color: normalizeOptionalColor(line.band_color) || RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+        })
+      );
+      originalRpmLineSnapshots = new Map(
+        nextRpmLines.map((line) => [Number(line.id), snapshotGraphLine(line)])
+      );
+      originalRpmPointSnapshots = new Map(
+        nextRpmPoints.map((point) => [Number(point.id), Number(point.rpm_line_id)])
+      );
+      rpmPoints = applyRpmPointSort(
+        hydrateRpmPointsWithLineValues(nextRpmPoints, rpmLines).map((point) => normalizeGraphPointDraft(point))
+      );
+      efficiencyPoints = nextEfficiencyPoints.map((point) => normalizeGraphEfficiencyPointDraft(point));
       originalRpmPointIds = nextRpmPoints.map((point) => point.id);
       originalEfficiencyPointIds = nextEfficiencyPoints.map((point) => point.id);
       fanAcousticTable =
@@ -2222,9 +2616,9 @@
   }
 
   async function addRpmLine() {
-    const rpm = parseFloat(newRpmLineValue);
-    if (isNaN(rpm) || !selectedProductId) {
-      error = `Enter a numeric ${graphLineValueLabel()} value and select a graph-capable product first.`;
+    const rpm = parseOptionalInteger(newRpmLineValue);
+    if (rpm == null || !selectedProductId) {
+      error = `Enter a whole-number ${graphLineValueLabel()} value and select a graph-capable product first.`;
       return;
     }
     try {
@@ -2274,7 +2668,7 @@
         item.id === line.id
           ? {
               ...item,
-              rpm: Number(line.rpm),
+              rpm: parseOptionalInteger(line.rpm),
               band_color: normalizeOptionalColor(line.band_color) || null
             }
           : item
@@ -2293,7 +2687,7 @@
 
     try {
       await updateRpmLine(selectedProductId, line.id, {
-        rpm: Number(line.rpm),
+        rpm: parseOptionalInteger(line.rpm),
         band_color: normalizeOptionalColor(line.band_color) || null
       });
       await loadProductData();
@@ -2342,10 +2736,10 @@
 
   async function addRpmPointFromForm() {
     const rpm_line_id = Number(rpmPointForm.rpm_line_id);
-    const airflow = parseFloat(rpmPointForm.airflow);
-    const pressure = parseFloat(rpmPointForm.pressure);
-    if (!selectedProductId || !rpm_line_id || isNaN(airflow) || isNaN(pressure)) {
-      error = `Select a ${graphLineValueLabel()} line and enter numeric ${graphXAxisLabel().toLowerCase()} and ${graphYAxisLabel().toLowerCase()} values.`;
+    const airflow = parseOptionalInteger(rpmPointForm.airflow);
+    const pressure = parseOptionalInteger(rpmPointForm.pressure);
+    if (!selectedProductId || !rpm_line_id || airflow == null || pressure == null) {
+      error = `Select a ${graphLineValueLabel()} line and enter whole-number ${graphXAxisLabel().toLowerCase()} and ${graphYAxisLabel().toLowerCase()} values.`;
       return;
     }
     rpmPoints = applyRpmPointSort([
@@ -2364,9 +2758,9 @@
   }
 
   async function addEfficiencyPointFromForm() {
-    const airflow = parseFloat(efficiencyPointForm.airflow);
-    if (!selectedProductId || isNaN(airflow)) {
-      error = 'Enter a numeric airflow value for the efficiency point.';
+    const airflow = parseOptionalInteger(efficiencyPointForm.airflow);
+    if (!selectedProductId || airflow == null) {
+      error = 'Enter a whole-number airflow value for the efficiency point.';
       return;
     }
     efficiencyPoints = [
@@ -2375,10 +2769,10 @@
         id: createTempPointId(),
         product_id: selectedProductId,
         airflow,
-        efficiency_centre: parseOptionalNumber(efficiencyPointForm.efficiency_centre),
-        efficiency_lower_end: parseOptionalNumber(efficiencyPointForm.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalNumber(efficiencyPointForm.efficiency_higher_end),
-        permissible_use: parseOptionalNumber(efficiencyPointForm.permissible_use)
+        efficiency_centre: parseOptionalInteger(efficiencyPointForm.efficiency_centre),
+        efficiency_lower_end: parseOptionalInteger(efficiencyPointForm.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalInteger(efficiencyPointForm.efficiency_higher_end),
+        permissible_use: parseOptionalInteger(efficiencyPointForm.permissible_use)
       }
     ];
     efficiencyPointForm = {
@@ -2759,9 +3153,9 @@
   async function updateRpmPointLocal(point) {
     try {
       await updateRpmPoint(selectedProductId, point.id, {
-        rpm_line_id: Number(point.rpm_line_id),
-        airflow: parseFloat(point.airflow),
-        pressure: parseFloat(point.pressure)
+        rpm_line_id: resolveRpmLineIdForPoint(point),
+        airflow: parseOptionalInteger(point.airflow),
+        pressure: parseOptionalInteger(point.pressure)
       });
       await loadProductData();
       addSuccess('Graph point updated.');
@@ -2773,11 +3167,11 @@
   async function updateEfficiencyPointLocal(point) {
     try {
       await updateEfficiencyPoint(selectedProductId, point.id, {
-        airflow: parseFloat(point.airflow),
-        efficiency_centre: parseOptionalNumber(point.efficiency_centre),
-        efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
-        permissible_use: parseOptionalNumber(point.permissible_use)
+        airflow: parseOptionalInteger(point.airflow),
+        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
+        permissible_use: parseOptionalInteger(point.permissible_use)
       });
       await loadProductData();
       addSuccess('Efficiency/permissible point updated.');
@@ -2794,6 +3188,16 @@
     if (savingMapPoints) return;
     try {
       const tempRpmLines = rpmLines.filter((line) => !isPersistedRpmLineId(line.id));
+      const currentPersistedRpmLineIds = new Set(
+        rpmLines.filter((line) => isPersistedRpmLineId(line.id)).map((line) => Number(line.id))
+      );
+      const deletedRpmLineIds = [...originalRpmLineSnapshots.keys()].filter((lineId) => !currentPersistedRpmLineIds.has(Number(lineId)));
+      const updatedPersistedRpmLines = rpmLines.filter((line) => {
+        if (!isPersistedRpmLineId(line.id)) return false;
+        const original = originalRpmLineSnapshots.get(Number(line.id));
+        if (!original) return false;
+        return Number(line.rpm) !== Number(original.rpm) || normalizeOptionalColor(line.band_color) !== original.band_color;
+      });
       const lineCreationOperations = tempRpmLines.map((line) => ({
         label: `Created ${formatGraphLineValue(line.rpm)} line`,
         run: async () => {
@@ -2815,19 +3219,52 @@
                     rpm: created.rpm
                   }
                 : point
-            )
+              )
           );
         }
       }));
+      const lineUpdateOperations = updatedPersistedRpmLines.map((line) => ({
+        label: `Updated ${formatGraphLineValue(line.rpm)} line`,
+        run: async () => {
+          const updated = await updateRpmLine(
+            selectedProductId,
+            line.id,
+            {
+              rpm: parseOptionalInteger(line.rpm),
+              band_color: normalizeOptionalColor(line.band_color) || null
+            },
+            { regenerateGraph: false }
+          );
+          rpmLines = rpmLines.map((item) =>
+            item.id === line.id
+              ? normalizeGraphLineDraft({
+                  ...updated,
+                  band_color: normalizeOptionalColor(updated.band_color) || null
+                })
+              : item
+          );
+        }
+      }));
+      const lineDeleteOperations = deletedRpmLineIds.map((lineId) => ({
+        label: `Deleted ${formatGraphLineValue(originalRpmLineSnapshots.get(Number(lineId))?.rpm)} line`,
+        run: () => deleteRpmLine(selectedProductId, lineId, { regenerateGraph: false })
+      }));
 
+      const deletedLineIdSet = new Set(deletedRpmLineIds.map((lineId) => Number(lineId)));
       const currentRpmIds = new Set(rpmPoints.filter((point) => isPersistedPointId(point.id)).map((point) => point.id));
       const currentEfficiencyIds = new Set(
         efficiencyPoints.filter((point) => isPersistedPointId(point.id)).map((point) => point.id)
       );
-      const rpmDeletes = originalRpmPointIds.filter((pointId) => !currentRpmIds.has(pointId));
+      const rpmDeletes = originalRpmPointIds.filter((pointId) => {
+        if (currentRpmIds.has(pointId)) return false;
+        const originalLineId = originalRpmPointSnapshots.get(Number(pointId));
+        return !deletedLineIdSet.has(Number(originalLineId));
+      });
       const efficiencyDeletes = originalEfficiencyPointIds.filter((pointId) => !currentEfficiencyIds.has(pointId));
       const totalOperations =
         lineCreationOperations.length +
+        lineUpdateOperations.length +
+        lineDeleteOperations.length +
         rpmDeletes.length +
         rpmPoints.length +
         efficiencyDeletes.length +
@@ -2847,18 +3284,18 @@
                 selectedProductId,
                 p.id,
                 {
-                  rpm_line_id: Number(p.rpm_line_id),
-                  airflow: parseFloat(p.airflow),
-                  pressure: parseFloat(p.pressure)
+                  rpm_line_id: resolveRpmLineIdForPoint(p),
+                  airflow: parseOptionalInteger(p.airflow),
+                  pressure: parseOptionalInteger(p.pressure)
                 },
                 { regenerateGraph: false }
               )
             : createRpmPoint(
                 selectedProductId,
                 {
-                  rpm_line_id: Number(p.rpm_line_id),
-                  airflow: parseFloat(p.airflow),
-                  pressure: parseFloat(p.pressure)
+                  rpm_line_id: resolveRpmLineIdForPoint(p),
+                  airflow: parseOptionalInteger(p.airflow),
+                  pressure: parseOptionalInteger(p.pressure)
                 },
                 { regenerateGraph: false }
               )
@@ -2877,28 +3314,29 @@
                 selectedProductId,
                 p.id,
                 {
-                  airflow: parseFloat(p.airflow),
-                  efficiency_centre: parseOptionalNumber(p.efficiency_centre),
-                  efficiency_lower_end: parseOptionalNumber(p.efficiency_lower_end),
-                  efficiency_higher_end: parseOptionalNumber(p.efficiency_higher_end),
-                  permissible_use: parseOptionalNumber(p.permissible_use)
+                  airflow: parseOptionalInteger(p.airflow),
+                  efficiency_centre: parseOptionalInteger(p.efficiency_centre),
+                  efficiency_lower_end: parseOptionalInteger(p.efficiency_lower_end),
+                  efficiency_higher_end: parseOptionalInteger(p.efficiency_higher_end),
+                  permissible_use: parseOptionalInteger(p.permissible_use)
                 },
                 { regenerateGraph: false }
               )
             : createEfficiencyPoint(
                 selectedProductId,
                 {
-                  airflow: parseFloat(p.airflow),
-                  efficiency_centre: parseOptionalNumber(p.efficiency_centre),
-                  efficiency_lower_end: parseOptionalNumber(p.efficiency_lower_end),
-                  efficiency_higher_end: parseOptionalNumber(p.efficiency_higher_end),
-                  permissible_use: parseOptionalNumber(p.permissible_use)
+                  airflow: parseOptionalInteger(p.airflow),
+                  efficiency_centre: parseOptionalInteger(p.efficiency_centre),
+                  efficiency_lower_end: parseOptionalInteger(p.efficiency_lower_end),
+                  efficiency_higher_end: parseOptionalInteger(p.efficiency_higher_end),
+                  permissible_use: parseOptionalInteger(p.permissible_use)
                 },
                 { regenerateGraph: false }
               )
       }));
       const pointOperations = [
-        ...lineCreationOperations,
+        ...lineUpdateOperations,
+        ...lineDeleteOperations,
         ...rpmDeleteOperations,
         ...rpmSaveOperations,
         ...efficiencyDeleteOperations,
@@ -2906,6 +3344,11 @@
       ];
 
       await beginMapPointSave(totalOperations);
+
+      for (const operation of lineCreationOperations) {
+        await operation.run();
+        await advanceMapPointSave(operation.label);
+      }
 
       await processBatchedOperations(pointOperations);
 
@@ -3818,7 +4261,16 @@
             <div class="row g-3 align-items-end">
               <div class="col-12 col-md-4">
                 <label class="form-label" for="new-rpm-line">New {graphLineValueLabel()} line</label>
-                <input class="form-control" id="new-rpm-line" type="number" step="any" bind:value={newRpmLineValue} />
+                <input
+                  class="form-control"
+                  id="new-rpm-line"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  bind:value={newRpmLineValue}
+                  on:keydown={handleIntegerInputKeydown}
+                  on:input={(event) => (newRpmLineValue = sanitizeIntegerInputValue(event.currentTarget.value))}
+                />
               </div>
               <div class="col-12 col-md-4">
                 <label class="form-label" for="new-rpm-line-band-color">Band colour</label>
@@ -3840,7 +4292,19 @@
                     <div class="row g-2 align-items-end">
                       <div class="col-12 col-md-3">
                         <label class="form-label form-label-sm" for={`rpm-line-value-${line.id}`}>{graphLineValueLabel()}</label>
-                        <input class="form-control form-control-sm" id={`rpm-line-value-${line.id}`} type="number" step="any" bind:value={line.rpm} on:input={() => (rpmLines = [...rpmLines])} />
+                        <input
+                          class="form-control form-control-sm"
+                          id={`rpm-line-value-${line.id}`}
+                          type="text"
+                          inputmode="numeric"
+                          pattern="[0-9]*"
+                          bind:value={line.rpm}
+                          on:keydown={handleIntegerInputKeydown}
+                          on:input={(event) => {
+                            line.rpm = sanitizeIntegerInputValue(event.currentTarget.value);
+                            rpmLines = [...rpmLines];
+                          }}
+                        />
                       </div>
                       <div class="col-12 col-md-5">
                         <label class="form-label form-label-sm" for={`rpm-line-band-color-${line.id}`}>Band colour</label>
@@ -3877,6 +4341,61 @@
                   {/if}
                 </p>
                 <label class="form-label" for="graph-csv-file">Import Graph CSV file</label>
+                <div class="d-flex flex-wrap align-items-end gap-3 mb-2">
+                  <div class="form-check form-switch mb-0">
+                    <input
+                      class="form-check-input"
+                      id="graph-csv-downsample-enabled"
+                      type="checkbox"
+                      bind:checked={graphCsvDownsampleImportedCurves}
+                    />
+                    <label class="form-check-label" for="graph-csv-downsample-enabled">
+                      Downsample imported curves
+                    </label>
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1" for="graph-csv-downsample-count">Points per curve</label>
+                    <input
+                      class="form-control form-control-sm"
+                      id="graph-csv-downsample-count"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      min="1"
+                      step="1"
+                      bind:value={graphCsvDownsamplePointCount}
+                      disabled={!graphCsvDownsampleImportedCurves}
+                      on:keydown={handleIntegerInputKeydown}
+                      on:input={(event) => (graphCsvDownsamplePointCount = sanitizeIntegerInputValue(event.currentTarget.value))}
+                      style="width: 7rem;"
+                    />
+                  </div>
+                </div>
+                {#if productSupportsGraphOverlays()}
+                  <div class="form-check form-switch mb-2">
+                    <input
+                      class="form-check-input"
+                      id="graph-csv-normalize-overlays"
+                      type="checkbox"
+                      bind:checked={graphCsvNormalizeEfficiencyOverlays}
+                    />
+                    <label class="form-check-label" for="graph-csv-normalize-overlays">
+                      Normalize efficiency/permissible lines to 0-100
+                    </label>
+                  </div>
+                {/if}
+                <p class="text-body-secondary small mb-2">
+                  {#if graphCsvDownsampleImportedCurves}
+                    Each imported curve is resampled across its valid axis range before the points are injected into the product draft.
+                  {:else}
+                    Imported curves are injected at full resolution.
+                  {/if}
+                </p>
+                {#if productSupportsGraphOverlays()}
+                  <p class="text-body-secondary small mb-2">
+                    When normalization is on, each overlay column is scaled independently from its imported values and any extra zero-valued points become blanks instead of duplicate zeros.
+                  </p>
+                {/if}
                 <input
                   bind:this={graphCsvInput}
                   class="form-control"
@@ -3925,8 +4444,8 @@
                       {#each rpmPoints as p}
                         <tr>
                           <td>{formatGraphLineValue(p.rpm)}</td>
-                          <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.airflow} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
-                          <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.pressure)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.pressure} on:input={() => (rpmPoints = [...rpmPoints])} /></td>
+                          <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*" bind:value={p.airflow} on:keydown={handleIntegerInputKeydown} on:input={(event) => { p.airflow = sanitizeIntegerInputValue(event.currentTarget.value); rpmPoints = [...rpmPoints]; }} /></td>
+                          <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.pressure)}`} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*" bind:value={p.pressure} on:keydown={handleIntegerInputKeydown} on:input={(event) => { p.pressure = sanitizeIntegerInputValue(event.currentTarget.value); rpmPoints = [...rpmPoints]; }} /></td>
                           <td><button class="btn btn-danger btn-sm" on:click={() => deleteRpmPointLocal(p)}>Delete</button></td>
                         </tr>
                       {/each}
@@ -3943,6 +4462,37 @@
               <div class="card shadow-sm">
                 <div class="card-body">
                   <h6 class="card-title mb-3">Efficiency / permissible points</h6>
+                  <div class="row g-2 mb-3">
+                    <div class="col-12 col-md-3">
+                      <label class="form-label form-label-sm" for="scale-efficiency-centre">Centre scale factor</label>
+                      <div class="input-group input-group-sm">
+                        <input class="form-control" id="scale-efficiency-centre" type="number" step="any" bind:value={efficiencyScaleFactors.efficiency_centre} />
+                        <button class="btn btn-outline-secondary" type="button" on:click={() => applyEfficiencyScaleFactor('efficiency_centre', efficiencyScaleFactors.efficiency_centre)}>Apply</button>
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <label class="form-label form-label-sm" for="scale-efficiency-lower">Lower scale factor</label>
+                      <div class="input-group input-group-sm">
+                        <input class="form-control" id="scale-efficiency-lower" type="number" step="any" bind:value={efficiencyScaleFactors.efficiency_lower_end} />
+                        <button class="btn btn-outline-secondary" type="button" on:click={() => applyEfficiencyScaleFactor('efficiency_lower_end', efficiencyScaleFactors.efficiency_lower_end)}>Apply</button>
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <label class="form-label form-label-sm" for="scale-efficiency-higher">Higher scale factor</label>
+                      <div class="input-group input-group-sm">
+                        <input class="form-control" id="scale-efficiency-higher" type="number" step="any" bind:value={efficiencyScaleFactors.efficiency_higher_end} />
+                        <button class="btn btn-outline-secondary" type="button" on:click={() => applyEfficiencyScaleFactor('efficiency_higher_end', efficiencyScaleFactors.efficiency_higher_end)}>Apply</button>
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <label class="form-label form-label-sm" for="scale-permissible-use">Permissible scale factor</label>
+                      <div class="input-group input-group-sm">
+                        <input class="form-control" id="scale-permissible-use" type="number" step="any" bind:value={efficiencyScaleFactors.permissible_use} />
+                        <button class="btn btn-outline-secondary" type="button" on:click={() => applyEfficiencyScaleFactor('permissible_use', efficiencyScaleFactors.permissible_use)}>Apply</button>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="text-body-secondary small mb-3">These scale the current draft values for each overlay column and round the result back to whole numbers.</p>
                   <div class="table-responsive">
                     <table class="table table-sm align-middle editable-table mb-0">
                       <thead>
@@ -3958,11 +4508,11 @@
                       <tbody>
                         {#each efficiencyPoints as p}
                           <tr>
-                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.airflow} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_centre)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_centre} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_lower_end)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_lower_end} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_higher_end)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.efficiency_higher_end} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
-                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.permissible_use)}`} style="min-width: 90px;" type="number" step="any" bind:value={p.permissible_use} on:input={() => (efficiencyPoints = [...efficiencyPoints])} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*" bind:value={p.airflow} on:keydown={handleIntegerInputKeydown} on:input={(event) => { p.airflow = sanitizeIntegerInputValue(event.currentTarget.value); efficiencyPoints = [...efficiencyPoints]; }} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_centre)}`} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*" bind:value={p.efficiency_centre} on:keydown={handleIntegerInputKeydown} on:input={(event) => { p.efficiency_centre = sanitizeIntegerInputValue(event.currentTarget.value); efficiencyPoints = [...efficiencyPoints]; }} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_lower_end)}`} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*" bind:value={p.efficiency_lower_end} on:keydown={handleIntegerInputKeydown} on:input={(event) => { p.efficiency_lower_end = sanitizeIntegerInputValue(event.currentTarget.value); efficiencyPoints = [...efficiencyPoints]; }} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_higher_end)}`} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*" bind:value={p.efficiency_higher_end} on:keydown={handleIntegerInputKeydown} on:input={(event) => { p.efficiency_higher_end = sanitizeIntegerInputValue(event.currentTarget.value); efficiencyPoints = [...efficiencyPoints]; }} /></td>
+                            <td><input class={`form-control form-control-sm ${editorNumericInputClass(p.permissible_use)}`} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*" bind:value={p.permissible_use} on:keydown={handleIntegerInputKeydown} on:input={(event) => { p.permissible_use = sanitizeIntegerInputValue(event.currentTarget.value); efficiencyPoints = [...efficiencyPoints]; }} /></td>
                             <td><button class="btn btn-danger btn-sm" on:click={() => deleteEfficiencyPointLocal(p)}>Delete</button></td>
                           </tr>
                         {/each}
