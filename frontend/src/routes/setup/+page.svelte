@@ -4,6 +4,7 @@
   import { auth } from '$lib/auth.js';
   import { GLOBAL_UNIT_OPTIONS } from '$lib/config.js';
   import FileManager from '$lib/FileManager.svelte';
+  import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SetupLogConsole from '$lib/SetupLogConsole.svelte';
   import {
     changePassword,
@@ -18,6 +19,8 @@
     startDeleteAllGraphImagesJob,
     startRegenerateAllGraphImagesJob,
     startRegenerateAllProductPdfsJob,
+    startRegenerateAllSeriesPdfsJob,
+    startRegenerateAllProductTypePdfsJob,
     startRestoreDataBackupBundleJob,
     startRestoreDatabaseBackupBundleJob,
     updateProductType,
@@ -43,7 +46,8 @@
   let newPassword = '';
   let newIsAdmin = false;
   let maintenanceLoading = false;
-  let maintenanceError = '';
+  let maintenanceErrorToast = '';
+  let maintenanceErrorToastTimeout = null;
   let liveLogsOpen = false;
   let dbBackupFile = null;
   let mediaBackupFile = null;
@@ -71,17 +75,20 @@
   let successToastKey = 0;
   let successDismissTimeout = null;
 
-  $: maintenanceProgressPercent =
-    maintenanceJob?.progress_percent != null
-      ? Math.max(0, Math.min(100, Number(maintenanceJob.progress_percent)))
-      : null;
-
   function clearSuccessToast() {
     successMessages = [];
     successToastKey += 1;
     if (successDismissTimeout) {
       clearTimeout(successDismissTimeout);
       successDismissTimeout = null;
+    }
+  }
+
+  function clearMaintenanceErrorToast() {
+    maintenanceErrorToast = '';
+    if (maintenanceErrorToastTimeout) {
+      clearTimeout(maintenanceErrorToastTimeout);
+      maintenanceErrorToastTimeout = null;
     }
   }
 
@@ -98,6 +105,17 @@
     }, 3000);
   }
 
+  function addMaintenanceError(message) {
+    if (!message) return;
+    maintenanceErrorToast = message;
+    if (maintenanceErrorToastTimeout) {
+      clearTimeout(maintenanceErrorToastTimeout);
+    }
+    maintenanceErrorToastTimeout = setTimeout(() => {
+      clearMaintenanceErrorToast();
+    }, 8000);
+  }
+
   onMount(() => {
     const session = get(auth);
     if (session.authenticated) {
@@ -110,6 +128,9 @@
   onDestroy(() => {
     if (successDismissTimeout) {
       clearTimeout(successDismissTimeout);
+    }
+    if (maintenanceErrorToastTimeout) {
+      clearTimeout(maintenanceErrorToastTimeout);
     }
     if (maintenancePollTimeout) {
       clearTimeout(maintenancePollTimeout);
@@ -126,6 +147,27 @@
 
   function productTemplates() {
     return templateRegistry.product_templates ?? [];
+  }
+
+  function maintenanceJobTypeIncludes(...needles) {
+    const jobType = String(maintenanceJob?.job_type || '');
+    return needles.some((needle) => jobType.includes(needle));
+  }
+
+  function isPdfMaintenanceJob() {
+    return maintenanceJobTypeIncludes('product_pdfs', 'series_pdfs', 'product_type_pdfs', 'product_pdf_', 'series_pdf_', 'product_type_pdf_');
+  }
+
+  function isProductPdfMaintenanceJob() {
+    return maintenanceJobTypeIncludes('product_pdfs', 'product_pdf_');
+  }
+
+  function isSeriesPdfMaintenanceJob() {
+    return maintenanceJobTypeIncludes('series_pdfs', 'series_pdf_');
+  }
+
+  function isProductTypePdfMaintenanceJob() {
+    return maintenanceJobTypeIncludes('product_type_pdfs', 'product_type_pdf_');
   }
 
   async function loadTemplates() {
@@ -679,19 +721,20 @@
           window.URL.revokeObjectURL(downloadUrl);
         }
         addSuccess(job.result_message || options.successMessage || 'Maintenance task completed.');
+        clearMaintenanceErrorToast();
         return;
       }
 
       if (job.status === 'failed') {
         maintenanceLoading = false;
-        maintenanceError = job.error || options.errorMessage || 'Maintenance task failed.';
+        addMaintenanceError(job.error || options.errorMessage || 'Maintenance task failed.');
         return;
       }
 
       maintenancePollTimeout = setTimeout(() => pollMaintenanceJob(jobId, options), 1500);
     } catch (error) {
       maintenanceLoading = false;
-      maintenanceError = error?.message || options.errorMessage || 'Unable to read maintenance job status.';
+      addMaintenanceError(error?.message || options.errorMessage || 'Unable to read maintenance job status.');
     }
   }
 
@@ -701,7 +744,7 @@
     }
 
     maintenanceLoading = true;
-    maintenanceError = '';
+    clearMaintenanceErrorToast();
     maintenanceJob = null;
     clearSuccessToast();
     try {
@@ -709,7 +752,7 @@
       maintenanceJob = job;
       await pollMaintenanceJob(job.id, options);
     } catch (error) {
-      maintenanceError = error?.message || options.errorMessage || 'Unable to run maintenance task.';
+      addMaintenanceError(error?.message || options.errorMessage || 'Unable to run maintenance task.');
       maintenanceLoading = false;
     } finally {
       if (!maintenanceLoading && maintenancePollTimeout) {
@@ -745,7 +788,7 @@
 
   async function handleDbBackupRestore() {
     if (!dbBackupFile) {
-      maintenanceError = 'Choose a DB data ZIP file first.';
+      addMaintenanceError('Choose a DB data ZIP file first.');
       clearSuccessToast();
       return;
     }
@@ -762,7 +805,7 @@
       successMessage: 'DB data backup restored successfully.',
       errorMessage: 'Unable to restore DB data backup.'
     });
-    if (!maintenanceError) {
+    if (!maintenanceErrorToast) {
       dbBackupFile = null;
       const input = document.getElementById('db-backup-restore-file');
       if (input) {
@@ -773,7 +816,7 @@
 
   async function handleMediaBackupRestore() {
     if (!mediaBackupFile) {
-      maintenanceError = 'Choose a media data ZIP file first.';
+      addMaintenanceError('Choose a media data ZIP file first.');
       clearSuccessToast();
       return;
     }
@@ -790,7 +833,7 @@
       successMessage: 'Media data backup restored successfully.',
       errorMessage: 'Unable to restore media data backup.'
     });
-    if (!maintenanceError) {
+    if (!maintenanceErrorToast) {
       mediaBackupFile = null;
       const input = document.getElementById('media-backup-restore-file');
       if (input) {
@@ -818,6 +861,20 @@
       {/each}
       {#key successToastKey}
         <div class="success-toast-progress"></div>
+      {/key}
+    </div>
+  </div>
+{/if}
+
+{#if maintenanceErrorToast}
+  <div class="error-toast shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="alert alert-danger mb-0 error-toast-alert">
+      <div class="d-flex justify-content-between align-items-start gap-3">
+        <div class="me-auto">{maintenanceErrorToast}</div>
+        <button class="btn-close" type="button" aria-label="Dismiss error" on:click={clearMaintenanceErrorToast}></button>
+      </div>
+      {#key maintenanceErrorToast}
+        <div class="error-toast-progress"></div>
       {/key}
     </div>
   </div>
@@ -1029,51 +1086,14 @@
       <div class="col-12">
         <div class="card shadow-sm h-100">
           <div class="card-body bg-body-secondary bg-opacity-10">
-            <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p>
-            <h2 class="h4">Operational Tools</h2>
-            <p class="text-body-secondary">
-              Run special admin-only tasks that are otherwise only exposed through the API.
-            </p>
+          <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p>
+          <h2 class="h4">Operational Tools</h2>
+          <p class="text-body-secondary">
+            Run special admin-only tasks that are otherwise only exposed through the API.
+          </p>
 
-          {#if maintenanceError}
-            <div class="alert alert-danger py-2">{maintenanceError}</div>
-          {/if}
-          {#if maintenanceJob}
-            <div class="alert alert-secondary py-2">
-              <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
-                <div class="fw-semibold">Maintenance job: {maintenanceJob.job_type}</div>
-                <span class={`badge ${maintenanceJob.status === 'completed' ? 'text-bg-success' : maintenanceJob.status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>
-                  {maintenanceJob.status}
-                </span>
-              </div>
-              {#if maintenanceJob.progress_message}
-                <div class="small mb-2">{maintenanceJob.progress_message}</div>
-              {/if}
-              <div
-                class="progress"
-                role="progressbar"
-                aria-label="Maintenance progress"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow={maintenanceProgressPercent ?? undefined}
-              >
-                <div
-                  class={`progress-bar ${maintenanceProgressPercent == null && maintenanceJob.status === 'running' ? 'progress-bar-striped progress-bar-animated' : ''}`}
-                  style={`width: ${maintenanceProgressPercent ?? (maintenanceJob.status === 'completed' ? 100 : 100)}%`}
-                >
-                  {#if maintenanceProgressPercent != null}
-                    {maintenanceProgressPercent.toFixed(0)}%
-                  {:else if maintenanceJob.status === 'running'}
-                    Working...
-                  {/if}
-                </div>
-              </div>
-              {#if maintenanceJob.progress_current != null && maintenanceJob.progress_total != null}
-                <div class="small text-body-secondary mt-2">
-                  Step {maintenanceJob.progress_current} of {maintenanceJob.progress_total}
-                </div>
-              {/if}
-            </div>
+          {#if maintenanceJob && !isPdfMaintenanceJob()}
+            <JobProgressPanel job={maintenanceJob} label={`Maintenance job: ${maintenanceJob.job_type}`} />
           {/if}
           <div class="card border mb-3">
             <div class="card-body">
@@ -1241,6 +1261,61 @@
                   </button>
                 </div>
               </div>
+              {#if maintenanceJob && isProductPdfMaintenanceJob()}
+                <JobProgressPanel job={maintenanceJob} label="Product PDF regeneration" />
+              {/if}
+            </div>
+          </div>
+
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Series PDFs</h3>
+                  <p class="mb-0 text-body-secondary">
+                    Generate or re-generate all series PDFs in one pass using the current series templates and linked product data.
+                  </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={() => runMaintenanceJob(startRegenerateAllSeriesPdfsJob, { successMessage: 'Series PDFs regenerated.' })}
+                    disabled={maintenanceLoading}
+                  >
+                    Regenerate Series PDFs
+                  </button>
+                </div>
+              </div>
+              {#if maintenanceJob && isSeriesPdfMaintenanceJob()}
+                <JobProgressPanel job={maintenanceJob} label="Series PDF regeneration" />
+              {/if}
+            </div>
+          </div>
+
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Product Type PDFs</h3>
+                  <p class="mb-0 text-body-secondary">
+                    Generate or re-generate all product type PDFs in one pass using the current product type templates and series data.
+                  </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={() => runMaintenanceJob(startRegenerateAllProductTypePdfsJob, { successMessage: 'Product type PDFs regenerated.' })}
+                    disabled={maintenanceLoading}
+                  >
+                    Regenerate Product Type PDFs
+                  </button>
+                </div>
+              </div>
+              {#if maintenanceJob && isProductTypePdfMaintenanceJob()}
+                <JobProgressPanel job={maintenanceJob} label="Product Type PDF regeneration" />
+              {/if}
             </div>
           </div>
 
@@ -1618,6 +1693,44 @@
   }
 
   @keyframes success-toast-countdown {
+    from {
+      transform: scaleX(1);
+    }
+
+    to {
+      transform: scaleX(0);
+    }
+  }
+
+  .error-toast {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(42rem, calc(100vw - 2rem));
+    z-index: 1085;
+    pointer-events: none;
+  }
+
+  .error-toast-alert {
+    position: relative;
+    overflow: hidden;
+    padding-bottom: 1rem;
+    pointer-events: auto;
+  }
+
+  .error-toast-progress {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 0.25rem;
+    background: rgba(220, 53, 69, 0.55);
+    transform-origin: left center;
+    animation: error-toast-countdown 8s linear forwards;
+  }
+
+  @keyframes error-toast-countdown {
     from {
       transform: scaleX(1);
     }

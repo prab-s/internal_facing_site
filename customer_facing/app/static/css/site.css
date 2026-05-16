@@ -234,6 +234,32 @@ body {
   color: var(--catalogue-accent-strong);
 }
 
+.fan-acoustic-section .text-muted {
+  max-width: 60rem;
+}
+
+.fan-acoustic-table-wrap {
+  overflow-x: auto;
+}
+
+.fan-acoustic-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.fan-acoustic-table th,
+.fan-acoustic-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.fan-acoustic-table thead th {
+  background-color: rgba(15, 118, 110, 0.08);
+}
+
 .hero-shell {
   position: relative;
   padding: 2rem;

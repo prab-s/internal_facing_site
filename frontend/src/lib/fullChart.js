@@ -909,6 +909,7 @@ function buildRpmBandPolygonSeries(
 ) {
   if (!rpmCurveEntries.length) return [];
 
+  const shouldClipToPermissibleUse = clipRpmAreaToPermissibleUse && permissibleBoundaryData.length > 0;
   const flows = buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData);
   if (!flows.length) return [];
 
@@ -938,7 +939,7 @@ function buildRpmBandPolygonSeries(
       lineData,
       flows,
       permissibleBoundaryData,
-      clipRpmAreaToPermissibleUse,
+      shouldClipToPermissibleUse,
       maximumVisibleFlow,
       previousLineData == null
     );
@@ -946,7 +947,7 @@ function buildRpmBandPolygonSeries(
       previousLineData,
       flows,
       permissibleBoundaryData,
-      clipRpmAreaToPermissibleUse,
+      shouldClipToPermissibleUse,
       maximumVisibleFlow
     );
     let polygons = buildBandPolygonsBetweenCurves(flows, currentCurve, lowerBoundary);
@@ -958,7 +959,7 @@ function buildRpmBandPolygonSeries(
       ];
     }
 
-    if (clipRpmAreaToPermissibleUse && polygons.length) {
+    if (shouldClipToPermissibleUse && polygons.length) {
       const upperStartFlow = polygons[0].topPoints[0]?.[0] ?? null;
       const lowerStartFlow =
         getLowerBoundaryActivationFlow(previousLineData, permissibleBoundaryData) ??
@@ -981,7 +982,7 @@ function buildRpmBandPolygonSeries(
 
     const series = [];
 
-    if (clipRpmAreaToPermissibleUse && permissibleBoundaryData.length && fullPolygons.length && pressureAxisMax != null) {
+    if (shouldClipToPermissibleUse && fullPolygons.length && pressureAxisMax != null) {
       series.push({
         name: `${formatGraphLineValue(rpm, graphConfig)} band faded`,
         type: 'custom',
@@ -1004,7 +1005,6 @@ function buildRpmBandPolygonSeries(
               type: 'polygon',
               shape: {
                 points: (() => {
-                  const boundaryStart = permissibleBoundaryData[0];
                   const boundaryEnd = permissibleBoundaryData[permissibleBoundaryData.length - 1];
                   return [
                     api.coord([0, pressureAxisMax]),
@@ -1046,7 +1046,7 @@ function buildRpmBandPolygonSeries(
         if (!polygonPoints.length) return null;
         const points = polygonPoints.map(([x, y]) => api.coord([x, y]));
         const clipPoints =
-          clipRpmAreaToPermissibleUse && permissibleBoundaryData.length && maximumVisibleFlow != null && pressureAxisMax != null
+          shouldClipToPermissibleUse && maximumVisibleFlow != null && pressureAxisMax != null
             ? (() => {
                 const boundaryStart = permissibleBoundaryData[0];
                 const boundaryEnd = permissibleBoundaryData[permissibleBoundaryData.length - 1];

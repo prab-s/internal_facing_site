@@ -514,6 +514,20 @@ export async function startRegenerateAllProductPdfsJob() {
   return r.json();
 }
 
+export async function startRegenerateAllSeriesPdfsJob() {
+  const r = await apiFetch('/maintenance/jobs/series-pdfs/regenerate-all', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
+export async function startRegenerateAllProductTypePdfsJob() {
+  const r = await apiFetch('/maintenance/jobs/product-type-pdfs/regenerate-all', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function deleteAllGraphImages() {
   const r = await apiFetch('/maintenance/graph-images', {
     method: 'DELETE'

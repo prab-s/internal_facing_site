@@ -1,0 +1,97 @@
+<body class="printed-type-2-template">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{product_type.label}} | Product Type PDF</title>
+  <link rel="stylesheet" href="./template.css" />
+  <main class="catalogue-document">
+    <!-- Page 1: full-bleed cover artwork -->
+    <section id="cover-page" class="pdf-page pdf-page--portrait image-page">
+      <img
+        src="{{product_type.cover_image_url}}"
+        alt="Vent-Tech front cover artwork"
+        class="image-page__image"
+      />
+    </section>
+
+    <!-- Page 2: intermediate artwork -->
+    <section id="intermediate-page" class="pdf-page pdf-page--portrait image-page">
+      <img
+        src="{{product_type.intermediate_image_url}}"
+        alt="Vent-Tech intermediate page artwork"
+        class="image-page__image"
+      />
+    </section>
+
+    <!-- Page 3: company information -->
+    <section id="contact-page" class="pdf-page pdf-page--portrait contact-page">
+      <header class="contact-page__header">
+        <div class="contact-page__logo">VENT-TECH</div>
+        <h1>Contact Details</h1>
+      </header>
+      <div class="contact-phone">
+        <div class="contact-phone__icon">☎</div>
+        <div><strong>Phone:</strong> 04 595 1403</div>
+      </div>
+      <div class="contact-cards">
+        <div class="contact-card">
+          <div class="contact-card__icon">◎</div><strong>Website</strong><span>www.venttech.co.nz</span>
+        </div>
+        <div class="contact-card">
+          <div class="contact-card__icon">✉</div><strong>Orders and enquiries</strong><span>[email protected]</span>
+        </div>
+        <div class="contact-card">
+          <div class="contact-card__icon">☏</div><strong>General office</strong><span>04 595 1403</span>
+        </div>
+      </div>
+      <section class="locations-panel">
+        <h2>Locations</h2>
+        <div class="locations-grid">
+          <div class="location-block">
+            <h3>Lower Hutt</h3>
+            <p><strong>Head Office</strong></p>
+            <p>Vent-Tech<br />Wellington<br />New Zealand</p>
+            <p>04 595 1403</p>
+          </div>
+          <div class="location-block">
+            <h3>New Zealand</h3>
+            <p><strong>Sales &amp; Support</strong></p>
+            <p>Nationwide product supply<br />Technical support<br />Ventilation solutions</p>
+            <p>[email protected]</p>
+          </div>
+        </div>
+        <div class="location-image-row">
+          <div class="location-image-placeholder">Image / showroom placeholder</div>
+          <div class="location-image-placeholder">Image / warehouse placeholder</div>
+          <div class="location-image-placeholder">Image / product placeholder</div>
+        </div>
+        <div class="map-row">
+          <div class="map-placeholder">Map placeholder</div>
+          <div class="map-placeholder">Map placeholder</div>
+        </div>
+      </section>
+    </section>
+
+    <!-- Page 4: dynamic visual contents / product type landing page -->
+    <section id="contents-page" class="pdf-page pdf-page--portrait contents-page">
+      <header class="contents-page__header">
+        <div>
+          <div class="contents-page__section-label">Product Type</div>
+          <h1>{{product_type.label}}</h1>
+        </div>
+        <div class="contents-page__icon">
+          <img
+            src="{{product_type.contents_icon_url}}"
+            alt="{{product_type.label}} contents icon"
+            class="contents-page__icon-image"
+          />
+        </div>
+      </header>
+      <section class="contents-panel">
+        <h2>Series groups</h2>
+        <div class="contents-panel__content product-type-contents">
+          {{product_type.series_groups_html}}
+        </div>
+      </section>
+    </section>
+  </main>
+</body>

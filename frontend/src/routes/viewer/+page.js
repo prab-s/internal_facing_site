@@ -20,9 +20,32 @@ export async function load({ fetch, url }) {
     }
 
     const productTypes = await response.json();
-    if (!productTypes.some((productType) => String(productType.id) === String(product_type))) {
+    const resolvedProductType = productTypes.find(
+      (productType) => String(productType.id) === String(product_type) || String(productType.key) === String(product_type)
+    );
+    if (!resolvedProductType) {
       throw error(404, 'Product type not found.');
     }
+
+    let productTypeContext = null;
+    try {
+      const contextResponse = await fetch(`/api/product-types/${encodeURIComponent(resolvedProductType.id)}/pdf-context`);
+      if (contextResponse.ok) {
+        productTypeContext = await contextResponse.json();
+      }
+    } catch {
+      productTypeContext = null;
+    }
+
+    return {
+      tab,
+      product,
+      product_type,
+      product_type_id: String(resolvedProductType.id),
+      product_type_key: resolvedProductType.key,
+      product_type_context: productTypeContext,
+      series
+    };
   }
 
   if (tab === 'series' && series) {
@@ -41,6 +64,9 @@ export async function load({ fetch, url }) {
     tab,
     product,
     product_type,
+    product_type_id: product_type,
+    product_type_key: '',
+    product_type_context: null,
     series
   };
 }

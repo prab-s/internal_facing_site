@@ -203,6 +203,11 @@ class InMemoryLogHandler(logging.Handler):
             LOG_BUFFER_CONDITION.notify_all()
 
 
+class NonUvicornLogFilter(logging.Filter):
+    def filter(self, record):
+        return not str(record.name or "").startswith("uvicorn")
+
+
 def attach_in_memory_log_handler():
     global LOG_HANDLER_ATTACHED
     if LOG_HANDLER_ATTACHED:
@@ -212,9 +217,15 @@ def attach_in_memory_log_handler():
     handler.setLevel(APP_LOG_LEVEL)
     handler.setFormatter(logging.Formatter("%(message)s"))
 
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(APP_LOG_LEVEL)
+    stream_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    stream_handler.addFilter(NonUvicornLogFilter())
+
     root_logger = logging.getLogger()
     root_logger.setLevel(APP_LOG_LEVEL)
     root_logger.addHandler(handler)
+    root_logger.addHandler(stream_handler)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         logging.getLogger(name).addHandler(handler)
 
@@ -1765,8 +1776,37 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
     return rendered, stylesheet_text
 
 
-def generate_product_pdf(product: Product, variant: str) -> Path:
-    output_path = product_pdf_path(product, variant)
+def resolve_product_pdf_template_definition(product: Product, variant: str) -> dict | None:
+    template_id = product.printed_template_id if variant == "printed" else product.online_template_id
+    return get_template_definition(template_id or product.template_id or "product-default", "product")
+
+
+def resolve_series_pdf_template_definition(series: Series, variant: str) -> dict | None:
+    template_id = series.printed_template_id if variant == "printed" else series.online_template_id
+    return get_template_definition(template_id or series.template_id or "series-default", "series")
+
+
+def pdf_template_signature(template_definition: dict | None) -> tuple[str, str] | None:
+    if template_definition is None:
+        return None
+
+    project_root = Path(__file__).resolve().parents[1]
+    template_path = (project_root / str(template_definition.get("path") or "")).resolve()
+    stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
+    stylesheet_signature = str(stylesheet_path.resolve()) if stylesheet_path is not None else ""
+    return (str(template_path), stylesheet_signature)
+
+
+def product_pdf_templates_match(product: Product) -> bool:
+    return pdf_template_signature(resolve_product_pdf_template_definition(product, "printed")) == pdf_template_signature(resolve_product_pdf_template_definition(product, "online"))
+
+
+def series_pdf_templates_match(series: Series) -> bool:
+    return pdf_template_signature(resolve_series_pdf_template_definition(series, "printed")) == pdf_template_signature(resolve_series_pdf_template_definition(series, "online"))
+
+
+def generate_product_pdf_variant(product: Product, variant: str, output_path: Path | None = None) -> Path:
+    output_path = output_path or product_pdf_path(product, variant)
     with tempfile.TemporaryDirectory(prefix="product-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         base_path = temp_dir / f"product_{variant}_{product_slug(product)}_base.pdf"
@@ -1775,6 +1815,28 @@ def generate_product_pdf(product: Product, variant: str) -> Path:
         shutil.copyfile(base_path, output_path)
 
     return output_path
+
+
+def generate_product_pdf(product: Product, variant: str) -> Path:
+    return generate_product_pdf_variant(product, variant)
+
+
+def generate_product_pdfs(product: Product) -> tuple[Path, Path]:
+    printed_output_path = product_pdf_path(product, "printed")
+    online_output_path = product_pdf_path(product, "online")
+    printed_signature = pdf_template_signature(resolve_product_pdf_template_definition(product, "printed"))
+    online_signature = pdf_template_signature(resolve_product_pdf_template_definition(product, "online"))
+
+    if printed_signature == online_signature:
+        generated_path = generate_product_pdf_variant(product, "printed", printed_output_path)
+        if online_output_path != generated_path:
+            shutil.copyfile(generated_path, online_output_path)
+        return generated_path, online_output_path
+
+    return (
+        generate_product_pdf_variant(product, "printed", printed_output_path),
+        generate_product_pdf_variant(product, "online", online_output_path),
+    )
 
 
 def get_template_label(template_id: str | None, template_type: str) -> str:
@@ -1906,6 +1968,10 @@ def build_series_graph_payload(series: Series) -> dict | None:
     }
 
 
+def series_has_graph_capable_line_data(series: Series) -> bool:
+    return build_series_graph_payload(series) is not None
+
+
 def generate_series_graph(series: Series) -> Path:
     payload = build_series_graph_payload(series)
     if payload is None:
@@ -1956,9 +2022,21 @@ def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
     if graph_path.is_file():
         graph_uri = graph_path.as_uri()
 
+    ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
+    first_product = ordered_products[0] if ordered_products else None
+    first_product_image_uri = product_primary_image_uri(first_product) if first_product else ""
+    first_product_model = html.escape(first_product.model or "") if first_product else ""
+    cover_image_html = (
+        f'<img src="{html.escape(first_product_image_uri)}" alt="{first_product_model} primary product image" class="series-cover__image" />'
+        if first_product_image_uri
+        else '<div class="series-cover__placeholder">No primary image available</div>'
+    )
+
     replacements = {
         "{{series.name}}": html.escape(series.name or ""),
         "{{series.product_type_label}}": html.escape(series.product_type_label or ""),
+        "{{series.series_tab_color}}": html.escape(series.series_tab_color or SERIES_TAB_FALLBACK_COLOR),
+        "{{series.cover_image_html}}": cover_image_html,
         "{{series.description1_html}}": render_richtext_html(series.description1_html),
         "{{series.description2_html}}": render_richtext_html(series.description2_html),
         "{{series.description3_html}}": render_richtext_html(series.description3_html),
@@ -1994,14 +2072,36 @@ def build_series_pdf_base(series: Series, variant: str, temp_dir: Path) -> tuple
     return merged_base_path, pdf_page_count(merged_base_path)
 
 
-def generate_series_pdf(series: Series, variant: str) -> Path:
-    output_path = series_pdf_path(series, variant)
+def generate_series_pdf_variant(series: Series, variant: str, output_path: Path | None = None) -> Path:
+    output_path = output_path or series_pdf_path(series, variant)
     with tempfile.TemporaryDirectory(prefix="series-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         base_path, _ = build_series_pdf_base(series, variant, temp_dir)
         shutil.copyfile(base_path, output_path)
 
     return output_path
+
+
+def generate_series_pdf(series: Series, variant: str) -> Path:
+    return generate_series_pdf_variant(series, variant)
+
+
+def generate_series_pdfs(series: Series) -> tuple[Path, Path]:
+    printed_output_path = series_pdf_path(series, "printed")
+    online_output_path = series_pdf_path(series, "online")
+    printed_signature = pdf_template_signature(resolve_series_pdf_template_definition(series, "printed"))
+    online_signature = pdf_template_signature(resolve_series_pdf_template_definition(series, "online"))
+
+    if printed_signature == online_signature:
+        generated_path = generate_series_pdf_variant(series, "printed", printed_output_path)
+        if online_output_path != generated_path:
+            shutil.copyfile(generated_path, online_output_path)
+        return generated_path, online_output_path
+
+    return (
+        generate_series_pdf_variant(series, "printed", printed_output_path),
+        generate_series_pdf_variant(series, "online", online_output_path),
+    )
 
 
 def product_primary_image_uri(product: Product) -> str:
@@ -2029,6 +2129,36 @@ def build_product_type_contents_icon_url(product_type: ProductType) -> str:
         "</svg>"
     )
     return "data:image/svg+xml;charset=UTF-8," + urllib.parse.quote(svg)
+
+
+def load_template_asset_config(template_path: Path) -> dict[str, str]:
+    config_path = template_path.parent / "template-assets.json"
+    if not config_path.is_file():
+        return {}
+
+    try:
+        raw_config = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid template asset config: {config_path}") from exc
+
+    if not isinstance(raw_config, dict):
+        raise RuntimeError(f"Template asset config must be a JSON object: {config_path}")
+
+    config: dict[str, str] = {}
+    for key, value in raw_config.items():
+        if value is None:
+            continue
+        text_value = str(value).strip()
+        if text_value:
+            config[str(key)] = text_value
+    return config
+
+
+def build_template_asset_uri(template_path: Path, asset_file_name: str) -> str:
+    asset_path = template_path.parent / asset_file_name
+    if not asset_path.is_file():
+        return ""
+    return asset_path.as_uri()
 
 
 def build_product_type_series_names_html(series_names: list[str]) -> str:
@@ -2084,6 +2214,15 @@ def build_product_type_series_groups_html(product_type: ProductType, series_summ
         series_color = html.escape(str(summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR))
         description_html = summary.get("series_description_html") or '<p class="placeholder">No description provided.</p>'
         image_uri = html.escape(str(summary.get("first_product_image_uri") or ""))
+        page_start = int(summary.get("page_start") or 0)
+        page_end = int(summary.get("page_end") or 0)
+        if page_start and page_end:
+            page_range_text = f"Pages {page_start}-{page_end}"
+        elif page_start:
+            page_range_text = f"Page {page_start}"
+        else:
+            page_range_text = "Pages pending"
+        page_range_html = html.escape(page_range_text)
         image_html = (
             f'<img class="series-tile__image" src="{image_uri}" alt="{series_name}" />'
             if image_uri
@@ -2093,7 +2232,10 @@ def build_product_type_series_groups_html(product_type: ProductType, series_summ
         parts.append(
             '<article class="series-tile" '
             f'style="--series-accent: {series_color};">'
+            '<div class="series-tile__header">'
             f'<div class="series-tile__badge">{series_name}</div>'
+            f'<div class="series-tile__range">{page_range_html}</div>'
+            '</div>'
             '<div class="series-tile__image-wrap">'
             f"{image_html}"
             "</div>"
@@ -2103,6 +2245,109 @@ def build_product_type_series_groups_html(product_type: ProductType, series_summ
 
     parts.append("</section>")
     return "".join(parts)
+
+
+def resolve_product_type_series_pdf_source(series: Series) -> Path | None:
+    printed_path = series_pdf_path(series, "printed")
+    if printed_path.is_file():
+        return printed_path
+
+    online_path = series_pdf_path(series, "online")
+    if online_path.is_file():
+        return online_path
+
+    return None
+
+
+def build_product_type_series_pdf_summaries(product_type: ProductType) -> tuple[list[dict], list[Path]]:
+    ordered_series = sorted(product_type.series or [], key=lambda item: (item.name or "").casefold())
+    series_summaries: list[dict] = []
+    source_paths: list[Path] = []
+
+    for series in ordered_series:
+        ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
+        source_path = resolve_product_type_series_pdf_source(series)
+        if source_path is None:
+            logger.error(
+                "[product_type_pdf:%s] missing series PDF for %s",
+                product_type.id,
+                series.name,
+            )
+            raise RuntimeError(f"Series PDF is missing for {series.name}. Generate the series PDF first.")
+
+        source_paths.append(source_path)
+        series_summaries.append(
+            {
+                "id": series.id,
+                "name": series.name,
+                "series_tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
+                "series_description_html": render_richtext_html(series.description1_html),
+                "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
+                "page_count": pdf_page_count(source_path),
+                "product_count": len(series.products or []),
+                "products": [
+                    {
+                        "id": product.id,
+                        "model": product.model,
+                        "series_id": product.series_id,
+                        "series_name": product.series_name_value,
+                        "product_type_key": product.product_type_key,
+                        "product_type_label": product.product_type_label,
+                        "primary_product_image_uri": product_primary_image_uri(product),
+                    }
+                    for product in ordered_products
+                ],
+            }
+        )
+
+    return series_summaries, source_paths
+
+
+def render_product_type_intro_with_page_ranges(
+    product_type: ProductType,
+    temp_dir: Path,
+    series_summaries: list[dict],
+    series_names_html: str,
+    series_legend_html: str,
+) -> tuple[Path, int, str, str]:
+    intro_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
+    intro_page_count = 0
+    rendered_series_groups_html = ""
+    intro_stylesheet_text = ""
+
+    for _ in range(3):
+        rendered_series_groups_html = build_product_type_series_groups_html(product_type, series_summaries)
+        intro_html, intro_stylesheet_text = build_product_type_pdf_html(
+            product_type,
+            series_names_html,
+            rendered_series_groups_html,
+            series_legend_html,
+        )
+        render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
+        next_intro_page_count = pdf_page_count(intro_base_path)
+
+        next_page_start = next_intro_page_count + 1
+        ranges_changed = False
+        for summary in series_summaries:
+            series_page_count = int(summary.get("page_count") or 0)
+            if series_page_count > 0:
+                page_end = next_page_start + series_page_count - 1
+                if summary.get("page_start") != next_page_start or summary.get("page_end") != page_end:
+                    ranges_changed = True
+                summary["page_start"] = next_page_start
+                summary["page_end"] = page_end
+                next_page_start = page_end + 1
+            else:
+                if summary.get("page_start") != 0 or summary.get("page_end") != 0:
+                    ranges_changed = True
+                summary["page_start"] = 0
+                summary["page_end"] = 0
+
+        intro_page_count = next_intro_page_count
+        if not ranges_changed:
+            break
+
+    return intro_base_path, intro_page_count, rendered_series_groups_html, intro_stylesheet_text
 
 
 def build_product_type_contents_html(product_type: ProductType, series_summaries: list[dict]) -> str:
@@ -2129,11 +2374,14 @@ def build_product_type_pdf_html(
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
     html_template = inline_template_stylesheet(html_template, stylesheet_text)
+    asset_config = load_template_asset_config(template_path)
 
     replacements = {
         "{{product_type.key}}": html.escape(product_type.key or ""),
         "{{product_type.label}}": html.escape(product_type.label or ""),
         "{{product_type.contents_icon_url}}": build_product_type_contents_icon_url(product_type),
+        "{{product_type.cover_image_url}}": build_template_asset_uri(template_path, asset_config.get("cover_image", "")),
+        "{{product_type.intermediate_image_url}}": build_template_asset_uri(template_path, asset_config.get("intermediate_image", "")),
         "{{product_type.series_names}}": html.escape(", ".join(product_type.series_names or [])),
         "{{product_type.series_names_html}}": series_names_html,
         "{{product_type.series_legend_html}}": series_legend_html,
@@ -2148,63 +2396,45 @@ def build_product_type_pdf_html(
 
 
 def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tuple[Path, dict]:
-    ordered_series = sorted(product_type.series or [], key=lambda item: (item.name or "").casefold())
-    series_summaries: list[dict] = []
-    series_base_paths: list[Path] = []
-
-    for series in ordered_series:
-        series_base_path, series_page_count = build_series_pdf_base(series, "printed", temp_dir)
-        series_base_paths.append(series_base_path)
-        ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
-        series_summaries.append(
-            {
-                "id": series.id,
-                "name": series.name,
-                "series_tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
-                "series_description_html": render_richtext_html(series.description1_html),
-                "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
-                "page_count": series_page_count,
-                "product_count": len(series.products or []),
-                "products": [
-                    {
-                        "id": product.id,
-                        "model": product.model,
-                        "series_id": product.series_id,
-                        "series_name": product.series_name_value,
-                        "product_type_key": product.product_type_key,
-                        "product_type_label": product.product_type_label,
-                        "primary_product_image_uri": product_primary_image_uri(product),
-                    }
-                    for product in ordered_products
-                ],
-            }
-        )
-
+    series_summaries, series_base_paths = build_product_type_series_pdf_summaries(product_type)
     series_names_html = build_product_type_series_names_html(product_type.series_names or [])
-    series_groups_html = build_product_type_series_groups_html(product_type, series_summaries)
     series_legend_html = build_product_type_series_legend_html(series_summaries)
-    intro_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
-    intro_html, intro_stylesheet_text = build_product_type_pdf_html(
+    intro_base_path, intro_page_count, series_groups_html, _ = render_product_type_intro_with_page_ranges(
         product_type,
+        temp_dir,
+        series_summaries,
         series_names_html,
-        series_groups_html,
         series_legend_html,
     )
-    render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
-    intro_page_count = pdf_page_count(intro_base_path)
-
-    page_start = intro_page_count + 1
-    for summary in series_summaries:
-        page_end = page_start + summary["page_count"] - 1
-        summary["page_start"] = page_start
-        summary["page_end"] = page_end
-        page_start = page_end + 1
 
     merged_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_base.pdf"
     merge_pdf_files([intro_base_path, *series_base_paths], merged_base_path)
     return merged_base_path, {
         "intro_page_count": intro_page_count,
-        "page_count": pdf_page_count(merged_base_path),
+        "page_count": intro_page_count + sum(int(summary["page_count"] or 0) for summary in series_summaries),
+        "series_summaries": series_summaries,
+        "series_names_html": series_names_html,
+        "series_groups_html": series_groups_html,
+        "contents_html": series_groups_html,
+        "series_legend_html": series_legend_html,
+    }
+
+
+def build_product_type_pdf_context_metadata(product_type: ProductType, temp_dir: Path) -> dict:
+    series_summaries, _ = build_product_type_series_pdf_summaries(product_type)
+    series_names_html = build_product_type_series_names_html(product_type.series_names or [])
+    series_legend_html = build_product_type_series_legend_html(series_summaries)
+    _, intro_page_count, series_groups_html, _ = render_product_type_intro_with_page_ranges(
+        product_type,
+        temp_dir,
+        series_summaries,
+        series_names_html,
+        series_legend_html,
+    )
+
+    return {
+        "intro_page_count": intro_page_count,
+        "page_count": intro_page_count + sum(int(summary["page_count"] or 0) for summary in series_summaries),
         "series_summaries": series_summaries,
         "series_names_html": series_names_html,
         "series_groups_html": series_groups_html,
@@ -2248,13 +2478,18 @@ def build_product_type_page_decorations(metadata: dict) -> list[dict]:
     return decorations
 
 
-def generate_product_type_pdf(product_type: ProductType) -> Path:
+def generate_product_type_pdf_with_metadata(product_type: ProductType) -> tuple[Path, dict]:
     output_path = product_type_pdf_path(product_type, "printed")
     with tempfile.TemporaryDirectory(prefix="product-type-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         base_path, metadata = build_product_type_pdf_base(product_type, temp_dir)
         page_decorations = build_product_type_page_decorations(metadata)
         stamp_pdf_file(base_path, output_path, page_decorations)
+    return output_path, metadata
+
+
+def generate_product_type_pdf(product_type: ProductType) -> Path:
+    output_path, _ = generate_product_type_pdf_with_metadata(product_type)
     return output_path
 
 
@@ -3025,11 +3260,18 @@ def serialize_maintenance_job(job: dict) -> MaintenanceJobResponse:
     return MaintenanceJobResponse(**job)
 
 
+def raise_job_phase_error(entity_label: str, phase_label: str, exc: Exception) -> None:
+    raise RuntimeError(f"{entity_label}: {phase_label} failed: {exc}") from exc
+
+
 def start_maintenance_job(job_type: str, work):
     job = create_maintenance_job(job_type)
+    job_label = f"{job_type}/{job['id']}"
 
     def runner():
+        logger.info("[maintenance:%s] queued", job_label)
         update_maintenance_job(job["id"], status="running", started_at=backend_now_iso(), progress_message="Starting")
+        logger.info("[maintenance:%s] starting", job_label)
 
         def progress(message: str, current: int | None = None, total: int | None = None):
             updates = {"progress_message": message}
@@ -3042,6 +3284,14 @@ def start_maintenance_job(job_type: str, work):
             elif total == 0:
                 updates["progress_percent"] = 100.0
             update_maintenance_job(job["id"], **updates)
+            if current is not None and total is not None:
+                progress_percent = updates.get("progress_percent")
+                if progress_percent is not None:
+                    logger.info("[maintenance:%s] %s (%s/%s, %.1f%%)", job_label, message, current, total, progress_percent)
+                else:
+                    logger.info("[maintenance:%s] %s (%s/%s)", job_label, message, current, total)
+            else:
+                logger.info("[maintenance:%s] %s", job_label, message)
 
         try:
             result = work(progress) or {}
@@ -3052,8 +3302,9 @@ def start_maintenance_job(job_type: str, work):
             result_updates["status"] = "completed"
             result_updates["completed_at"] = backend_now_iso()
             update_maintenance_job(job["id"], **result_updates)
+            logger.info("[maintenance:%s] completed with result: %s", job_label, result_updates.get("result_message") or "Completed")
         except Exception as exc:
-            logger.exception("Maintenance job failed: %s", job_type)
+            logger.exception("[maintenance:%s] failed", job_label)
             update_maintenance_job(
                 job["id"],
                 status="failed",
@@ -3061,6 +3312,7 @@ def start_maintenance_job(job_type: str, work):
                 progress_message="Failed",
                 completed_at=backend_now_iso(),
             )
+            logger.error("[maintenance:%s] failed with error: %s", job_label, exc)
 
     thread = threading.Thread(target=runner, daemon=True, name=f"maintenance-{job['id']}")
     thread.start()
@@ -3650,7 +3902,7 @@ def get_product_type_pdf_context(product_type_id: int, db: Session = Depends(get
 
     with tempfile.TemporaryDirectory(prefix="product-type-context-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        _, metadata = build_product_type_pdf_base(product_type, temp_dir)
+        metadata = build_product_type_pdf_context_metadata(product_type, temp_dir)
 
     return ProductTypePdfResponse(
         id=product_type.id,
@@ -3693,13 +3945,9 @@ def refresh_product_type_pdf(product_type_id: int, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Product type not found.")
 
     try:
-        generate_product_type_pdf(product_type)
+        _, metadata = generate_product_type_pdf_with_metadata(product_type)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate product type PDF: {exc}") from exc
-
-    with tempfile.TemporaryDirectory(prefix="product-type-context-") as temp_dir_name:
-        temp_dir = Path(temp_dir_name)
-        _, metadata = build_product_type_pdf_base(product_type, temp_dir)
 
     db.refresh(product_type)
     return ProductTypePdfResponse(
@@ -3745,7 +3993,7 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
         product_type_label = product_type.label
 
     def work(progress):
-        progress("Loading product type data", 1, 4)
+        progress(f"Loading product type data for {product_type_label}", 1, 4)
         with SessionLocal() as db:
             product_type = (
                 db.query(ProductType)
@@ -3762,17 +4010,22 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
             if not product_type:
                 raise HTTPException(status_code=404, detail="Product type not found.")
 
-            progress("Rendering product type PDF pages", 2, 4)
-            with tempfile.TemporaryDirectory(prefix="product-type-context-") as temp_dir_name:
-                temp_dir = Path(temp_dir_name)
-                _, metadata = build_product_type_pdf_base(product_type, temp_dir)
+            try:
+                progress(
+                    f"Reusing existing series PDFs and building the product type contents page for {product_type.label}",
+                    2,
+                    4,
+                )
+                generate_product_type_pdf(product_type)
+            except Exception as exc:
+                logger.exception("[maintenance:refresh_product_type_pdf_%s] render failed for %s", product_type_id, product_type.label)
+                raise_job_phase_error(f"Product type {product_type.label}", "PDF rendering", exc)
 
-            progress("Stamping product type PDF", 3, 4)
-            generate_product_type_pdf(product_type)
+            progress(f"Merging existing series PDFs into the final product type PDF for {product_type.label}", 3, 4)
             db.refresh(product_type)
             db.commit()
 
-        progress("Refreshing product type context", 4, 4)
+        progress(f"Refreshing product type context for {product_type_label}", 4, 4)
         return {
             "result_message": f"Generated product type PDF for {product_type_label}.",
             "progress_message": f"Generated product type PDF for {product_type_label}.",
@@ -4278,10 +4531,14 @@ def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Series not found")
     db.refresh(series)
     try:
-        if series.product_type and series.product_type.supports_graph:
+        if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
             generate_series_graph(series)
-        generate_series_pdf(series, "printed")
-        generate_series_pdf(series, "online")
+        else:
+            logger.info(
+                "[series_pdf:%s] graph generation skipped because there is no graph-capable line data to plot",
+                series_id,
+            )
+        generate_series_pdfs(series)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
     db.refresh(series)
@@ -4309,16 +4566,38 @@ def start_refresh_series_pdf_job(series_id: int):
                 raise HTTPException(status_code=404, detail="Series not found")
 
             db.refresh(series)
-            if series.product_type and series.product_type.supports_graph:
-                progress("Refreshing series graph", 1, 3)
-                generate_series_graph(series)
+            progress(f"Loading series data for {series.name}", 1, 4)
+            if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
+                try:
+                    progress(f"Refreshing series graph image for {series.name}", 2, 4)
+                    generate_series_graph(series)
+                except Exception as exc:
+                    logger.exception("[maintenance:refresh_series_pdf_%s] graph generation failed for %s", series_id, series.name)
+                    raise_job_phase_error(f"Series {series.name}", "graph image generation", exc)
             else:
-                progress("Refreshing series graph", 1, 3)
+                progress(f"Series graph not required for {series.name} because there is no graph-capable line data to plot", 2, 4)
+                logger.info(
+                    "[maintenance:refresh_series_pdf_%s] graph generation skipped for %s because there is no graph-capable line data to plot",
+                    series_id,
+                    series.name,
+                )
 
-            progress("Rendering printed series PDF", 2, 3)
-            generate_series_pdf(series, "printed")
-            progress("Rendering online series PDF", 3, 3)
-            generate_series_pdf(series, "online")
+            try:
+                if series_pdf_templates_match(series):
+                    progress(
+                        f"Rendering shared series PDF template once for {series.name} because printed and online use the same template",
+                        3,
+                        4,
+                    )
+                    generate_series_pdfs(series)
+                    progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", 4, 4)
+                else:
+                    progress(f"Rendering printed series PDF for {series.name}", 3, 4)
+                    progress(f"Rendering online series PDF for {series.name}", 4, 4)
+                    generate_series_pdfs(series)
+            except Exception as exc:
+                logger.exception("[maintenance:refresh_series_pdf_%s] pdf rendering failed for %s", series_id, series.name)
+                raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
             db.commit()
 
         return {
@@ -5103,11 +5382,11 @@ def refresh_product_graph_image(product_id: int, db: Session = Depends(get_db)):
 @app.post("/api/products/{product_id}/pdf/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Generate a product PDF")
 def refresh_product_pdf(product_id: int, db: Session = Depends(get_db)):
     product = require_product(db, product_id)
-    if product.product_type and product.product_type.supports_graph:
+    graph_path = Path(product.graph_image_path) if product.graph_image_path else None
+    if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
         refresh_graph_for_product(db, product)
     try:
-        generate_product_pdf(product, "printed")
-        generate_product_pdf(product, "online")
+        generate_product_pdfs(product)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate product PDF: {exc}") from exc
     db.commit()
@@ -5130,17 +5409,34 @@ def start_refresh_product_pdf_job(product_id: int):
     def work(progress):
         with SessionLocal() as db:
             product = require_product(db, product_id)
-            if product.product_type and product.product_type.supports_graph:
-                progress("Refreshing product graph", 1, 3)
-                refresh_graph_for_product(db, product)
-                db.commit()
+            progress(f"Loading product data for {product_label}", 1, 4)
+            graph_path = Path(product.graph_image_path) if product.graph_image_path else None
+            if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
+                try:
+                    progress(f"Refreshing product graph image for {product_label}", 2, 4)
+                    refresh_graph_for_product(db, product)
+                except Exception as exc:
+                    logger.exception("[maintenance:refresh_product_pdf_%s] graph refresh failed for %s", product_id, product_label)
+                    raise_job_phase_error(f"Product {product_label}", "graph image generation", exc)
             else:
-                progress("Refreshing product graph", 1, 3)
+                progress(f"Product graph image already available for {product_label}", 2, 4)
 
-            progress("Rendering printed product PDF", 2, 3)
-            generate_product_pdf(product, "printed")
-            progress("Rendering online product PDF", 3, 3)
-            generate_product_pdf(product, "online")
+            try:
+                if product_pdf_templates_match(product):
+                    progress(
+                        f"Rendering shared product PDF template once for {product_label} because printed and online use the same template",
+                        3,
+                        4,
+                    )
+                    generate_product_pdfs(product)
+                    progress(f"Copying the rendered product PDF to both printed and online files for {product_label}", 4, 4)
+                else:
+                    progress(f"Rendering printed product PDF for {product_label}", 3, 4)
+                    progress(f"Rendering online product PDF for {product_label}", 4, 4)
+                    generate_product_pdfs(product)
+            except Exception as exc:
+                logger.exception("[maintenance:refresh_product_pdf_%s] pdf rendering failed for %s", product_id, product_label)
+                raise_job_phase_error(f"Product {product_label}", "PDF rendering", exc)
             db.commit()
 
         return {
@@ -5190,10 +5486,10 @@ def regenerate_all_product_pdfs(db: Session = Depends(get_db)):
     products = db.query(Product).options(joinedload(Product.product_type)).all()
     processed = 0
     for product in products:
-        if product.product_type and product.product_type.supports_graph:
+        graph_path = Path(product.graph_image_path) if product.graph_image_path else None
+        if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
             refresh_graph_for_product(db, product)
-        generate_product_pdf(product, "printed")
-        generate_product_pdf(product, "online")
+        generate_product_pdfs(product)
         processed += 1
     db.commit()
     return PdfMaintenanceResponse(
@@ -5210,11 +5506,35 @@ def start_regenerate_all_product_pdfs_job():
             total = len(products)
             processed = 0
             for index, product in enumerate(products, start=1):
-                progress(f"Generating PDF {index} of {total}: {product.model}", index, total)
-                if product.product_type and product.product_type.supports_graph:
-                    refresh_graph_for_product(db, product)
-                generate_product_pdf(product, "printed")
-                generate_product_pdf(product, "online")
+                base = (index - 1) * 4
+                total_steps = max(total * 4, 1)
+                progress(f"Loading product {index} of {total}: {product.model}", base + 1, total_steps)
+                graph_path = Path(product.graph_image_path) if product.graph_image_path else None
+                if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
+                    try:
+                        progress(f"Refreshing graph image for {product.model}", base + 2, total_steps)
+                        refresh_graph_for_product(db, product)
+                    except Exception as exc:
+                        logger.exception("[maintenance:regenerate_all_product_pdfs] graph refresh failed for %s", product.model)
+                        raise_job_phase_error(f"Product {product.model}", "graph image generation", exc)
+                else:
+                    progress(f"Graph image already available for {product.model}", base + 2, total_steps)
+                try:
+                    if product_pdf_templates_match(product):
+                        progress(
+                            f"Rendering shared product PDF template once for {product.model} because printed and online use the same template",
+                            base + 3,
+                            total_steps,
+                        )
+                        generate_product_pdfs(product)
+                        progress(f"Copying the rendered product PDF to both printed and online files for {product.model}", base + 4, total_steps)
+                    else:
+                        progress(f"Rendering printed PDF for {product.model}", base + 3, total_steps)
+                        progress(f"Rendering online PDF for {product.model}", base + 4, total_steps)
+                        generate_product_pdfs(product)
+                except Exception as exc:
+                    logger.exception("[maintenance:regenerate_all_product_pdfs] pdf rendering failed for %s", product.model)
+                    raise_job_phase_error(f"Product {product.model}", "PDF rendering", exc)
                 processed += 1
             db.commit()
         return {
@@ -5223,6 +5543,95 @@ def start_regenerate_all_product_pdfs_job():
         }
 
     return serialize_maintenance_job(start_maintenance_job("regenerate_all_product_pdfs", work))
+
+
+@app.post("/api/maintenance/jobs/series-pdfs/regenerate-all", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Start regenerating all series PDFs")
+def start_regenerate_all_series_pdfs_job():
+    def work(progress):
+        with SessionLocal() as db:
+            series_records = db.query(Series).options(joinedload(Series.product_type)).all()
+            total = len(series_records)
+            for index, series in enumerate(series_records, start=1):
+                base = (index - 1) * 4
+                total_steps = max(total * 4, 1)
+                progress(f"Loading series {index} of {total}: {series.name}", base + 1, total_steps)
+                if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
+                    try:
+                        progress(f"Refreshing graph image for {series.name}", base + 2, total_steps)
+                        generate_series_graph(series)
+                    except Exception as exc:
+                        logger.exception("[maintenance:regenerate_all_series_pdfs] graph generation failed for %s", series.name)
+                        raise_job_phase_error(f"Series {series.name}", "graph image generation", exc)
+                else:
+                    progress(f"Series graph image not required for {series.name} because there is no graph-capable line data to plot", base + 2, total_steps)
+                    logger.info(
+                        "[maintenance:regenerate_all_series_pdfs] graph generation skipped for %s because there is no graph-capable line data to plot",
+                        series.name,
+                    )
+                try:
+                    if series_pdf_templates_match(series):
+                        progress(
+                            f"Rendering shared series PDF template once for {series.name} because printed and online use the same template",
+                            base + 3,
+                            total_steps,
+                        )
+                        generate_series_pdfs(series)
+                        progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", base + 4, total_steps)
+                    else:
+                        progress(f"Rendering printed PDF for {series.name}", base + 3, total_steps)
+                        progress(f"Rendering online PDF for {series.name}", base + 4, total_steps)
+                        generate_series_pdfs(series)
+                except Exception as exc:
+                    logger.exception("[maintenance:regenerate_all_series_pdfs] pdf rendering failed for %s", series.name)
+                    raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
+            db.commit()
+        return {
+            "result_message": "Series PDFs regenerated.",
+            "products_processed": total,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("regenerate_all_series_pdfs", work))
+
+
+@app.post("/api/maintenance/jobs/product-type-pdfs/regenerate-all", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Start regenerating all product type PDFs")
+def start_regenerate_all_product_type_pdfs_job():
+    def work(progress):
+        with SessionLocal() as db:
+            product_types = (
+                db.query(ProductType)
+                .options(
+                    selectinload(ProductType.series)
+                    .selectinload(Series.products)
+                    .selectinload(Product.product_images),
+                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
+                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+                )
+                .all()
+            )
+            total = len(product_types)
+            for index, product_type in enumerate(product_types, start=1):
+                base = (index - 1) * 4
+                total_steps = max(total * 4, 1)
+                progress(f"Loading product type {index} of {total}: {product_type.label}", base + 1, total_steps)
+                try:
+                    progress(
+                        f"Reusing existing series PDFs and building the product type contents page for {product_type.label}",
+                        base + 2,
+                        total_steps,
+                    )
+                    generate_product_type_pdf(product_type)
+                    progress(f"Merging existing series PDFs into the final product type PDF for {product_type.label}", base + 3, total_steps)
+                    progress(f"Refreshing product type context for {product_type.label}", base + 4, total_steps)
+                except Exception as exc:
+                    logger.exception("[maintenance:regenerate_all_product_type_pdfs] pdf generation failed for %s", product_type.label)
+                    raise_job_phase_error(f"Product type {product_type.label}", "PDF rendering", exc)
+            db.commit()
+        return {
+            "result_message": "Product type PDFs regenerated.",
+            "products_processed": total,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("regenerate_all_product_type_pdfs", work))
 
 
 @app.delete("/api/maintenance/graph-images", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])

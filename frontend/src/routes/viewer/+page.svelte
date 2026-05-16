@@ -61,13 +61,15 @@
   }
 
   let activeViewerTab = normalizeViewerTab(data?.tab);
-  let selectedProductTypeId = normalizeViewerStringId(data?.product_type);
-  let selectedProductTypeContext = null;
+  let selectedProductTypeId = normalizeViewerStringId(data?.product_type_id || data?.product_type);
+  let selectedProductTypeContext = data?.product_type_context || null;
+  let productTypePdfPreviewRevision = 0;
   let seriesTabProductTypeFilter = '';
   let seriesTabSeriesId = normalizeViewerStringId(data?.series);
   let seriesTabOptions = [];
   let selectedSeriesRecord = null;
   let viewerUrlStateReady = false;
+  let productTypeContextRequestToken = 0;
 
   let refreshingProductGraphId = null;
   let refreshingProductPdfJob = null;
@@ -163,6 +165,12 @@
 
   function productTypePdfTemplateLabel(productType) {
     return templateLabel('product_type', productType?.product_type_template_id, 'product_type-default');
+  }
+
+  function productTypePdfPreviewUrl(productType) {
+    if (!productType?.product_type_pdf_url) return '';
+    const separator = productType.product_type_pdf_url.includes('?') ? '&' : '?';
+    return `${productType.product_type_pdf_url}${separator}v=${productTypePdfPreviewRevision}`;
   }
 
   function getCurrentGraphConfig() {
@@ -281,6 +289,14 @@
       } catch {
         productTypes = [];
       }
+      if (selectedProductTypeId && productTypes.length > 0) {
+        const resolvedProductType = productTypes.find(
+          (item) => String(item.id) === String(selectedProductTypeId) || String(item.key) === String(selectedProductTypeId)
+        );
+        if (resolvedProductType && String(selectedProductTypeId) !== String(resolvedProductType.id)) {
+          selectedProductTypeId = String(resolvedProductType.id);
+        }
+      }
       try {
         seriesRecords = await getSeries();
       } catch {
@@ -386,7 +402,8 @@
       );
       refreshingProductTypePdfJob = job;
       await loadEverything();
-      await loadProductTypeContext();
+      await loadProductTypeContext(productType.id);
+      productTypePdfPreviewRevision += 1;
       success = `Generated product type PDF for ${productType.label}.`;
     } catch (e) {
       error = e.message;
@@ -449,6 +466,13 @@
     selectedProductId = product?.id != null ? Number(product.id) : null;
   }
 
+  function handleProductTypeSelectionChange() {
+    selectedProductTypeContext = null;
+    if (activeViewerTab === 'product-type' && selectedProductTypeId) {
+      loadProductTypeContext(selectedProductTypeId);
+    }
+  }
+
   async function loadSeriesOptions() {
     try {
       const explicitSeries = await getSeries(productTypeFilter ? { product_type_key: productTypeFilter } : {});
@@ -487,16 +511,22 @@
 
   }
 
-  async function loadProductTypeContext() {
-    if (!selectedProductTypeId) {
+  async function loadProductTypeContext(productTypeId = selectedProductTypeRecord?.id) {
+    if (!productTypeId) {
       selectedProductTypeContext = null;
       return;
     }
 
+    const requestToken = ++productTypeContextRequestToken;
     try {
-      selectedProductTypeContext = await getProductTypePdfContext(selectedProductTypeId);
+      const context = await getProductTypePdfContext(productTypeId);
+      if (requestToken === productTypeContextRequestToken) {
+        selectedProductTypeContext = context;
+      }
     } catch {
-      selectedProductTypeContext = null;
+      if (requestToken === productTypeContextRequestToken) {
+        selectedProductTypeContext = null;
+      }
     }
   }
 
@@ -595,15 +625,21 @@
     seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
 
   $: selectedProductTypeRecord =
-    productTypes.find((productType) => Number(productType.id) === Number(selectedProductTypeId)) || null;
+    productTypes.find(
+      (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
+    ) || null;
+
+  $: if (productTypes.length > 0 && selectedProductTypeId) {
+    const normalizedProductType = productTypes.find(
+      (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
+    );
+    if (normalizedProductType && String(selectedProductTypeId) !== String(normalizedProductType.id)) {
+      selectedProductTypeId = String(normalizedProductType.id);
+    }
+  }
 
   $: if (selectedSeriesRecord && activeViewerTab !== 'series' && seriesTabSeriesId) {
     // Preserve explicit deep links to series records.
-  }
-
-  $: if (selectedProductTypeId) {
-    selectedProductTypeId;
-    loadProductTypeContext();
   }
 
   $: if (viewerUrlStateReady) {
@@ -619,6 +655,9 @@
     await loadSeriesOptions();
     await loadSeriesTabOptions();
     await loadFilteredProducts();
+    if (activeViewerTab === 'product-type' && selectedProductTypeId && !selectedProductTypeContext) {
+      await loadProductTypeContext(selectedProductTypeId);
+    }
     viewerUrlStateReady = true;
     syncViewerUrl();
   });
@@ -1038,10 +1077,15 @@
         <div class="card shadow-sm">
           <div class="card-body">
             <label class="form-label" for="viewer-product-type-select">Product type</label>
-            <select class="form-select" id="viewer-product-type-select" bind:value={selectedProductTypeId}>
+            <select
+              class="form-select"
+              id="viewer-product-type-select"
+              bind:value={selectedProductTypeId}
+              on:change={handleProductTypeSelectionChange}
+            >
               <option value="">-- Choose option --</option>
               {#each productTypes as productType}
-                <option value={productType.id}>{productType.label}</option>
+                <option value={String(productType.id)}>{productType.label}</option>
               {/each}
             </select>
             <div class="d-grid gap-2 mt-3">
@@ -1097,6 +1141,30 @@
                     emptyLabel="This product type has no linked series yet."
                   />
                 </div>
+              </div>
+            </div>
+
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-start gap-2">
+                  <div class="me-auto">
+                    <h3 class="h5 mb-1">Generated PDF</h3>
+                    <div class="small text-body-secondary">Inline preview of the latest generated PDF.</div>
+                  </div>
+                  {#if selectedProductTypeRecord?.product_type_pdf_url}
+                    <a class="btn btn-outline-secondary btn-sm" href={selectedProductTypeRecord.product_type_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
+                  {/if}
+                </div>
+                {#if selectedProductTypeRecord?.product_type_pdf_url}
+                  <div class="ratio ratio-16x9 mt-3">
+                    <iframe
+                      src={productTypePdfPreviewUrl(selectedProductTypeRecord)}
+                      title={`${selectedProductTypeRecord.label} PDF preview`}
+                    ></iframe>
+                  </div>
+                {:else}
+                  <p class="text-body-secondary mb-0 mt-3">No generated PDF available yet.</p>
+                {/if}
               </div>
             </div>
 

@@ -7,6 +7,8 @@
   --soft-blue: #d7e0ef;
   --accent: #21406f;
   --accent-strong: #233f74;
+  --brand-red: #cc1024;
+  --brand-red-deep: #8f0f1d;
   --white: #ffffff;
 }
 
@@ -32,12 +34,100 @@ body.series-template {
   background: var(--page-bg);
 }
 
-.page {
+.series-document {
+  width: 100%;
+}
+
+.series-page {
   width: 210mm;
   min-height: 297mm;
-  padding: 18mm 18mm 15mm;
   margin: 0 auto;
   background: var(--page-bg);
+  break-after: page;
+  page-break-after: always;
+}
+
+.series-page:last-of-type {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.series-overview-page {
+  padding: 18mm 18mm 15mm;
+}
+
+.series-cover-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18mm;
+  color: #ffffff;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.18) 0 18mm, transparent 18.5mm),
+    linear-gradient(145deg, var(--series-accent) 0%, #101820 100%);
+}
+
+.series-cover-page__content {
+  display: grid;
+  justify-items: center;
+  gap: 7mm;
+  max-width: 160mm;
+  padding: 10mm 12mm 12mm;
+  border: 0.45mm solid rgba(204, 16, 36, 0.55);
+  border-radius: 7mm;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4mm 16mm rgba(0, 0, 0, 0.22);
+}
+
+.series-cover-page__eyebrow {
+  font-size: 5.2mm;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-red);
+}
+
+.series-cover-page__title {
+  margin: 0;
+  font-size: 21mm;
+  line-height: 0.95;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.series-cover-page__image-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 95mm;
+}
+
+.series-cover__image {
+  display: block;
+  max-width: 124mm;
+  max-height: 114mm;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 3mm 7mm rgba(0, 0, 0, 0.28));
+}
+
+.series-cover__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96mm;
+  min-height: 70mm;
+  padding: 8mm 10mm;
+  border: 0.4mm dashed rgba(204, 16, 36, 0.72);
+  border-radius: 5mm;
+  font-size: 5mm;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .topbar {
@@ -60,14 +150,14 @@ body.series-template {
 }
 
 .topbar__title {
-  background: var(--soft-blue);
-  color: #111111;
+  background: var(--series-accent);
+  color: var(--white);
   font-size: 7.3mm;
 }
 
 .topbar__model {
   justify-content: flex-end;
-  background: var(--accent-strong);
+  background: linear-gradient(135deg, var(--brand-red), var(--brand-red-deep));
   color: var(--white);
   font-size: 7.3mm;
 }
@@ -95,13 +185,14 @@ body.series-template {
   background: var(--panel);
   border-radius: 3mm;
   overflow: hidden;
+  box-shadow: 0 0 0 0.45mm rgba(33, 64, 111, 0.08) inset;
 }
 
 .spec-card__title {
   margin: 0;
   padding: 1.4mm 2.2mm;
-  background: var(--soft-blue);
-  color: var(--accent);
+  background: linear-gradient(90deg, var(--brand-red), var(--brand-red-deep));
+  color: var(--white);
   font-size: 3.8mm;
   font-weight: 700;
   text-transform: uppercase;
@@ -156,6 +247,7 @@ body.series-template {
 .copy-section h3 {
   margin: 0 0 0.6mm;
   font-size: 4mm;
+  color: var(--brand-red);
 }
 
 .copy-section {
@@ -232,7 +324,7 @@ body.series-template {
   caption-side: top;
   text-align: left;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--series-accent);
   margin-bottom: 1.4mm;
 }
 
@@ -275,13 +367,14 @@ body.series-template {
   background: var(--panel);
   padding: 2.2mm 2.6mm;
   border-radius: 3mm;
+  border-top: 0.9mm solid var(--series-accent);
 }
 
 .series-meta-card__label {
   display: block;
   font-size: 3mm;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--brand-red);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -299,7 +392,7 @@ body.series-template {
     background: #ffffff;
   }
 
-  .page {
+  .series-page {
     max-width: none;
     border: 0;
     box-shadow: none;

@@ -1,0 +1,634 @@
+:root {
+  --page-bg: #eef2f7;
+  --ink: #1f2937;
+  --muted: #526074;
+  --panel: rgba(255, 255, 255, 0.90);
+  --line: rgba(82, 96, 116, 0.66);
+  --accent: #21406f;
+  --vent-red: #cc1024;
+  --vent-dark: #050608;
+  --vent-blue: #003b78;
+  --vent-yellow: #f6c400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--page-bg);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body.product-type-template {
+  background: var(--page-bg);
+}
+
+body.printed-type-2-template {
+  background: #f3f1ef;
+}
+
+.catalogue-document {
+  width: 100%;
+}
+
+.pdf-page {
+  position: relative;
+  overflow: hidden;
+  margin: 0 auto;
+  background: #fff;
+  break-after: page;
+  page-break-after: always;
+}
+
+.pdf-page:last-of-type {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.pdf-page--portrait {
+  width: 210mm;
+  height: 297mm;
+  min-height: 297mm;
+}
+
+.pdf-page-break {
+  display: none;
+}
+
+/* Page 1 and 2: full-bleed image pages */
+.image-page {
+  padding: 0;
+  background: #000;
+}
+
+.image-page__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Legacy cover styles retained for compatibility with older builds */
+.cover-page {
+  background:
+    radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.16) 0 0.4mm, transparent 0.6mm),
+    radial-gradient(circle at 50% 39%, transparent 0 27mm, rgba(255, 255, 255, 0.12) 27.2mm 27.6mm, transparent 27.8mm),
+    radial-gradient(circle at 50% 39%, transparent 0 45mm, rgba(255, 255, 255, 0.10) 45.2mm 45.6mm, transparent 45.8mm),
+    linear-gradient(180deg, #000 0%, #08090d 76%, #b60e20 76%, #e02532 100%);
+  color: #fff;
+  padding: 11mm 7mm 0;
+}
+
+.cover-page__artwork {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.30;
+}
+
+.cover-page__nz {
+  position: absolute;
+  top: 11mm;
+  right: 11mm;
+  z-index: 2;
+  font-size: 3.1mm;
+  line-height: 1.25;
+  border-left: 0.7mm solid var(--vent-red);
+  padding-left: 2mm;
+}
+
+.cover-page__brand-block {
+  position: absolute;
+  z-index: 2;
+  left: 13mm;
+  top: 88mm;
+}
+
+.cover-page__brand {
+  font-size: 14mm;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 0.9;
+}
+
+.cover-page__tagline {
+  margin-top: 2mm;
+  font-size: 3mm;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.cover-page__catalogue-block {
+  position: absolute;
+  left: 7mm;
+  bottom: 26mm;
+  z-index: 2;
+  padding-top: 4mm;
+  border-top: 0.8mm solid var(--vent-red);
+}
+
+.cover-page__label {
+  font-size: 4.2mm;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.cover-page__years {
+  margin-top: 2mm;
+  font-size: 2.8mm;
+  color: #ff4f5c;
+  font-weight: 700;
+}
+
+.cover-page__feature-strip {
+  position: absolute;
+  left: 28mm;
+  right: 6mm;
+  bottom: 24mm;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2mm;
+}
+
+.cover-feature {
+  text-align: center;
+  font-size: 1.95mm;
+  line-height: 1.15;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.cover-feature__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15mm;
+  height: 15mm;
+  margin: 0 auto 1.8mm;
+  border: 0.5mm solid rgba(210, 20, 34, 0.9);
+  border-radius: 50%;
+  background: radial-gradient(circle, #28303a 0%, #101318 70%);
+  font-size: 5mm;
+}
+
+.cover-page__footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 10mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14mm;
+  color: #fff;
+  font-size: 3mm;
+  font-weight: 700;
+}
+
+/* Page 3: contact details */
+.contact-page {
+  padding: 0 7mm 4mm;
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.contact-page__header {
+  min-height: 20mm;
+  margin: 0 -7mm 4mm;
+  padding: 3mm 18mm;
+  color: #fff;
+  background:
+    linear-gradient(rgba(138, 12, 20, 0.96), rgba(198, 28, 36, 0.96)),
+    linear-gradient(90deg, #5a0a0f, #f04c5b);
+}
+
+.contact-page__logo {
+  font-size: 4mm;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.contact-page__header h1 {
+  margin: 0.5mm 0 0;
+  font-size: 7mm;
+  line-height: 1;
+}
+
+/* Legacy Page 2 contact spread selectors retained for GrapeJS compatibility */
+.contact-spread {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #fff;
+}
+
+.contact-spread__image-panel {
+  position: relative;
+  background:
+    linear-gradient(rgba(0, 55, 112, 0.83), rgba(0, 55, 112, 0.83)),
+    linear-gradient(135deg, #0b3a73, #061f43);
+}
+
+.contact-spread__bg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.22;
+}
+
+.contact-spread__content-panel {
+  padding: 0 10mm 10mm;
+  background: #fff;
+}
+
+.contact-spread__header {
+  height: 22mm;
+  margin: 0 -6mm 5mm;
+  padding: 5mm 6mm;
+  color: #fff;
+  background:
+    linear-gradient(rgba(0, 41, 92, 0.92), rgba(0, 41, 92, 0.92)),
+    linear-gradient(90deg, #002a63, #074989);
+}
+
+.contact-spread__logo {
+  font-size: 4mm;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.contact-spread__header h1 {
+  margin: 1mm 0 0;
+  font-size: 7mm;
+  line-height: 1;
+}
+
+.contact-phone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5mm;
+  min-height: 12mm;
+  color: #9f1220;
+  font-size: 4.5mm;
+  letter-spacing: 0.05em;
+}
+
+.contact-phone__icon,
+.contact-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 13mm;
+  height: 13mm;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #c71d2e, #8f0f1b);
+  color: #fff;
+  font-size: 6mm;
+}
+
+.contact-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2mm;
+  padding: 3mm;
+  margin-bottom: 3mm;
+  border-radius: 4mm;
+  background: #fdeceb;
+}
+
+.contact-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1mm;
+  text-align: center;
+  font-size: 2.5mm;
+  color: #6f1018;
+}
+
+.contact-card strong {
+  font-size: 2.8mm;
+}
+
+.locations-panel {
+  padding: 3mm 8mm;
+  border-radius: 4mm;
+  background: #fff3f2;
+}
+
+.locations-panel h2 {
+  margin: 0 0 2mm;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #b01928;
+  font-size: 3.6mm;
+}
+
+.locations-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+}
+
+.location-block h3 {
+  margin: 0 0 1.5mm;
+  font-size: 3.2mm;
+  color: #9f1220;
+}
+
+.location-block p {
+  margin: 0 0 1mm;
+  font-size: 2.5mm;
+  line-height: 1.25;
+}
+
+.location-image-row,
+.map-row {
+  display: grid;
+  gap: 1mm;
+  margin-top: 2mm;
+}
+
+.location-image-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.map-row {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.location-image-placeholder,
+.map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18mm;
+  background: #f9dedd;
+  color: #8c5357;
+  font-size: 2.6mm;
+  border: 0.25mm solid rgba(160, 18, 32, 0.18);
+}
+
+.map-placeholder {
+  min-height: 26mm;
+  background: #fff0ef;
+}
+
+/* Page 4: dynamic contents */
+.contents-page {
+  padding: 0 7mm 6mm;
+  background: #fff;
+}
+
+.contents-page__header {
+  min-height: 22mm;
+  margin: 0 -7mm 6mm;
+  padding: 4mm 17mm;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #fff;
+  background:
+    linear-gradient(rgba(138, 12, 20, 0.96), rgba(198, 28, 36, 0.96)),
+    linear-gradient(90deg, #5a0a0f, #f04c5b);
+}
+
+.contents-page__section-label {
+  display: inline-block;
+  padding: 1mm 1mm;
+  margin-bottom: 1mm;
+  background: var(--vent-yellow);
+  color: #000000;
+  font-size: 2.8mm;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.contents-page__header h1 {
+  margin: 0mm 10mm;
+  font-size: 8mm;
+  line-height: 1;
+}
+
+.contents-page__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16mm;
+  height: 16mm;
+}
+
+.contents-page__icon-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.series-legend-panel,
+.contents-panel {
+  margin: 3mm 10mm;
+}
+
+.series-legend-panel h2,
+.contents-panel h2 {
+  margin: 0 0 3mm;
+  font-size: 5mm;
+  color: var(--accent);
+}
+
+.series-legend-panel__content,
+.contents-panel__content {
+  font-size: 3.5mm;
+  line-height: 1.3;
+}
+
+.series-legend {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(46mm, 1fr));
+  gap: 2mm 3mm;
+  padding: 0;
+  margin: 0;
+}
+
+.series-legend__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 2mm;
+  min-height: 9mm;
+}
+
+.series-legend__swatch {
+  width: 6mm;
+  height: 6mm;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  margin-top: 0.8mm;
+  border: 0.75mm solid rgba(31, 41, 55, 0.18);
+}
+
+.product-type-contents {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-top: 0.25mm solid var(--line);
+  border-left: 0.25mm solid var(--line);
+  background: #fff;
+}
+
+.series-tile-grid {
+  display: contents;
+}
+
+.series-tile {
+  min-height: 48mm;
+  padding: 4mm;
+  border-right: 0.75mm solid var(--line);
+  border-bottom: 0.75mm solid var(--line);
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+}
+
+.series-tile__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2mm;
+  margin-bottom: 3mm;
+}
+
+.series-tile__badge {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 1.2mm 2.2mm;
+  background: var(--series-accent, var(--vent-yellow));
+  color: #fff;
+  font-size: 3mm;
+  font-weight: 800;
+}
+
+.series-tile__range {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18mm;
+  padding: 1.1mm 2mm;
+  border: 0.35mm solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 2.6mm;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.series-tile__image-wrap {
+  height: 26mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 3mm;
+}
+
+.series-tile__image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.series-tile__placeholder {
+  width: 100%;
+  height: 26mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 3mm;
+}
+
+.series-tile__description {
+  font-size: 2.8mm;
+  line-height: 1.3;
+  color: var(--ink);
+  text-align: center;
+}
+
+.series-tile__description > :first-child {
+  margin-top: 0;
+}
+
+.series-tile__description > :last-child {
+  margin-bottom: 0;
+}
+
+.series-tile__description p {
+  margin: 0 0 1mm;
+}
+
+/* === GRAPESJS MANAGED CSS START === */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.gjs-row {
+  display: table;
+  padding-top: 10px;
+  padding-right: 10px;
+  padding-bottom: 10px;
+  padding-left: 10px;
+  width: 100%;
+}
+
+.gjs-cell {
+  width: 8%;
+  display: table-cell;
+  height: 75px;
+}
+
+.page {
+  background-color: #edf1f6;
+}
+
+#iezi6 {
+  padding: 10px;
+}
+
+#i67gp {
+  color: black;
+}
+
+@media (max-width: 768px) {
+  .gjs-cell {
+    width: 100%;
+    display: block;
+  }
+}
+
+/* === GRAPESJS MANAGED CSS END === */

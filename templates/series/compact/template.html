@@ -7,44 +7,58 @@
     <link rel="stylesheet" href="./template.css" />
   </head>
   <body class="series-template series-template--compact">
-    <main class="sheet">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">{{series.product_type_label}}</p>
-          <h1>{{series.name}}</h1>
-          <div class="richtext">{{series.description1_html}}</div>
+    <main class="series-document" style="--series-accent: {{series.series_tab_color}};">
+      <section class="series-page series-cover-page">
+        <div class="series-cover-page__content">
+          <div class="series-cover-page__eyebrow">{{series.product_type_label}}</div>
+          <h1 class="series-cover-page__title">{{series.name}}</h1>
+          <div class="series-cover-page__image-wrap">
+            {{series.cover_image_html}}
+          </div>
         </div>
-        <div class="meta-list">
-          <div><strong>Template</strong><span>{{series.template_label}}</span></div>
-          <div><strong>Products</strong><span>{{series.product_count}}</span></div>
-          <div><strong>Graph Rule</strong><span>{{series.graph_rule_label}}</span></div>
+      </section>
+
+      <section class="series-page series-overview-page">
+        <div class="sheet">
+          <header class="hero">
+            <div>
+              <p class="eyebrow">{{series.product_type_label}}</p>
+              <h1>{{series.name}}</h1>
+              <div class="richtext">{{series.description1_html}}</div>
+            </div>
+            <div class="meta-list">
+              <div><strong>Template</strong><span>{{series.template_label}}</span></div>
+              <div><strong>Products</strong><span>{{series.product_count}}</span></div>
+              <div><strong>Graph Rule</strong><span>{{series.graph_rule_label}}</span></div>
+            </div>
+          </header>
+
+          <section class="panel">
+            <h2>Series Graph</h2>
+            <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
+          </section>
+
+          <section class="panel">
+            <h2>Series Product Summary</h2>
+            <div class="table-slot">{{series.products_summary_table}}</div>
+          </section>
+
+          <section class="notes-grid">
+            <section class="panel">
+              <h2>Description2</h2>
+              <div class="richtext">{{series.description2_html}}</div>
+            </section>
+            <section class="panel">
+              <h2>Description3</h2>
+              <div class="richtext">{{series.description3_html}}</div>
+            </section>
+          </section>
+
+          <section class="panel">
+            <h2>Description4</h2>
+            <div class="richtext">{{series.description4_html}}</div>
+          </section>
         </div>
-      </header>
-
-      <section class="panel">
-        <h2>Series Graph</h2>
-        <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
-      </section>
-
-      <section class="panel">
-        <h2>Series Product Summary</h2>
-        <div class="table-slot">{{series.products_summary_table}}</div>
-      </section>
-
-      <section class="notes-grid">
-        <section class="panel">
-          <h2>Description2</h2>
-          <div class="richtext">{{series.description2_html}}</div>
-        </section>
-        <section class="panel">
-          <h2>Description3</h2>
-          <div class="richtext">{{series.description3_html}}</div>
-        </section>
-      </section>
-
-      <section class="panel">
-        <h2>Description4</h2>
-        <div class="richtext">{{series.description4_html}}</div>
       </section>
     </main>
   </body>

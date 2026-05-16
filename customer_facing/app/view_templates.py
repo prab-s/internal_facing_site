@@ -9,6 +9,17 @@ from app.slug import product_url, series_url, product_type_url, products_url
 APP_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = APP_DIR / "templates"
 
+
+def format_numeric_value(value):
+    if value is None or value == "":
+        return ""
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return value
+    return f"{numeric_value:g}"
+
+
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.globals["product_url"] = product_url
 templates.env.globals["series_url"] = series_url
@@ -19,3 +30,4 @@ templates.env.globals["site_name"] = settings.site_name
 templates.env.globals["app_build_marker"] = settings.app_build_marker
 templates.env.globals["finder_debug"] = settings.finder_debug
 templates.env.globals["backend_api_base_url"] = settings.backend_api_base_url
+templates.env.filters["format_numeric_value"] = format_numeric_value

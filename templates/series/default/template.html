@@ -7,95 +7,107 @@
     <link rel="stylesheet" href="./template.css" />
   </head>
   <body class="series-template vt-sheet-body">
-    <main class="page">
-      <header class="topbar">
-        <div class="topbar__title">
-          {{series.product_type_label}} Series
+    <main class="series-document" style="--series-accent: {{series.series_tab_color}};">
+      <section class="series-page series-cover-page">
+        <div class="series-cover-page__content">
+          <div class="series-cover-page__eyebrow">{{series.product_type_label}}</div>
+          <h1 class="series-cover-page__title">{{series.name}}</h1>
+          <div class="series-cover-page__image-wrap">
+            {{series.cover_image_html}}
+          </div>
         </div>
-        <div class="topbar__model">{{series.name}}</div>
-      </header>
-
-      <section class="intro-grid">
-        <aside class="left-rail">
-          <section class="spec-card spec-card--summary">
-            <h2 class="spec-card__title">Series Overview</h2>
-            <div class="spec-list">
-              <div class="spec-list__row">
-                <dt>Template</dt>
-                <dd>{{series.template_label}}</dd>
-              </div>
-              <div class="spec-list__row">
-                <dt>Products</dt>
-                <dd>{{series.product_count}}</dd>
-              </div>
-              <div class="spec-list__row">
-                <dt>Graph rule</dt>
-                <dd>{{series.graph_rule_label}}</dd>
-              </div>
-            </div>
-          </section>
-
-          <section class="spec-card">
-            <h2 class="spec-card__title">Description1</h2>
-            <div class="grouped-spec-group">
-              <div class="richtext">{{series.description1_html}}</div>
-            </div>
-          </section>
-
-          <section class="spec-card">
-            <h2 class="spec-card__title">Description4</h2>
-            <div class="grouped-spec-group">
-              <div class="richtext">{{series.description4_html}}</div>
-            </div>
-          </section>
-        </aside>
-
-        <section class="main-panel">
-          <div class="copy-block">
-            <div class="copy-section">
-              <h3>Description2</h3>
-              <div class="richtext">{{series.description2_html}}</div>
-            </div>
-            <div class="copy-section">
-              <h3>Description3</h3>
-              <div class="richtext">{{series.description3_html}}</div>
-            </div>
-          </div>
-
-          <section class="graph-panel">
-            <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
-          </section>
-        </section>
       </section>
 
-      <section class="performance-band">
-        <div class="performance-table">{{series.products_summary_table}}</div>
-      </section>
-
-      <section class="lower-grid">
-        <section class="drawing-panel">
-          <div class="drawing-panel__inner">
-            <img src="{{series.graph_image_url}}" alt="{{series.name}} graph detail" class="drawing-image" />
+      <section class="series-page series-overview-page">
+        <header class="topbar">
+          <div class="topbar__title">
+            {{series.product_type_label}} Series
           </div>
-        </section>
+          <div class="topbar__model">{{series.name}}</div>
+        </header>
 
-        <section class="gallery-panel">
-          <div class="gallery-grid">
-            <div class="series-meta-grid">
-              <div class="series-meta-card">
-                <span class="series-meta-card__label">Product Type</span>
-                <span class="series-meta-card__value">{{series.product_type_label}}</span>
+        <section class="intro-grid">
+          <aside class="left-rail">
+            <section class="spec-card spec-card--summary">
+              <h2 class="spec-card__title">Series Overview</h2>
+              <div class="spec-list">
+                <div class="spec-list__row">
+                  <dt>Template</dt>
+                  <dd>{{series.template_label}}</dd>
+                </div>
+                <div class="spec-list__row">
+                  <dt>Products</dt>
+                  <dd>{{series.product_count}}</dd>
+                </div>
+                <div class="spec-list__row">
+                  <dt>Graph rule</dt>
+                  <dd>{{series.graph_rule_label}}</dd>
+                </div>
               </div>
-              <div class="series-meta-card">
-                <span class="series-meta-card__label">Products</span>
-                <span class="series-meta-card__value">{{series.product_count}}</span>
+            </section>
+
+            <section class="spec-card">
+              <h2 class="spec-card__title">Description1</h2>
+              <div class="grouped-spec-group">
+                <div class="richtext">{{series.description1_html}}</div>
               </div>
-              <div class="series-meta-card">
-                <span class="series-meta-card__label">Graph Rule</span>
-                <span class="series-meta-card__value">{{series.graph_rule_label}}</span>
+            </section>
+
+            <section class="spec-card">
+              <h2 class="spec-card__title">Description4</h2>
+              <div class="grouped-spec-group">
+                <div class="richtext">{{series.description4_html}}</div>
+              </div>
+            </section>
+          </aside>
+
+          <section class="main-panel">
+            <div class="copy-block">
+              <div class="copy-section">
+                <h3>Description2</h3>
+                <div class="richtext">{{series.description2_html}}</div>
+              </div>
+              <div class="copy-section">
+                <h3>Description3</h3>
+                <div class="richtext">{{series.description3_html}}</div>
               </div>
             </div>
-          </div>
+
+            <section class="graph-panel">
+              <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
+            </section>
+          </section>
+        </section>
+
+        <section class="performance-band">
+          <div class="performance-table">{{series.products_summary_table}}</div>
+        </section>
+
+        <section class="lower-grid">
+          <section class="drawing-panel">
+            <div class="drawing-panel__inner">
+              <img src="{{series.graph_image_url}}" alt="{{series.name}} graph detail" class="drawing-image" />
+            </div>
+          </section>
+
+          <section class="gallery-panel">
+            <div class="gallery-grid">
+              <div class="series-meta-grid">
+                <div class="series-meta-card">
+                  <span class="series-meta-card__label">Product Type</span>
+                  <span class="series-meta-card__value">{{series.product_type_label}}</span>
+                </div>
+                <div class="series-meta-card">
+                  <span class="series-meta-card__label">Products</span>
+                  <span class="series-meta-card__value">{{series.product_count}}</span>
+                </div>
+                <div class="series-meta-card">
+                  <span class="series-meta-card__label">Graph Rule</span>
+                  <span class="series-meta-card__value">{{series.graph_rule_label}}</span>
+                </div>
+              </div>
+            </div>
+          </section>
         </section>
       </section>
     </main>

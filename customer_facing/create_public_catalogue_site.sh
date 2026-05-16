@@ -877,6 +877,8 @@ cat > "$ROOT_DIR/app/templates/product.html" <<'EOF'
       </div>
     {% endif %}
 
+    {% include "partials/fan_acoustic_table.html" %}
+
     <h2 class="h4 mt-4">Specifications</h2>
     {% include "partials/specs_table.html" %}
   </div>
@@ -887,6 +889,76 @@ cat > "$ROOT_DIR/app/templates/product.html" <<'EOF'
 </div>
 
 {% endblock %}
+EOF
+
+cat > "$ROOT_DIR/app/templates/partials/fan_acoustic_table.html" <<'EOF'
+{% if product.product_type_key == 'fan' %}
+  {% set acoustic_table = product.fan_acoustic_table or {} %}
+  {% set sound_power_columns = acoustic_table.get('sound_power_columns') or ['63', '125', '250', '500', '1k', '2k', '4k', '8k'] %}
+  {% set rows = acoustic_table.get('rows') or [] %}
+
+  <section class="content-section mb-4 fan-acoustic-section">
+    <h2 class="h4">Fan Acoustic Table</h2>
+    <p class="text-muted mb-3">
+      Sound power values are shown as configured for this fan product.
+    </p>
+
+    <div class="table-responsive fan-acoustic-table-wrap">
+      <table class="table table-sm align-middle fan-acoustic-table mb-0">
+        <colgroup>
+          <col style="width: 7.5rem" />
+          <col style="width: 8.5rem" />
+          <col style="width: 7.5rem" />
+          <col style="width: 7.5rem" />
+          <col style="width: 10.5rem" />
+          {% for _column in sound_power_columns %}
+            <col style="width: 4.75rem" />
+          {% endfor %}
+        </colgroup>
+        <thead>
+          <tr>
+            <th rowspan="2">Speed (rpm)</th>
+            <th rowspan="2">Peak Pressure (Pa)</th>
+            <th rowspan="2">Peak Power (kW)</th>
+            <th rowspan="2">Running Frequency</th>
+            <th rowspan="2">Sound Pressure Level dB @ 3 meters</th>
+            <th colspan="{{ sound_power_columns|length }}" class="text-center">
+              Sound Power Level SWL dB re 1pw
+            </th>
+          </tr>
+          <tr>
+            {% for column in sound_power_columns %}
+              <th>{{ column }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% if rows %}
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.speed_rpm | format_numeric_value }}</td>
+                <td>{{ row.peak_pressure_pa | format_numeric_value }}</td>
+                <td>{{ row.peak_power_kw | format_numeric_value }}</td>
+                <td>{{ row.running_frequency_hz | format_numeric_value }}</td>
+                <td>{{ row.sound_pressure_db_3m | format_numeric_value }}</td>
+                {% set sound_power_levels = row.sound_power_levels or {} %}
+                {% for column in sound_power_columns %}
+                  <td>{{ sound_power_levels.get(column) | format_numeric_value }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="{{ 5 + (sound_power_columns|length) }}" class="text-muted">
+                No fan acoustic rows available.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
 EOF
 
 cat > "$ROOT_DIR/app/templates/partials/product_results.html" <<'EOF'
@@ -1065,6 +1137,32 @@ body {
   line-height: 1.6;
 }
 
+.fan-acoustic-section .text-muted {
+  max-width: 60rem;
+}
+
+.fan-acoustic-table-wrap {
+  overflow-x: auto;
+}
+
+.fan-acoustic-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.fan-acoustic-table th,
+.fan-acoustic-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.fan-acoustic-table thead th {
+  background-color: rgba(15, 118, 110, 0.08);
+}
+
 .table th {
   color: #495057;
   font-weight: 600;
@@ -1144,3 +1242,5 @@ This app does not own product data. It renders public HTML by calling the existi
 
 ```text
 https://p2.bitrep.nz
+```
+EOF
