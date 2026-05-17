@@ -9,27 +9,9 @@
   </ol>
 </nav>
 
-<div class="mb-4">
-  <p class="text-uppercase text-muted small fw-semibold mb-2">Products</p>
-  <h1 class="h2 mb-2">Product Finder</h1>
-  <p class="text-muted mb-0">
-    Filter the catalogue by product type and key engineering parameters.
-  </p>
-</div>
-
 <div id="finder-loading" class="alert alert-light border d-flex align-items-center gap-2 mb-4" role="status" aria-live="polite">
   <div class="spinner-border spinner-border-sm text-secondary" aria-hidden="true"></div>
   <div>Loading product filters...</div>
-</div>
-
-<div class="card border-0 shadow-sm mb-4 finder-empty-hint">
-  <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
-    <div>
-      <div class="text-uppercase small fw-semibold text-muted mb-1">Getting started</div>
-      <div class="fw-semibold">Select a product type to load the available filters and series.</div>
-    </div>
-    <span class="badge rounded-pill text-bg-light border">Filters appear here</span>
-  </div>
 </div>
 
 <div class="row g-4">
@@ -58,6 +40,10 @@
           >
             Advanced
           </button>
+        </div>
+
+        <div class="d-grid gap-2 m-3">
+          <button type="button" id="reset-filters" class="btn btn-outline-secondary btn-lg">Reset filters</button>
         </div>
 
         <div id="series-filter" class="d-none"></div>

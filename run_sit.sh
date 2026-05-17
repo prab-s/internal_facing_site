@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 DEFAULT_PYTHON_BIN="python3"
-if [[ -x ".venv/bin/python" ]] && ".venv/bin/python" -c "import alembic, psycopg" >/dev/null 2>&1; then
+if [[ -x ".venv/bin/python" ]] && ".venv/bin/python" -c "from alembic import command; import psycopg" >/dev/null 2>&1; then
   DEFAULT_PYTHON_BIN=".venv/bin/python"
 fi
 PYTHON_BIN="${PYTHON_BIN:-$DEFAULT_PYTHON_BIN}"
@@ -128,10 +128,10 @@ if [[ "${DATABASE_URL:-}" == postgresql* ]]; then
   fi
 fi
 
-if ! "$PYTHON_BIN" -c "import alembic" >/dev/null 2>&1; then
+if ! "$PYTHON_BIN" -c "from alembic import command" >/dev/null 2>&1; then
   echo
   echo "SIT startup aborted:"
-  echo "  The active Python environment does not have 'alembic' installed."
+  echo "  The active Python environment does not have a usable Alembic install."
   echo
   echo "Fix it with:"
   echo "  $PYTHON_BIN -m pip install -r backend/requirements.txt"

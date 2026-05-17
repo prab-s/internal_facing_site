@@ -2,12 +2,54 @@
 
 {% block content %}
 
-<div class="mb-4">
-  <p class="text-uppercase text-muted small fw-semibold mb-2">Product type</p>
-  <h1 class="h2 mb-2">{{ selected_type.label }}</h1>
-  <p class="text-muted mb-3">Browse available series and products for this category.</p>
-  <a class="btn btn-outline-secondary btn-sm" href="{{ products_url() }}">Back to products</a>
-</div>
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="/">Home</a></li>
+    <li class="breadcrumb-item"><a href="{{ products_url() }}">Products</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ selected_type.label }}</li>
+  </ol>
+</nav>
+
+<section class="page-hero mb-4">
+  <div class="row g-4 align-items-center">
+    <div class="col-lg-8">
+      <p class="section-kicker text-uppercase fw-semibold mb-2">Product type</p>
+      <h1 class="display-6 mb-3">{{ selected_type.label }}</h1>
+      <p class="lead text-muted mb-3">Browse the relevant series, then drill into the exact model PDF when you need the details.</p>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-primary" href="{{ products_url() }}">Back to Products</a>
+        <a class="btn btn-outline-secondary" href="{{ request_quote_url }}">Request a Quote</a>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card hero-callout shadow-sm">
+        <div class="card-body">
+          <div class="small text-uppercase text-muted fw-semibold mb-1">Series count</div>
+          <div class="stat-value mb-2">{{ series|length }}</div>
+          <div class="small text-muted">Products listed in this type: {{ products|length }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if product_type_downloads %}
+  <section class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
+        <div>
+          <p class="section-kicker text-uppercase fw-semibold mb-1">Product type downloads</p>
+          <p class="text-muted mb-0">Use the product type PDF first, then open the series or product pages for deeper PDFs.</p>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        {% for item in product_type_downloads %}
+          <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endif %}
 
 {% if selected_type.series_names %}
   <div class="card shadow-sm border-0 mb-4 section-card">
@@ -22,7 +64,10 @@
   </div>
 {% endif %}
 
-<h2 class="h4 mb-3">Series</h2>
+<div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
+  <h2 class="h4 mb-0">Series</h2>
+  <a class="btn btn-outline-secondary btn-sm" href="/contact">Need help choosing?</a>
+</div>
 
 <div class="row g-3 mb-5">
   {% for series in series %}
@@ -34,7 +79,9 @@
   {% endfor %}
 </div>
 
-<h2 class="h4 mb-3">Products</h2>
+<div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
+  <h2 class="h4 mb-0">Products</h2>
+</div>
 
 <div class="row g-3">
   {% for product in products %}

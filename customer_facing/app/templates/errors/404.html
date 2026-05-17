@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="py-5">
-  <h1 class="h2">Page not found</h1>
-  <p class="text-muted">The catalogue page you requested could not be found.</p>
-  <a href="{{ products_url() }}" class="btn btn-primary">Back to products</a>
+<div class="page-hero py-5">
+  <p class="section-kicker text-uppercase fw-semibold mb-2">404</p>
+  <h1 class="display-6">Page not found</h1>
+  <p class="lead text-muted mb-4">The catalogue page you requested could not be found.</p>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ products_url() }}" class="btn btn-primary">Back to products</a>
+    <a href="/contact" class="btn btn-outline-secondary">Contact</a>
+  </div>
 </div>
 {% endblock %}

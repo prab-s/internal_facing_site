@@ -1,0 +1,67 @@
+<div class="card shadow-sm downloads-panel">
+  <div class="card-body">
+    <p class="section-kicker text-uppercase fw-semibold mb-1">Downloads & support</p>
+    <h2 class="h5 mb-2">Contextual PDFs</h2>
+    <p class="text-muted mb-3">
+      Use the most specific file available on the page you are viewing. The main catalogue sits at product type level, the series page adds series documents, and the model page adds the exact datasheet.
+    </p>
+
+    <div class="vstack gap-3">
+      {% if product_type_downloads %}
+        <div class="download-group">
+          <div class="small text-uppercase text-muted fw-semibold mb-2">Product type level</div>
+          <div class="d-grid gap-2">
+            {% for item in product_type_downloads %}
+              <a class="btn btn-outline-secondary btn-sm text-start" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">
+                <span class="d-block fw-semibold">{{ item.label }}</span>
+                {% if item.note %}<span class="d-block small text-muted">{{ item.note }}</span>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if series_downloads %}
+        <div class="download-group">
+          <div class="small text-uppercase text-muted fw-semibold mb-2">Series level</div>
+          <div class="d-grid gap-2">
+            {% for item in series_downloads %}
+              <a class="btn btn-outline-secondary btn-sm text-start" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">
+                <span class="d-block fw-semibold">{{ item.label }}</span>
+                {% if item.note %}<span class="d-block small text-muted">{{ item.note }}</span>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if product_downloads %}
+        <div class="download-group">
+          <div class="small text-uppercase text-muted fw-semibold mb-2">Product level</div>
+          <div class="d-grid gap-2">
+            {% for item in product_downloads %}
+              <a class="btn btn-outline-secondary btn-sm text-start" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">
+                <span class="d-block fw-semibold">{{ item.label }}</span>
+                {% if item.note %}<span class="d-block small text-muted">{{ item.note }}</span>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="download-group">
+        <div class="small text-uppercase text-muted fw-semibold mb-2">Support</div>
+        <div class="d-grid gap-2">
+          <a class="btn btn-primary btn-sm text-start" href="{{ site_contact.request_quote_url }}">
+            <span class="d-block fw-semibold">Request a quote</span>
+            <span class="d-block small text-muted">Send a project or model enquiry</span>
+          </a>
+          <a class="btn btn-outline-secondary btn-sm text-start" href="/contact">
+            <span class="d-block fw-semibold">Contact details</span>
+            <span class="d-block small text-muted">Phone numbers, emails, and address</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

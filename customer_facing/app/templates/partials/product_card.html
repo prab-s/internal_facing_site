@@ -19,8 +19,8 @@
       {% if product.series_name %} · {{ product.series_name }}{% endif %}
     </p>
 
-    {% if product.product_online_pdf_url or product.product_printed_pdf_url or product.product_pdf_url %}
-      <span class="badge text-bg-light border">PDF available</span>
+    {% if product.product_pdf_url or product.product_online_pdf_url or product.product_printed_pdf_url %}
+      <span class="badge text-bg-light border">Datasheet available</span>
     {% endif %}
   </div>
 </div>

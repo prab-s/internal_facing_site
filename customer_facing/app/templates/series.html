@@ -2,10 +2,44 @@
 
 {% block content %}
 
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="/">Home</a></li>
+    <li class="breadcrumb-item"><a href="{{ products_url() }}">Products</a></li>
+    {% if product_type %}
+      <li class="breadcrumb-item"><a href="{{ product_type_url(product_type) }}">{{ product_type.label }}</a></li>
+    {% endif %}
+    <li class="breadcrumb-item active" aria-current="page">{{ series.name }}</li>
+  </ol>
+</nav>
+
 <div class="row g-4">
   <div class="col-lg-8">
-    <p class="text-uppercase text-muted small fw-semibold mb-2">{{ series.product_type_label }}</p>
-    <h1 class="h2 mb-3">{{ series.name }}</h1>
+    <section class="page-hero mb-4">
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ series.product_type_label }}</p>
+      <h1 class="display-6 mb-3">{{ series.name }}</h1>
+      <p class="lead text-muted mb-3">Series-level brochures and product listings for this product type.</p>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-primary" href="{{ products_url() }}">Back to Products</a>
+        {% if product_type %}
+          <a class="btn btn-outline-secondary" href="{{ product_type_url(product_type) }}">Back to {{ product_type.label }}</a>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{{ request_quote_url }}">Request a Quote</a>
+      </div>
+    </section>
+
+    {% if series_downloads %}
+      <section class="card shadow-sm mb-4">
+        <div class="card-body">
+          <p class="section-kicker text-uppercase fw-semibold mb-1">Series downloads</p>
+          <div class="d-flex flex-wrap gap-2">
+            {% for item in series_downloads %}
+              <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    {% endif %}
 
     {% for section in series_sections %}
       <section class="content-section mb-4">
@@ -41,7 +75,7 @@
   </div>
 
   <aside class="col-lg-4">
-    {% include "partials/pdf_panel.html" %}
+    {% include "partials/downloads_panel.html" %}
   </aside>
 </div>
 

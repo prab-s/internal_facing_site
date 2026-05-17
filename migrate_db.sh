@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 DEFAULT_PYTHON_BIN="python3"
-if [[ -x ".venv/bin/python" ]] && ".venv/bin/python" -c "import alembic, psycopg" >/dev/null 2>&1; then
+if [[ -x ".venv/bin/python" ]] && ".venv/bin/python" -c "from alembic import command; import psycopg" >/dev/null 2>&1; then
   DEFAULT_PYTHON_BIN=".venv/bin/python"
 fi
 

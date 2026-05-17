@@ -1,24 +1,39 @@
 <nav class="navbar navbar-expand-lg site-navbar sticky-top">
   <div class="container site-shell">
-    <a class="navbar-brand fw-semibold" href="/">{{ site_name }}</a>
-
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+    <button class="navbar-toggler order-0 me-2 flex-shrink-0" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
 
-    <div id="mainNav" class="collapse navbar-collapse">
-      <ul class="navbar-nav ms-lg-auto align-items-lg-center gap-lg-1">
-        <li class="nav-item">
-          <a class="nav-link" href="{{ products_url() }}">Products</a>
-        </li>
-        {% for type in product_types %}
-          <li class="nav-item">
-            <a class="nav-link" href="{{ product_type_url(type) }}">
+    <a class="navbar-brand order-1 me-auto me-lg-0" href="/" aria-label="Home">
+      <img class="site-logo" src="/static/vent-tech-customer_site_logo.png" alt="{{ site_name }}">
+    </a>
+
+    <div id="mainNav" class="collapse navbar-collapse order-3 order-lg-2">
+      <div class="nav-menu d-grid gap-2 w-100 ms-lg-5">
+        <a
+          class="btn btn-primary nav-finder-button btn-sm"
+          href="{{ products_url() }}"
+          {% if request.url.path.startswith('/products') or request.url.path.startswith('/series/') or request.url.path.startswith('/product/') %}
+            aria-current="page"
+          {% endif %}
+        >
+          Product Finder
+        </a>
+
+        <div class="nav-type-group d-grid gap-3">
+          {% for type in product_types %}
+            <a
+              class="btn btn-outline-light nav-type-button btn-sm"
+              href="{{ product_type_url(type) }}"
+              {% if request.url.path == product_type_url(type) %}
+                aria-current="page"
+              {% endif %}
+            >
               {{ type.label }}s
             </a>
-          </li>
-        {% endfor %}
-      </ul>
+          {% endfor %}
+        </div>
+      </div>
     </div>
   </div>
 </nav>

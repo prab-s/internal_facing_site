@@ -668,22 +668,27 @@ EOF
 cat > "$ROOT_DIR/app/templates/partials/nav.html" <<'EOF'
 <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
   <div class="container">
-    <a class="navbar-brand fw-semibold" href="/">Vent-tech catalogue</a>
-
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+    <button class="navbar-toggler order-0 me-2 flex-shrink-0" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
 
-    <div id="mainNav" class="collapse navbar-collapse">
-      <ul class="navbar-nav ms-auto">
-        {% for type in product_types %}
-          <li class="nav-item">
-            <a class="nav-link" href="{{ product_type_url(type) }}">
-              {{ type.label }}
-            </a>
-          </li>
-        {% endfor %}
-      </ul>
+    <a class="navbar-brand fw-semibold order-1 me-auto me-lg-0" href="/">Vent-tech catalogue</a>
+
+    <div id="mainNav" class="collapse navbar-collapse order-3 order-lg-2">
+      <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-2 gap-lg-3 w-100">
+        <a class="btn btn-primary fw-semibold px-3 py-2 shadow-sm" href="{{ products_url() }}">
+          Product Chooser
+        </a>
+        <ul class="navbar-nav flex-column flex-lg-row align-items-lg-center ms-lg-auto gap-lg-1">
+          {% for type in product_types %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ product_type_url(type) }}">
+                {{ type.label }}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
     </div>
   </div>
 </nav>

@@ -30,19 +30,104 @@ def optional_sections(*pairs):
     return [{"title": title, "html": html} for title, html in pairs if html]
 
 
+def download_group(title: str, description: str, items: list[dict]) -> dict:
+    return {"title": title, "description": description, "links": [item for item in items if item.get("url")]}
+
+
+def request_quote_url() -> str:
+    return "mailto:admin@venttech.co.nz?subject=Vent-Tech%20quote%20request"
+
+
+def product_type_downloads(selected_type: dict) -> list[dict]:
+    items = [
+        {"label": "Main catalogue", "url": selected_type.get("product_type_pdf_url"), "note": "Product type overview"},
+        {"label": "Printed brochure", "url": selected_type.get("product_type_printed_pdf_url"), "note": "Layout-ready brochure"},
+    ]
+    return [item for item in items if item["url"]]
+
+
+def series_downloads(series: dict) -> list[dict]:
+    items = [
+        {"label": "Series brochure", "url": series.get("series_pdf_url"), "note": "Series overview"},
+        {"label": "Printed PDF", "url": series.get("series_printed_pdf_url"), "note": "Press-friendly version"},
+        {"label": "Online PDF", "url": series.get("series_online_pdf_url"), "note": "Web-ready version"},
+    ]
+    return [item for item in items if item["url"]]
+
+
+def product_downloads(product: dict) -> list[dict]:
+    items = [
+        {"label": "Model datasheet", "url": product.get("product_pdf_url"), "note": "Exact model PDF"},
+        {"label": "Printed PDF", "url": product.get("product_printed_pdf_url"), "note": "Press-friendly version"},
+        {"label": "Online PDF", "url": product.get("product_online_pdf_url"), "note": "Web-ready version"},
+    ]
+    return [item for item in items if item["url"]]
+
+
 @router.get("/")
 async def homepage(request: Request):
     start = time.perf_counter()
     context = await common_context()
     product_types = context["product_types"]
+    featured_product_type = product_types[0] if product_types else None
+    home_product_types = []
+    for product_type in product_types:
+        preview_images = []
+        type_products = catalogue_cache.products(product_type_key=product_type.get("key", ""))
+        series_list = catalogue_cache.series_list(product_type_key=product_type.get("key", ""))
+        first_product_by_series: dict[str, dict] = {}
+        for product in type_products:
+            series_id = product.get("series_id")
+            if series_id is None:
+                continue
+            series_key = str(series_id)
+            if series_key not in first_product_by_series:
+                first_product_by_series[series_key] = product
+
+        for series in series_list:
+            series_product = first_product_by_series.get(str(series.get("id")))
+            if not series_product:
+                continue
+            preview_image_url = series_product.get("primary_product_image_url") or series_product.get("graph_image_url")
+            if preview_image_url:
+                preview_images.append(preview_image_url)
+
+        if len(preview_images) < 4:
+            seen_images = set(preview_images)
+            for product in type_products:
+                for preview_image_url in (
+                    product.get("primary_product_image_url"),
+                    product.get("graph_image_url"),
+                ):
+                    if not preview_image_url or preview_image_url in seen_images:
+                        continue
+                    preview_images.append(preview_image_url)
+                    seen_images.add(preview_image_url)
+                    if len(preview_images) >= 4:
+                        break
+                if len(preview_images) >= 4:
+                    break
+
+        if not preview_images:
+            fallback_image = product_type.get("contents_icon_url")
+            if fallback_image:
+                preview_images = [fallback_image]
+
+        home_product_types.append({
+            **product_type,
+            "preview_images": preview_images,
+            "series_count": len(series_list),
+            "product_count": len(type_products),
+        })
     context.update({
         "request": request,
         "seo": seo_meta(
             "Vent-tech catalogue",
-            "Overview of the Vent-tech catalogue and product families.",
+            "Overview of the Vent-tech catalogue and product types.",
             "/",
         ),
-        "featured_product_type_key": product_types[0]["key"] if product_types else "",
+        "featured_product_type": featured_product_type,
+        "home_product_types": home_product_types,
     })
     logger.info("Rendered homepage in %.1fms (%d product types)", (time.perf_counter() - start) * 1000.0, len(product_types))
     return templates.TemplateResponse(request, "index.html", context)
@@ -69,6 +154,21 @@ async def products_page(request: Request):
         len(context["product_types"]),
     )
     return templates.TemplateResponse(request, "products.html", context)
+
+
+@router.get("/contact")
+async def contact_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "seo": seo_meta(
+            "Contact Vent-Tech",
+            "Get in touch with Vent-Tech for selection support, quotations, and project enquiries.",
+            "/contact",
+        ),
+        "request_quote_url": request_quote_url(),
+    })
+    return templates.TemplateResponse(request, "contact.html", context)
 
 
 @router.get("/finder")
@@ -98,6 +198,8 @@ async def product_type_page(request: Request, product_type_key: str):
         "selected_type": selected_type,
         "series": series,
         "products": products,
+        "product_type_downloads": product_type_downloads(selected_type),
+        "request_quote_url": request_quote_url(),
     })
     logger.info(
         "Rendered product type page %s in %.1fms (%d series, %d products)",
@@ -127,6 +229,7 @@ async def series_page(request: Request, series_slug: str):
     cached_products = catalogue_cache.products(series_id=series_id)
 
     context = await common_context()
+    product_type = catalogue_cache.product_type(series.get("product_type_key"))
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -135,7 +238,11 @@ async def series_page(request: Request, series_slug: str):
             canonical_path,
         ),
         "series": series,
+        "product_type": product_type,
         "series_products": cached_products,
+        "series_downloads": series_downloads(series),
+        "product_type_downloads": product_type_downloads(product_type) if product_type else [],
+        "request_quote_url": request_quote_url(),
         "series_sections": optional_sections(
             ("Overview", series.get("description1_html")),
             ("Features", series.get("description2_html")),
@@ -170,6 +277,8 @@ async def product_page(request: Request, product_slug: str):
         return RedirectResponse(canonical_path, status_code=307)
 
     context = await common_context()
+    product_type = catalogue_cache.product_type(product.get("product_type_key"))
+    series = await api.series(product["series_id"]) if product.get("series_id") else None
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -178,6 +287,12 @@ async def product_page(request: Request, product_slug: str):
             canonical_path,
         ),
         "product": product,
+        "product_type": product_type,
+        "series": series,
+        "product_downloads": product_downloads(product),
+        "series_downloads": series_downloads(series) if series else [],
+        "product_type_downloads": product_type_downloads(product_type) if product_type else [],
+        "request_quote_url": request_quote_url(),
         "product_sections": optional_sections(
             ("Overview", product.get("description1_html")),
             ("Features", product.get("description2_html")),

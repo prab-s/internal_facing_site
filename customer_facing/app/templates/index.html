@@ -1,109 +1,137 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero-shell mb-4 mb-lg-5">
-  <div class="row align-items-center g-4 g-lg-5 position-relative">
-    <div class="col-lg-7">
-      <p class="hero-kicker text-uppercase text-muted fw-semibold mb-3">Vent-tech catalogue</p>
-      <h1 class="hero-title fw-bold lh-1 mb-3">
-        Product families, series, and engineering data in one calm overview.
-      </h1>
-      <p class="hero-lead text-muted mb-4">
-        Start with the overview, then move into the dedicated chooser when you need filters, detailed listings, or downloadable PDFs.
-      </p>
-      <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-primary btn-lg" href="{{ products_url() }}">Open products</a>
-        <a class="btn btn-outline-secondary btn-lg" href="#product-families">Browse product types</a>
+<section class="mb-4 mb-lg-5">
+  <div class="card section-card chooser-callout">
+    <div class="card-body p-3 p-lg-4">
+      <div class="row g-3 align-items-center">
+        <div class="col-lg-8">
+          <p class="section-kicker text-uppercase fw-semibold mb-2">Industrial ventilation systems from a New Zealand
+            team with deep air movement and HVAC experience.
+          </p>
+          <h2 class="h4 mb-2">Check out our new product chooser</h2>
+          <p class="text-muted mb-0 chooser-copy">
+            Browse the catalogue by product type, then refine by series and engineering parameters to get to the right
+            product faster.
+          </p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <a class="btn btn-primary btn-lg hero-chooser-btn" href="{{ products_url() }}">Open Product Finder</a>
+        </div>
       </div>
     </div>
+  </div>
+</section>
 
-    <div class="col-lg-5">
-      <div class="card hero-panel shadow-sm border-0">
-        <div class="card-body p-4 p-lg-4">
-          <h2 class="h5 mb-3">Quick links</h2>
-          <div class="d-grid gap-2">
-            <a class="btn btn-primary" href="{{ products_url() }}">Products / Finder</a>
-            {% for type in product_types[:4] %}
-              <a class="btn btn-outline-light border text-start" href="{{ product_type_url(type) }}">{{ type.label }}</a>
+<section id="product-types" class="mb-4 mb-lg-5">
+
+  <div class="row g-3">
+    {% for type in home_product_types %}
+    <div class="col-md-4">
+      <a class="card family-card h-100 text-decoration-none" href="{{ product_type_url(type) }}">
+        <div class="family-card-image-wrap">
+          {% if type.preview_images and type.preview_images|length > 1 %}
+          <div class="family-card-gallery family-card-gallery--{{ [type.preview_images|length, 4] | min }}">
+            {% for image_url in type.preview_images[:4] %}
+            <div class="family-card-gallery-item">
+              <img class="family-card-gallery-image" src="{{ media_url(image_url) }}"
+                alt="{{ type.label }} preview {{ loop.index }}">
+            </div>
             {% endfor %}
           </div>
+          {% elif type.preview_images %}
+          <img class="card-img-top family-card-image" src="{{ media_url(type.preview_images[0]) }}"
+            alt="{{ type.label }}">
+          {% else %}
+          <div class="family-card-image family-card-image--placeholder">
+            <div class="family-card-image-mark"></div>
+          </div>
+          {% endif %}
         </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="surface-section mb-4 mb-lg-5">
-  <div class="row g-4">
-    <div class="col-md-4">
-      <div class="card h-100 border-0 shadow-sm section-card">
         <div class="card-body">
-          <h2 class="h5">Overview first</h2>
-          <p class="text-muted mb-0">
-            A quick company-level view without loading the full chooser interface.
+          <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+            <h3 class="h5 mb-0">{{ type.label }}s</h3>
+            <span class="badge text-bg-light border">{{ type.series_count }} series · {{ type.product_count }}
+              products</span>
+          </div>
+          <p class="text-muted mb-3">
+            {% if type.key == 'fan' %}
+            Axial, inline, roof, centrifugal, smoke spill, and special duty fans.
+            {% elif type.key == 'silencer' %}
+            Acoustic attenuation, splitter silencers, and custom noise control accessories.
+            {% elif type.key == 'speed_controller' %}
+            Control hardware and drive support for ventilation systems.
+            {% else %}
+            Product type overview and related series pages.
+            {% endif %}
           </p>
         </div>
-      </div>
+      </a>
     </div>
-    <div class="col-md-4">
-      <div class="card h-100 border-0 shadow-sm section-card">
-        <div class="card-body">
-          <h2 class="h5">Fast navigation</h2>
-          <p class="text-muted mb-0">
-            Jump straight into product types, series pages, or the full Products page.
-          </p>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="card h-100 border-0 shadow-sm section-card">
-        <div class="card-body">
-          <h2 class="h5">Lightweight by design</h2>
-          <p class="text-muted mb-0">
-            Heavy filtering and list rendering stay on the dedicated chooser page.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="product-families" class="surface-section">
-  <div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
-    <div>
-      <h2 class="h4 mb-1">Browse product types</h2>
-      <p class="text-muted mb-0">Use these as quick entry points, or open the full chooser for filters.</p>
-    </div>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ products_url() }}">Open products</a>
-  </div>
-
-  <div class="d-flex flex-wrap gap-2">
-    {% for type in product_types %}
-      <a class="btn btn-outline-secondary btn-sm" href="{{ product_type_url(type) }}">{{ type.label }}</a>
     {% else %}
-      <span class="text-muted">No product families are available right now.</span>
+    <div class="col-12">
+      <div class="text-muted">No product types are available right now.</div>
+    </div>
     {% endfor %}
   </div>
 </section>
 
-{% if featured_product_type_key %}
-  <script>
-    window.addEventListener("load", () => {
-      const warmUrl = (url) => fetch(url, { credentials: "same-origin" }).catch(() => {});
-      const featuredType = {{ featured_product_type_key | tojson }};
+<section class="page-hero hero-shell mb-4 mb-lg-5">
+  <div class="row g-4 g-lg-5 align-items-center">
+    <div class="col-lg-7">
+      <h3 class="display-10 fw-semibold lh-1 mb-4">
+        Vent-Tech designs and builds standard and non-standard fans to suit customer requirements, with practical lead
+        times and competitive pricing.
+      </h3>
+      <div class="hero-copy">
+        <p>
+          Vent-Tech is a New Zealand-owned ventilation and air movement specialist backed by decades of HVAC industry
+          experience.
+        </p>
+        <p>
+          We supply high-quality fan and ventilation solutions from globally recognised brands including
+          FlaktGroup, Multi-Wing, Ziehl-Abegg, Rosenberg, and ebm-papst, while also delivering customised solutions
+          tailored to customer requirements.
+        </p>
+        <p>
+          Our focus is straightforward: reliable products, practical engineering, competitive pricing, and responsive
+          support from an experienced local team.
+        </p>
+      </div>
+    </div>
 
-      const warm = () => {
-        warmUrl("{{ products_url() }}");
-        warmUrl(`/finder/metadata?product_type_key=${encodeURIComponent(featuredType)}`);
-        warmUrl(`/finder/results?product_type_key=${encodeURIComponent(featuredType)}`);
-      };
+    <div class="col-lg-5">
+      <div class="card hero-panel shadow-sm">
+        <div class="ratio ratio-4x3 hero-map-frame">
+          <iframe
+            src="https://www.google.com/maps/embed/v1/place?q=place_id:ChIJif0kXF6sQG0R3q-Q-ZHrfxA&key=AIzaSyDdsdZF7zrXxXx1jC00weWtxycIyqokb4k&zoom=15"
+            title="Vent-Tech location map" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+            allowfullscreen></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-      if ("requestIdleCallback" in window) {
-        window.requestIdleCallback(warm, { timeout: 2500 });
-      } else {
-        window.setTimeout(warm, 200);
-      }
-    });
-  </script>
+{% if featured_product_type %}
+<script>
+  window.addEventListener("load", () => {
+    const warmUrl = (url) => fetch(url, { credentials: "same-origin" }).catch(() => { });
+    const featuredType = {{ featured_product_type.key | tojson
+  }};
+
+  const warm = () => {
+    warmUrl("{{ products_url() }}");
+    warmUrl(`/finder/metadata?product_type_key=${encodeURIComponent(featuredType)}`);
+    warmUrl(`/finder/results?product_type_key=${encodeURIComponent(featuredType)}`);
+  };
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(warm, { timeout: 2500 });
+  } else {
+    window.setTimeout(warm, 200);
+  }
+  });
+</script>
 {% endif %}
 {% endblock %}

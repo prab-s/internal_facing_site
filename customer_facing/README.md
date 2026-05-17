@@ -75,6 +75,8 @@ http://localhost:8004
 | `/products/type/{product_type_key}` | Product type landing page |
 | `/series/{id}-{slug}` | Series detail page |
 | `/products/{id}-{slug}` | Product detail page |
+| `/downloads` | Catalogue and brochure downloads |
+| `/contact` | Contact and quote details |
 | `/finder/results` | Partial product result updates |
 
 ---

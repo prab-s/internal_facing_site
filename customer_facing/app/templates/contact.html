@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="/">Home</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Contact</li>
+  </ol>
+</nav>
+
+<section class="page-hero mb-4">
+  <div class="row g-4 align-items-end">
+    <div class="col-lg-8">
+      <p class="section-kicker text-uppercase fw-semibold mb-2">Contact</p>
+      <h1 class="display-6 mb-3">Talk to Vent-Tech about selection, pricing, or project support</h1>
+      <p class="lead text-muted mb-0">
+        Use the team below for direct help with product selection, quoting, and documentation.
+      </p>
+    </div>
+    <div class="col-lg-4">
+      <div class="hero-callout card shadow-sm">
+        <div class="card-body">
+          <div class="small text-uppercase text-muted fw-semibold mb-1">Request a quote</div>
+          <p class="text-muted mb-3">Send the project details through and the team can point you to the right product type, series, or model datasheet.</p>
+          <a class="btn btn-primary w-100" href="{{ request_quote_url }}">Request a Quote</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <p class="section-kicker text-uppercase fw-semibold mb-2">Location</p>
+        <h2 class="h4 mb-3">Vent-Tech 2018 Ltd.</h2>
+        <p class="mb-0">{{ site_contact.address }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <p class="section-kicker text-uppercase fw-semibold mb-2">Direct contacts</p>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="contact-block">
+              <div class="fw-semibold mb-1">Gerald</div>
+              <a href="mailto:{{ site_contact.gerald_email }}">{{ site_contact.gerald_email }}</a><br>
+              <span class="text-muted">{{ site_contact.gerald_phone }}</span>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="contact-block">
+              <div class="fw-semibold mb-1">Mahendra</div>
+              <a href="mailto:{{ site_contact.mahendra_email }}">{{ site_contact.mahendra_email }}</a><br>
+              <span class="text-muted">{{ site_contact.mahendra_phone }}</span>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="contact-block">
+              <div class="fw-semibold mb-1">Admin</div>
+              <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a><br>
+              <span class="text-muted">{{ site_contact.admin_phone }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

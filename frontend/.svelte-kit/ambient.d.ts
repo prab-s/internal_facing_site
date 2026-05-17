@@ -55,6 +55,7 @@ declare module '$env/static/private' {
 	export const SESSION_SECRET: string;
 	export const SSH_TTY: string;
 	export const npm_package_json: string;
+	export const IM_CONFIG_ENTRY: string;
 	export const LC_MONETARY: string;
 	export const npm_config_userconfig: string;
 	export const npm_config_local_prefix: string;
@@ -213,6 +214,7 @@ declare module '$env/dynamic/private' {
 		SESSION_SECRET: string;
 		SSH_TTY: string;
 		npm_package_json: string;
+		IM_CONFIG_ENTRY: string;
 		LC_MONETARY: string;
 		npm_config_userconfig: string;
 		npm_config_local_prefix: string;

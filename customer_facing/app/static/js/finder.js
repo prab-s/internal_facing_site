@@ -4,15 +4,18 @@ const seriesFilterHost = document.querySelector("#series-filter");
 const mainFiltersHost = document.querySelector("#main-filters");
 const advancedFiltersHost = document.querySelector("#advanced-filters");
 const advancedToggle = document.querySelector("#advanced-toggle");
+const resetButton = document.querySelector("#reset-filters");
 const loadingState = document.querySelector("#finder-loading");
 const productTypeSelect = form?.querySelector('[name="product_type_key"]') || null;
 const GRAPH_FILTER_GROUP_NAME = "__graph__";
+const FINDER_STORAGE_KEY = "venttechFinderState";
 const customerFacingConfig = window.__CUSTOMER_FACING_CONFIG__ || {};
 const FINDER_DEBUG = Boolean(customerFacingConfig.finderDebug);
 
 let advancedOpen = false;
 let filterMetadata = { groups: [] };
 let activeRefreshToken = 0;
+let bootState = loadSavedFinderState();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -30,6 +33,74 @@ function debugLog(message, details = null) {
     return;
   }
   console.debug(`[finder] ${message}`, details);
+}
+
+function getStorage() {
+  try {
+    return window.localStorage;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function loadSavedFinderState() {
+  const storage = getStorage();
+  if (!storage) return null;
+
+  try {
+    const raw = storage.getItem(FINDER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function saveFinderState() {
+  if (!form) return;
+  const storage = getStorage();
+  if (!storage) return;
+
+  const payload = {
+    productType: productTypeSelect?.value || "",
+    search: form.querySelector('[name="search"]')?.value || "",
+    advancedOpen,
+    filterState: captureFilterState(),
+  };
+
+  try {
+    storage.setItem(FINDER_STORAGE_KEY, JSON.stringify(payload));
+  } catch (_error) {
+    // Ignore storage failures in private browsing or quota-limited sessions.
+  }
+}
+
+function clearFinderState() {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(FINDER_STORAGE_KEY);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
+function applyBootState() {
+  if (!bootState || !form) return;
+
+  const bootProductType = typeof bootState.productType === "string" ? bootState.productType : "";
+  const bootSearch = typeof bootState.search === "string" ? bootState.search : "";
+  const searchInput = form.querySelector('[name="search"]');
+
+  if (productTypeSelect) {
+    productTypeSelect.value = bootProductType;
+  }
+  if (searchInput) {
+    searchInput.value = bootSearch;
+  }
+  advancedOpen = Boolean(bootState.advancedOpen);
 }
 
 function cloneTemplate(id) {
@@ -539,7 +610,11 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
   }
 
   const requestToken = ++activeRefreshToken;
-  const preservedState = resetDependentFilters ? {} : captureFilterState();
+  let preservedState = resetDependentFilters ? {} : captureFilterState();
+  if (!resetDependentFilters && bootState && bootState.productType === currentType) {
+    preservedState = bootState.filterState && typeof bootState.filterState === "object" ? bootState.filterState : preservedState;
+    advancedOpen = Boolean(bootState.advancedOpen);
+  }
   setLoadingState(true);
 
   try {
@@ -579,6 +654,10 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
     renderFilterControls();
     restoreFilterState(preservedState);
     await updateResults();
+    saveFinderState();
+    if (bootState && bootState.productType === currentType) {
+      bootState = null;
+    }
   } catch (_error) {
     debugLog("metadata request failed", {
       requestUrl,
@@ -588,6 +667,7 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
     filterMetadata = { series: [], groups: [] };
     renderFilterControls();
     await updateResults();
+    saveFinderState();
   } finally {
     if (requestToken === activeRefreshToken) {
       setLoadingState(false);
@@ -596,6 +676,7 @@ async function refreshMetadataAndResults({ resetDependentFilters = false } = {})
 }
 
 if (form) {
+  applyBootState();
   setLoadingState(false);
   logFinderContext();
 
@@ -605,6 +686,7 @@ if (form) {
       debugLog("product type changed", {
         productType: productTypeSelect.value || "",
       });
+      saveFinderState();
       refreshMetadataAndResults({ resetDependentFilters: true });
     });
   }
@@ -615,8 +697,27 @@ if (form) {
       debugLog("advanced filters toggled", {
         advancedOpen,
       });
+      saveFinderState();
       renderFilterControls();
       refreshMetadataAndResults();
+    });
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener("click", () => {
+      advancedOpen = false;
+      bootState = null;
+      clearFinderState();
+      if (productTypeSelect) {
+        productTypeSelect.value = "";
+      }
+      const searchInput = form.querySelector('[name="search"]');
+      if (searchInput) {
+        searchInput.value = "";
+      }
+      filterMetadata = { series: [], groups: [] };
+      renderFilterControls();
+      updateResults();
     });
   }
 
@@ -627,6 +728,7 @@ if (form) {
     debugLog("form change", {
       target: event.target?.getAttribute?.("name") || event.target?.className || event.target?.tagName || "unknown",
     });
+    saveFinderState();
     refreshMetadataAndResults();
   });
   form.addEventListener("input", (event) => {
@@ -636,11 +738,14 @@ if (form) {
     window.finderTimer = setTimeout(() => {
       if (targetName === "search" || targetName === "product_type_key" || targetName === "series_id") {
         if ((productTypeSelect?.value || "") !== "") {
+          saveFinderState();
           refreshMetadataAndResults();
         } else {
+          saveFinderState();
           updateResults();
         }
       } else {
+        saveFinderState();
         updateResults();
       }
     }, 250);

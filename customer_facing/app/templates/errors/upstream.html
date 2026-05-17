@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="py-5">
-  <h1 class="h2">Catalogue temporarily unavailable</h1>
-  <p class="text-muted">
+<div class="page-hero py-5">
+  <p class="section-kicker text-uppercase fw-semibold mb-2">Service issue</p>
+  <h1 class="display-6">Catalogue temporarily unavailable</h1>
+  <p class="lead text-muted">
     The public catalogue could not load data from the CMS API right now.
   </p>
   {% if message %}
@@ -11,6 +12,9 @@
       {{ message }}
     </div>
   {% endif %}
-  <a href="{{ products_url() }}" class="btn btn-primary">Try products</a>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ products_url() }}" class="btn btn-primary">Try products</a>
+    <a href="/contact" class="btn btn-outline-secondary">Contact</a>
+  </div>
 </div>
 {% endblock %}
