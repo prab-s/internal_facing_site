@@ -220,7 +220,7 @@
       "_config.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.DgLIrzHR.css"
+      "_app/immutable/assets/_layout.B8S1PzqK.css"
     ]
   },
   "src/routes/+page.svelte": {
@@ -427,7 +427,7 @@
       "_index-server.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.B3RPyncp.css"
+      "_app/immutable/assets/_page.BxUGQaao.css"
     ]
   },
   "src/routes/template-builder/+page.svelte": {
@@ -464,7 +464,7 @@
       "_SeriesNamesBadgeList.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.j6psIWKi.css"
+      "_app/immutable/assets/_page.C9tBdCMM.css"
     ]
   }
 }

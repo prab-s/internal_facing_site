@@ -1051,7 +1051,12 @@
     cursor: ew-resize;
     align-self: stretch;
     border-radius: 999px;
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.08), rgba(37, 99, 235, 0.22), rgba(15, 23, 42, 0.08));
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bs-body-color) 8%, transparent),
+      color-mix(in srgb, var(--bs-primary) 20%, transparent),
+      color-mix(in srgb, var(--bs-body-color) 8%, transparent)
+    );
     transition: background-color 0.15s ease;
     touch-action: none;
     user-select: none;
@@ -1062,11 +1067,21 @@
   }
 
   .template-builder-v2-divider:hover {
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.12), rgba(37, 99, 235, 0.38), rgba(15, 23, 42, 0.12));
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bs-body-color) 12%, transparent),
+      color-mix(in srgb, var(--bs-primary) 34%, transparent),
+      color-mix(in srgb, var(--bs-body-color) 12%, transparent)
+    );
   }
 
   .template-builder-v2-divider.is-dragging {
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.16), rgba(37, 99, 235, 0.5), rgba(15, 23, 42, 0.16));
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bs-body-color) 16%, transparent),
+      color-mix(in srgb, var(--bs-primary) 48%, transparent),
+      color-mix(in srgb, var(--bs-body-color) 16%, transparent)
+    );
   }
 
   .template-builder-v2-main {
@@ -1079,22 +1094,22 @@
   }
 
   .template-editor-host :global(.gjs-pn-panel) {
-    background: #1f2937;
-    color: #f9fafb;
-    border-color: rgba(255, 255, 255, 0.12);
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
   }
 
   .template-editor-host :global(.gjs-pn-panels) {
-    background: linear-gradient(180deg, #111827 0%, #1f2937 100%);
-    color: #f9fafb;
+    background: linear-gradient(180deg, var(--bs-body-bg) 0%, var(--bs-tertiary-bg) 100%);
+    color: var(--bs-body-color);
   }
 
   .template-editor-host :global(.gjs-blocks-c) {
     min-width: 280px;
     max-width: 560px;
     width: 22rem;
-    background: #f8fafc;
-    border-left: 1px solid rgba(15, 23, 42, 0.12);
+    background: var(--bs-body-bg);
+    border-left: 1px solid var(--bs-border-color);
     box-sizing: border-box;
   }
 
@@ -1105,44 +1120,44 @@
     bottom: 0;
     width: 10px;
     cursor: ew-resize;
-    background: linear-gradient(90deg, rgba(15, 23, 42, 0.16), transparent);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--bs-body-color) 16%, transparent), transparent);
     z-index: 2;
   }
 
   .template-editor-host :global(.template-blocks-resizer:hover) {
-    background: linear-gradient(90deg, rgba(37, 99, 235, 0.35), transparent);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--bs-primary) 35%, transparent), transparent);
   }
 
   .template-editor-host :global(.gjs-title) {
-    background: #e2e8f0;
-    color: #0f172a;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
     font-weight: 700;
     letter-spacing: 0.03em;
   }
 
   .template-editor-host :global(.gjs-title:hover) {
-    color: #0f172a;
+    color: var(--bs-body-color);
   }
 
   .template-editor-host :global(.gjs-category-open .gjs-title) {
-    color: #0f172a;
+    color: var(--bs-body-color);
   }
 
   .template-editor-host :global(.gjs-pn-btn) {
-    color: #e5e7eb;
+    color: var(--bs-body-color);
   }
 
   .template-editor-host :global(.gjs-pn-btn:hover),
   .template-editor-host :global(.gjs-pn-btn.gjs-pn-active) {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.12);
+    color: var(--bs-emphasis-color);
+    background: color-mix(in srgb, var(--bs-primary) 16%, transparent);
   }
 
   .template-editor-host :global(.gjs-block) {
-    border: 1px solid rgba(15, 23, 42, 0.14);
+    border: 1px solid var(--bs-border-color);
     border-radius: 0.5rem;
-    background: #ffffff;
-    color: #0f172a;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
     cursor: grab;
     transition:
       transform 0.15s ease,
@@ -1152,9 +1167,9 @@
   }
 
   .template-editor-host :global(.gjs-block:hover) {
-    border-color: rgba(37, 99, 235, 0.35);
-    background: #eff6ff;
-    box-shadow: 0 0.35rem 0.85rem rgba(37, 99, 235, 0.12);
+    border-color: color-mix(in srgb, var(--bs-primary) 35%, var(--bs-border-color));
+    background: color-mix(in srgb, var(--bs-primary) 8%, var(--bs-body-bg));
+    box-shadow: 0 0.35rem 0.85rem color-mix(in srgb, var(--bs-primary) 12%, transparent);
     transform: translateY(-1px);
   }
 
@@ -1164,19 +1179,19 @@
   }
 
   .template-editor-host :global(.gjs-block-label) {
-    color: #0f172a;
+    color: var(--bs-body-color);
     font-weight: 600;
     opacity: 1;
   }
 
   .template-editor-host :global(.gjs-blocks-c .gjs-category-title) {
-    color: #0f172a;
-    background: #dbe4f0;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+    color: var(--bs-body-color);
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
   }
 
   .template-editor-host :global(.gjs-blocks-c .gjs-category-title:hover) {
-    color: #0f172a;
+    color: var(--bs-body-color);
   }
 
   .template-editor-host :global(.gjs-block svg),

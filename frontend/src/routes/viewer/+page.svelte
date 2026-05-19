@@ -63,7 +63,9 @@
   let activeViewerTab = normalizeViewerTab(data?.tab);
   let selectedProductTypeId = normalizeViewerStringId(data?.product_type_id || data?.product_type);
   let selectedProductTypeContext = data?.product_type_context || null;
+  let productPdfPreviewRevision = 0;
   let productTypePdfPreviewRevision = 0;
+  let seriesPdfPreviewRevision = 0;
   let seriesTabProductTypeFilter = '';
   let seriesTabSeriesId = normalizeViewerStringId(data?.series);
   let seriesTabOptions = [];
@@ -171,6 +173,22 @@
     if (!productType?.product_type_pdf_url) return '';
     const separator = productType.product_type_pdf_url.includes('?') ? '&' : '?';
     return `${productType.product_type_pdf_url}${separator}v=${productTypePdfPreviewRevision}`;
+  }
+
+  function versionedPdfPreviewUrl(baseUrl, revision) {
+    if (!baseUrl) return '';
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}v=${revision}`;
+  }
+
+  function productPdfPreviewUrl(product, variant) {
+    const baseUrl = variant === 'printed' ? product?.product_printed_pdf_url : product?.product_online_pdf_url;
+    return versionedPdfPreviewUrl(baseUrl, productPdfPreviewRevision);
+  }
+
+  function seriesPdfPreviewUrl(series, variant) {
+    const baseUrl = variant === 'printed' ? series?.series_printed_pdf_url : series?.series_online_pdf_url;
+    return versionedPdfPreviewUrl(baseUrl, seriesPdfPreviewRevision);
   }
 
   function getCurrentGraphConfig() {
@@ -342,16 +360,30 @@
     }
   }
 
+  async function refreshViewerAfterProductMutation() {
+    await loadFilteredProducts();
+    await loadSelectedProduct();
+    await loadChartData();
+  }
+
+  async function refreshViewerAfterSeriesMutation() {
+    await loadEverything();
+    await loadSeriesOptions();
+    await loadSeriesTabOptions();
+  }
+
+  async function refreshViewerAfterProductTypeMutation(productTypeId = selectedProductTypeRecord?.id) {
+    await loadEverything();
+    await loadProductTypeContext(productTypeId);
+  }
+
   async function regenerateProductGraph(product) {
     refreshingProductGraphId = product.id;
     error = '';
     success = '';
     try {
       await refreshGraphImage(product.id);
-      await loadEverything();
-      if (Number(selectedProductId) === Number(product.id)) {
-        await loadChartData();
-      }
+      await refreshViewerAfterProductMutation();
       success = `Generated graph for ${product.model}.`;
     } catch (e) {
       error = e.message;
@@ -375,7 +407,8 @@
         }
       );
       refreshingProductPdfJob = job;
-      await loadEverything();
+      await refreshViewerAfterProductMutation();
+      productPdfPreviewRevision += 1;
       success = `Generated printed and online PDFs for ${product.model}.`;
     } catch (e) {
       error = e.message;
@@ -401,8 +434,7 @@
         }
       );
       refreshingProductTypePdfJob = job;
-      await loadEverything();
-      await loadProductTypeContext(productType.id);
+      await refreshViewerAfterProductTypeMutation(productType.id);
       productTypePdfPreviewRevision += 1;
       success = `Generated product type PDF for ${productType.label}.`;
     } catch (e) {
@@ -420,7 +452,7 @@
     success = '';
     try {
       await refreshSeriesGraphImage(series.id);
-      await loadEverything();
+      await refreshViewerAfterSeriesMutation();
       success = `Generated series graph for ${series.name}.`;
     } catch (e) {
       error = e.message;
@@ -444,7 +476,8 @@
         }
       );
       refreshingSeriesPdfJob = job;
-      await loadEverything();
+      await refreshViewerAfterSeriesMutation();
+      seriesPdfPreviewRevision += 1;
       success = `Generated printed and online PDFs for ${series.name}.`;
     } catch (e) {
       error = e.message;
@@ -1050,7 +1083,7 @@
                 <div>
                   <div class="small text-body-secondary mb-2">Printed</div>
                   <div class="ratio ratio-16x9">
-                    <iframe src={currentProduct.product_printed_pdf_url} title={`${currentProduct.model} printed PDF preview`}></iframe>
+                    <iframe src={productPdfPreviewUrl(currentProduct, 'printed')} title={`${currentProduct.model} printed PDF preview`}></iframe>
                   </div>
                 </div>
               {/if}
@@ -1058,14 +1091,14 @@
                 <div>
                   <div class="small text-body-secondary mb-2">Online</div>
                   <div class="ratio ratio-16x9">
-                    <iframe src={currentProduct.product_online_pdf_url} title={`${currentProduct.model} online PDF preview`}></iframe>
+                    <iframe src={productPdfPreviewUrl(currentProduct, 'online')} title={`${currentProduct.model} online PDF preview`}></iframe>
                   </div>
                 </div>
               {:else if currentProduct.product_pdf_url}
                 <div>
                   <div class="small text-body-secondary mb-2">Existing</div>
                   <div class="ratio ratio-16x9">
-                    <iframe src={currentProduct.product_pdf_url} title={`${currentProduct.model} PDF preview`}></iframe>
+                    <iframe src={versionedPdfPreviewUrl(currentProduct.product_pdf_url, productPdfPreviewRevision)} title={`${currentProduct.model} PDF preview`}></iframe>
                   </div>
                 </div>
               {/if}
@@ -1328,7 +1361,7 @@
                   <div>
                     <div class="small text-body-secondary mb-2">Printed</div>
                     <div class="ratio ratio-16x9">
-                      <iframe src={selectedSeriesRecord.series_printed_pdf_url} title={`${selectedSeriesRecord.name} printed PDF preview`}></iframe>
+                      <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord, 'printed')} title={`${selectedSeriesRecord.name} printed PDF preview`}></iframe>
                     </div>
                   </div>
                 {/if}
@@ -1336,14 +1369,14 @@
                   <div>
                     <div class="small text-body-secondary mb-2">Online</div>
                     <div class="ratio ratio-16x9">
-                      <iframe src={selectedSeriesRecord.series_online_pdf_url} title={`${selectedSeriesRecord.name} online PDF preview`}></iframe>
+                      <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord, 'online')} title={`${selectedSeriesRecord.name} online PDF preview`}></iframe>
                     </div>
                   </div>
                 {:else if selectedSeriesRecord.series_pdf_url}
                   <div>
                     <div class="small text-body-secondary mb-2">Existing</div>
                     <div class="ratio ratio-16x9">
-                      <iframe src={selectedSeriesRecord.series_pdf_url} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>
+                      <iframe src={versionedPdfPreviewUrl(selectedSeriesRecord.series_pdf_url, seriesPdfPreviewRevision)} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>
                     </div>
                   </div>
                 {/if}
@@ -1372,10 +1405,10 @@
   }
 
   .viewer-metric {
-    border: 1px solid rgba(120, 130, 150, 0.16);
+    border: 1px solid var(--bs-border-color);
     border-radius: 0.85rem;
     padding: 0.9rem 1rem;
-    background: color-mix(in srgb, var(--bs-body-bg) 96%, var(--bs-secondary-bg) 4%);
+    background: color-mix(in srgb, var(--bs-body-bg) 94%, var(--bs-secondary-bg) 6%);
   }
 
   .viewer-metric-label {
@@ -1410,10 +1443,10 @@
 
   .image-card {
     margin: 0;
-    border: 1px solid rgba(120, 130, 150, 0.16);
+    border: 1px solid var(--bs-border-color);
     border-radius: 0.75rem;
     padding: 0.5rem;
-    background: color-mix(in srgb, var(--bs-body-bg) 94%, var(--bs-secondary-bg) 6%);
+    background: color-mix(in srgb, var(--bs-body-bg) 92%, var(--bs-secondary-bg) 8%);
   }
 
   .image-card img {

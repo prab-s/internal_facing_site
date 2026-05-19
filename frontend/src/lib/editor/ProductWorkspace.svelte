@@ -161,44 +161,18 @@
   let editGraphDataOpen = true;
   let allAccordionsOpen = false;
   let specificationGroupOpenState = {};
-  const SPECIFICATION_GROUP_TINTS = [
-    {
-      background: 'rgba(237, 108, 2, 0.15)',
-      border: 'rgba(237, 108, 2, 0.8)',
-      parameterBackgroundLight: 'rgba(237, 108, 2, 0.08)',
-      parameterBackgroundDark: 'rgba(237, 108, 2, 0.18)'
-    },
-    {
-      background: 'rgba(2, 136, 209, 0.15)',
-      border: 'rgba(2, 136, 209, 0.8)',
-      parameterBackgroundLight: 'rgba(2, 136, 209, 0.08)',
-      parameterBackgroundDark: 'rgba(2, 136, 209, 0.18)'
-    },
-    {
-      background: 'rgba(46, 125, 50, 0.15)',
-      border: 'rgba(46, 125, 50, 0.8)',
-      parameterBackgroundLight: 'rgba(46, 125, 50, 0.08)',
-      parameterBackgroundDark: 'rgba(46, 125, 50, 0.18)'
-    },
-    {
-      background: 'rgba(123, 31, 162, 0.15)',
-      border: 'rgba(123, 31, 162, 0.8)',
-      parameterBackgroundLight: 'rgba(123, 31, 162, 0.08)',
-      parameterBackgroundDark: 'rgba(123, 31, 162, 0.18)'
-    },
-    {
-      background: 'rgba(93, 64, 55, 0.15)',
-      border: 'rgba(93, 64, 55, 0.8)',
-      parameterBackgroundLight: 'rgba(93, 64, 55, 0.08)',
-      parameterBackgroundDark: 'rgba(93, 64, 55, 0.18)'
-    },
-    {
-      background: 'rgba(198, 40, 40, 0.15)',
-      border: 'rgba(198, 40, 40, 0.8)',
-      parameterBackgroundLight: 'rgba(198, 40, 40, 0.08)',
-      parameterBackgroundDark: 'rgba(198, 40, 40, 0.18)'
-    }
-  ];
+  const SPECIFICATION_GROUP_BASE_COLORS = ['#ed6c02', '#0288d1', '#2e7d32', '#7b1fa2', '#5d4037', '#c62828'];
+
+  function specificationGroupTint(groupIndex) {
+    const baseColor = SPECIFICATION_GROUP_BASE_COLORS[groupIndex % SPECIFICATION_GROUP_BASE_COLORS.length];
+    const isDark = $theme === 'dark';
+    return {
+      background: `color-mix(in srgb, ${baseColor} ${isDark ? 18 : 14}%, var(--bs-body-bg))`,
+      border: `color-mix(in srgb, ${baseColor} ${isDark ? 82 : 74}%, var(--bs-border-color))`,
+      parameterBackgroundLight: `color-mix(in srgb, ${baseColor} ${isDark ? 12 : 8}%, var(--bs-body-bg))`,
+      parameterBackgroundDark: `color-mix(in srgb, ${baseColor} ${isDark ? 22 : 16}%, var(--bs-body-bg))`
+    };
+  }
 
   // Form state: new/edit fan
   let productForm = emptyProductForm();
@@ -1157,16 +1131,16 @@
   }
 
   function specificationGroupBackgroundColor(groupIndex) {
-    return SPECIFICATION_GROUP_TINTS[groupIndex % SPECIFICATION_GROUP_TINTS.length].background;
+    return specificationGroupTint(groupIndex).background;
   }
 
   function specificationGroupBorderColor(groupIndex) {
-    return SPECIFICATION_GROUP_TINTS[groupIndex % SPECIFICATION_GROUP_TINTS.length].border;
+    return specificationGroupTint(groupIndex).border;
   }
 
   function specificationParameterCardStyle(groupIndex, pendingDelete = false) {
     if (pendingDelete) return '';
-    const tint = SPECIFICATION_GROUP_TINTS[groupIndex % SPECIFICATION_GROUP_TINTS.length];
+    const tint = specificationGroupTint(groupIndex);
     const background = $theme === 'dark' ? tint.parameterBackgroundDark : tint.parameterBackgroundLight;
     return `background-color: ${background}; border-color: ${tint.border};`;
   }

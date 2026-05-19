@@ -86,9 +86,10 @@
 
   async function handleUpload() {
     const files = Array.from(uploadFiles || []);
+    const shouldReplaceExisting = !!replaceExisting;
     if (!files.length) return;
     try {
-      await uploadFileManagerEntries(rootName, currentPath, files, replaceExisting);
+      await uploadFileManagerEntries(rootName, currentPath, files, shouldReplaceExisting);
       status = files.length === 1 ? `Uploaded ${files[0].name}.` : `Uploaded ${files.length} files.`;
       uploadFiles = [];
       if (uploadInput) uploadInput.value = '';

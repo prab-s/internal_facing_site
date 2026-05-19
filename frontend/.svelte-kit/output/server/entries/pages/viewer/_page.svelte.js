@@ -52,7 +52,9 @@ function _page($$renderer, $$props) {
     let activeViewerTab = normalizeViewerTab(data?.tab);
     let selectedProductTypeId = normalizeViewerStringId(data?.product_type_id || data?.product_type);
     let selectedProductTypeContext = data?.product_type_context || null;
+    let productPdfPreviewRevision = 0;
     let productTypePdfPreviewRevision = 0;
+    let seriesPdfPreviewRevision = 0;
     let seriesTabProductTypeFilter = "";
     let seriesTabSeriesId = normalizeViewerStringId(data?.series);
     let seriesTabOptions = [];
@@ -120,6 +122,19 @@ function _page($$renderer, $$props) {
       if (!productType?.product_type_pdf_url) return "";
       const separator = productType.product_type_pdf_url.includes("?") ? "&" : "?";
       return `${productType.product_type_pdf_url}${separator}v=${productTypePdfPreviewRevision}`;
+    }
+    function versionedPdfPreviewUrl(baseUrl, revision) {
+      if (!baseUrl) return "";
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      return `${baseUrl}${separator}v=${revision}`;
+    }
+    function productPdfPreviewUrl(product, variant) {
+      const baseUrl = variant === "printed" ? product?.product_printed_pdf_url : product?.product_online_pdf_url;
+      return versionedPdfPreviewUrl(baseUrl, productPdfPreviewRevision);
+    }
+    function seriesPdfPreviewUrl(series, variant) {
+      const baseUrl = variant === "printed" ? series?.series_printed_pdf_url : series?.series_online_pdf_url;
+      return versionedPdfPreviewUrl(baseUrl, seriesPdfPreviewRevision);
     }
     function getCurrentGraphConfig() {
       const productType = getCurrentProductType();
@@ -514,17 +529,17 @@ function _page($$renderer, $$props) {
           $$renderer2.push(`<div class="vstack gap-3 mt-3">`);
           if (currentProduct.product_printed_pdf_url) {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Printed</div> <div class="ratio ratio-16x9"><iframe${attr("src", currentProduct.product_printed_pdf_url)}${attr("title", `${currentProduct.model} printed PDF preview`)}></iframe></div></div>`);
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Printed</div> <div class="ratio ratio-16x9"><iframe${attr("src", productPdfPreviewUrl(currentProduct, "printed"))}${attr("title", `${currentProduct.model} printed PDF preview`)}></iframe></div></div>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }
           $$renderer2.push(`<!--]--> `);
           if (currentProduct.product_online_pdf_url) {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Online</div> <div class="ratio ratio-16x9"><iframe${attr("src", currentProduct.product_online_pdf_url)}${attr("title", `${currentProduct.model} online PDF preview`)}></iframe></div></div>`);
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Online</div> <div class="ratio ratio-16x9"><iframe${attr("src", productPdfPreviewUrl(currentProduct, "online"))}${attr("title", `${currentProduct.model} online PDF preview`)}></iframe></div></div>`);
           } else if (currentProduct.product_pdf_url) {
             $$renderer2.push("<!--[1-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Existing</div> <div class="ratio ratio-16x9"><iframe${attr("src", currentProduct.product_pdf_url)}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div></div>`);
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Existing</div> <div class="ratio ratio-16x9"><iframe${attr("src", versionedPdfPreviewUrl(currentProduct.product_pdf_url, productPdfPreviewRevision))}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div></div>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }
@@ -742,17 +757,17 @@ function _page($$renderer, $$props) {
           $$renderer2.push(`<div class="vstack gap-3 mt-3">`);
           if (selectedSeriesRecord.series_printed_pdf_url) {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Printed</div> <div class="ratio ratio-16x9"><iframe${attr("src", selectedSeriesRecord.series_printed_pdf_url)}${attr("title", `${selectedSeriesRecord.name} printed PDF preview`)}></iframe></div></div>`);
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Printed</div> <div class="ratio ratio-16x9"><iframe${attr("src", seriesPdfPreviewUrl(selectedSeriesRecord, "printed"))}${attr("title", `${selectedSeriesRecord.name} printed PDF preview`)}></iframe></div></div>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }
           $$renderer2.push(`<!--]--> `);
           if (selectedSeriesRecord.series_online_pdf_url) {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Online</div> <div class="ratio ratio-16x9"><iframe${attr("src", selectedSeriesRecord.series_online_pdf_url)}${attr("title", `${selectedSeriesRecord.name} online PDF preview`)}></iframe></div></div>`);
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Online</div> <div class="ratio ratio-16x9"><iframe${attr("src", seriesPdfPreviewUrl(selectedSeriesRecord, "online"))}${attr("title", `${selectedSeriesRecord.name} online PDF preview`)}></iframe></div></div>`);
           } else if (selectedSeriesRecord.series_pdf_url) {
             $$renderer2.push("<!--[1-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Existing</div> <div class="ratio ratio-16x9"><iframe${attr("src", selectedSeriesRecord.series_pdf_url)}${attr("title", `${selectedSeriesRecord.name} PDF preview`)}></iframe></div></div>`);
+            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Existing</div> <div class="ratio ratio-16x9"><iframe${attr("src", versionedPdfPreviewUrl(selectedSeriesRecord.series_pdf_url, seriesPdfPreviewRevision))}${attr("title", `${selectedSeriesRecord.name} PDF preview`)}></iframe></div></div>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }

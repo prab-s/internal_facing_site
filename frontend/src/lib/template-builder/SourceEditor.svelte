@@ -105,7 +105,7 @@
           '&': {
             height: '100%',
             fontSize: '0.92rem',
-            backgroundColor: '#0f172a'
+            backgroundColor: 'var(--bs-body-bg)'
           },
           '.cm-scroller': {
             fontFamily:
@@ -113,33 +113,33 @@
           },
           '.cm-content': {
             padding: '0.9rem 0.75rem 1.25rem',
-            caretColor: '#f8fafc',
+            caretColor: 'var(--bs-body-color)',
             minHeight: '100%'
           },
           '.cm-gutters': {
-            backgroundColor: '#0f172a',
-            color: '#94a3b8',
+            backgroundColor: 'var(--bs-tertiary-bg)',
+            color: 'var(--bs-secondary-color)',
             border: 'none'
           },
           '.cm-activeLine': {
-            backgroundColor: 'rgba(59, 130, 246, 0.12)'
+            backgroundColor: 'color-mix(in srgb, var(--bs-primary) 12%, transparent)'
           },
           '.cm-activeLine, .cm-activeLineGutter': {
-            backgroundColor: 'rgba(59, 130, 246, 0.14)'
+            backgroundColor: 'color-mix(in srgb, var(--bs-primary) 14%, transparent)'
           },
           '.cm-jinja-token': {
-            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+            backgroundColor: 'color-mix(in srgb, var(--bs-warning) 12%, transparent)',
             borderRadius: '0.25rem',
             padding: '0 0.08rem'
           },
           '.cm-jinja-expression': {
-            color: '#fbbf24'
+            color: 'var(--bs-warning)'
           },
           '.cm-jinja-block': {
-            color: '#93c5fd'
+            color: 'var(--bs-info)'
           },
           '.cm-jinja-comment': {
-            color: '#86efac',
+            color: 'var(--bs-success)',
             fontStyle: 'italic'
           }
         })
@@ -209,11 +209,11 @@
 
 <style>
   .source-editor-shell {
-    border: 1px solid rgba(15, 23, 42, 0.16);
+    border: 1px solid var(--bs-border-color);
     border-radius: 0.75rem;
     overflow: hidden;
-    background: #0f172a;
-    box-shadow: 0 0.35rem 1.25rem rgba(15, 23, 42, 0.08);
+    background: var(--bs-body-bg);
+    box-shadow: 0 0.35rem 1.25rem color-mix(in srgb, var(--bs-body-color) 8%, transparent);
   }
 
   .source-editor-label {
@@ -222,15 +222,15 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #cbd5e1;
-    background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    color: var(--bs-secondary-color);
+    background: linear-gradient(180deg, var(--bs-tertiary-bg) 0%, var(--bs-body-bg) 100%);
+    border-bottom: 1px solid var(--bs-border-color);
   }
 
   .source-editor-host {
     position: relative;
     min-height: 28rem;
-    background: #0f172a;
+    background: var(--bs-body-bg);
   }
 
   .source-editor-canvas {
@@ -244,7 +244,7 @@
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    color: #94a3b8;
+    color: var(--bs-secondary-color);
     font-size: 0.92rem;
     font-style: italic;
     text-align: center;

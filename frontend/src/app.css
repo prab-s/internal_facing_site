@@ -19,6 +19,7 @@
   --bs-tertiary-color: var(--app-muted);
   --bs-tertiary-color-rgb: 157, 177, 207;
   --bs-border-color: var(--app-border);
+  --bs-border-color-translucent: rgba(157, 177, 207, 0.24);
   --bs-card-bg: var(--app-surface);
   --bs-card-border-color: var(--app-border);
   --bs-tertiary-bg: var(--app-surface-soft);
@@ -48,6 +49,7 @@
   --bs-tertiary-color: var(--app-muted);
   --bs-tertiary-color-rgb: 95, 116, 141;
   --bs-border-color: var(--app-border);
+  --bs-border-color-translucent: rgba(95, 116, 141, 0.24);
   --bs-card-bg: var(--app-surface);
   --bs-card-border-color: var(--app-border);
   --bs-tertiary-bg: var(--app-surface-soft);
