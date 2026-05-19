@@ -1,6 +1,6 @@
 import { f as fallback, s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores, d as bind_props } from "../../../chunks/index2.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
-import { d as getProductChartData, e as getProductTypePdfContext, f as getProducts, h as getProduct } from "../../../chunks/api.js";
+import { d as getProductChartData, e as getProducts, f as getProduct } from "../../../chunks/api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../chunks/fullChart.js";
 import { t as theme } from "../../../chunks/config.js";
 import { J as JobProgressPanel } from "../../../chunks/JobProgressPanel.js";
@@ -13,7 +13,7 @@ function html(value) {
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
-    let selectedProductTypeRecord;
+    let selectedProductTypeRecord, selectedProductTypeContextMissingSeries, selectedProductTypeContextWarning;
     let data = fallback($$props["data"], () => ({}), true);
     let products = [];
     let productTypes = [];
@@ -50,8 +50,9 @@ function _page($$renderer, $$props) {
       return stringValue === "null" || stringValue === "undefined" ? "" : stringValue;
     }
     let activeViewerTab = normalizeViewerTab(data?.tab);
-    let selectedProductTypeId = normalizeViewerStringId(data?.product_type);
-    let selectedProductTypeContext = null;
+    let selectedProductTypeId = normalizeViewerStringId(data?.product_type_id || data?.product_type);
+    let selectedProductTypeContext = data?.product_type_context || null;
+    let productTypePdfPreviewRevision = 0;
     let seriesTabProductTypeFilter = "";
     let seriesTabSeriesId = normalizeViewerStringId(data?.series);
     let seriesTabOptions = [];
@@ -114,6 +115,11 @@ function _page($$renderer, $$props) {
     }
     function productTypePdfTemplateLabel(productType) {
       return templateLabel("product_type", productType?.product_type_template_id, "product_type-default");
+    }
+    function productTypePdfPreviewUrl(productType) {
+      if (!productType?.product_type_pdf_url) return "";
+      const separator = productType.product_type_pdf_url.includes("?") ? "&" : "?";
+      return `${productType.product_type_pdf_url}${separator}v=${productTypePdfPreviewRevision}`;
     }
     function getCurrentGraphConfig() {
       const productType = getCurrentProductType();
@@ -201,17 +207,6 @@ function _page($$renderer, $$props) {
         loadingChart = false;
       }
     }
-    async function loadProductTypeContext() {
-      if (!selectedProductTypeId) {
-        selectedProductTypeContext = null;
-        return;
-      }
-      try {
-        selectedProductTypeContext = await getProductTypePdfContext(selectedProductTypeId);
-      } catch {
-        selectedProductTypeContext = null;
-      }
-    }
     async function loadFilteredProducts() {
       loadingList = true;
       error = "";
@@ -279,10 +274,15 @@ function _page($$renderer, $$props) {
       loadChartData();
     }
     selectedSeriesRecord = seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
-    selectedProductTypeRecord = productTypes.find((productType) => Number(productType.id) === Number(selectedProductTypeId)) || null;
-    if (selectedProductTypeId) {
-      loadProductTypeContext();
+    if (productTypes.length > 0 && selectedProductTypeId) {
+      const normalizedProductType = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId));
+      if (normalizedProductType && String(selectedProductTypeId) !== String(normalizedProductType.id)) {
+        selectedProductTypeId = String(normalizedProductType.id);
+      }
     }
+    selectedProductTypeRecord = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)) || null;
+    selectedProductTypeContextMissingSeries = selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
+    selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length ? "One or more linked series PDFs are missing or not generated yet, so this PDF context is incomplete." : "";
     head("1470g8z", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Viewer — Internal Facing</title>`);
@@ -556,7 +556,7 @@ function _page($$renderer, $$props) {
           const each_array_10 = ensure_array_like(productTypes);
           for (let $$index_10 = 0, $$length = each_array_10.length; $$index_10 < $$length; $$index_10++) {
             let productType = each_array_10[$$index_10];
-            $$renderer3.option({ value: productType.id }, ($$renderer4) => {
+            $$renderer3.option({ value: String(productType.id) }, ($$renderer4) => {
               $$renderer4.push(`${escape_html(productType.label)}`);
             });
           }
@@ -598,14 +598,50 @@ function _page($$renderer, $$props) {
           title: `Series names for ${selectedProductTypeRecord.label}`,
           emptyLabel: "This product type has no linked series yet."
         });
-        $$renderer2.push(`<!----></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5 mb-3">PDF context</h3> `);
+        $$renderer2.push(`<!----></div></div></div> <div class="card shadow-sm"><div class="card-body"><div class="d-flex flex-wrap align-items-start gap-2"><div class="me-auto"><h3 class="h5 mb-1">Generated PDF</h3> <div class="small text-body-secondary">Inline preview of the latest generated PDF.</div></div> `);
+        if (selectedProductTypeRecord?.product_type_pdf_url) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedProductTypeRecord.product_type_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]--></div> `);
+        if (selectedProductTypeRecord?.product_type_pdf_url) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<div class="ratio ratio-16x9 mt-3"><iframe${attr("src", productTypePdfPreviewUrl(selectedProductTypeRecord))}${attr("title", `${selectedProductTypeRecord.label} PDF preview`)}></iframe></div>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+          $$renderer2.push(`<p class="text-body-secondary mb-0 mt-3">No generated PDF available yet.</p>`);
+        }
+        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5 mb-3">PDF context</h3> `);
         if (selectedProductTypeContext) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="small text-body-secondary mb-3">Intro pages: ${escape_html(selectedProductTypeContext.intro_page_count)} · Total pages: ${escape_html(selectedProductTypeContext.page_count)}</div> <div class="vstack gap-3"><!--[-->`);
+          if (selectedProductTypeContextWarning) {
+            $$renderer2.push("<!--[0-->");
+            $$renderer2.push(`<div class="alert alert-warning"><div class="fw-semibold">Incomplete PDF context</div> <div>${escape_html(selectedProductTypeContextWarning)}</div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-warning btn-sm" type="button">Review missing series</button></div> `);
+            if (selectedProductTypeContextMissingSeries.length) {
+              $$renderer2.push("<!--[0-->");
+              $$renderer2.push(`<div class="mt-2">Missing series:
+                          ${escape_html(selectedProductTypeContextMissingSeries.map((series) => series.name).join(", "))}</div>`);
+            } else {
+              $$renderer2.push("<!--[-1-->");
+            }
+            $$renderer2.push(`<!--]--></div>`);
+          } else {
+            $$renderer2.push("<!--[-1-->");
+          }
+          $$renderer2.push(`<!--]--> <div class="small text-body-secondary mb-3">Intro pages: ${escape_html(selectedProductTypeContext.intro_page_count)} · Total pages: ${escape_html(selectedProductTypeContext.page_count)}</div> <div class="vstack gap-3"><!--[-->`);
           const each_array_11 = ensure_array_like(selectedProductTypeContext.series);
           for (let $$index_11 = 0, $$length = each_array_11.length; $$index_11 < $$length; $$index_11++) {
             let series = each_array_11[$$index_11];
-            $$renderer2.push(`<div class="border rounded p-3"><div class="d-flex justify-content-between gap-2 flex-wrap"><div class="fw-semibold">${escape_html(series.name)}</div> <div class="small text-body-secondary">Pages ${escape_html(series.page_start)} to ${escape_html(series.page_end)}</div></div> <div class="small text-body-secondary mb-2">${escape_html(series.product_count)} products</div> `);
+            $$renderer2.push(`<div class="border rounded p-3"><div class="d-flex justify-content-between gap-2 flex-wrap"><div class="fw-semibold">${escape_html(series.name)}</div> <div class="small text-body-secondary">Pages ${escape_html(series.page_start)} to ${escape_html(series.page_end)}</div></div> `);
+            if (Number(series.page_count || 0) === 0) {
+              $$renderer2.push("<!--[0-->");
+              $$renderer2.push(`<div class="small text-warning-emphasis mt-1">Series PDF is missing or not generated yet.</div>`);
+            } else {
+              $$renderer2.push("<!--[-1-->");
+            }
+            $$renderer2.push(`<!--]--> <div class="small text-body-secondary mb-2">${escape_html(series.product_count)} products</div> `);
             SeriesNamesBadgeList($$renderer2, {
               seriesNames: series.products?.map((product) => product.model) || [],
               title: "Products",

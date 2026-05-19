@@ -1734,6 +1734,14 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
         raise RuntimeError(f"Product template file is missing: {template_path}")
 
     stylesheet_path = resolve_template_stylesheet_path(template_definition, template_path)
+    logger.info(
+        "[product_pdf:%s:%s] template=%s html=%s stylesheet=%s",
+        product.id,
+        variant,
+        template_definition.get("id") or template_id or "product-default",
+        template_path,
+        stylesheet_path,
+    )
     html_template = template_path.read_text(encoding="utf-8")
     stylesheet_text = stylesheet_path.read_text(encoding="utf-8") if stylesheet_path.is_file() else ""
     html_template = inline_template_stylesheet(html_template, stylesheet_text)
@@ -2261,7 +2269,10 @@ def resolve_product_type_series_pdf_source(series: Series) -> Path | None:
     return None
 
 
-def build_product_type_series_pdf_summaries(product_type: ProductType) -> tuple[list[dict], list[Path]]:
+def build_product_type_series_pdf_summaries(
+    product_type: ProductType,
+    strict: bool = True,
+) -> tuple[list[dict], list[Path]]:
     ordered_series = sorted(product_type.series or [], key=lambda item: (item.name or "").casefold())
     series_summaries: list[dict] = []
     source_paths: list[Path] = []
@@ -2270,14 +2281,14 @@ def build_product_type_series_pdf_summaries(product_type: ProductType) -> tuple[
         ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
         source_path = resolve_product_type_series_pdf_source(series)
         if source_path is None:
-            logger.error(
-                "[product_type_pdf:%s] missing series PDF for %s",
-                product_type.id,
-                series.name,
-            )
-            raise RuntimeError(f"Series PDF is missing for {series.name}. Generate the series PDF first.")
+            log_message = "[product_type_pdf:%s] missing series PDF for %s"
+            if strict:
+                logger.error(log_message, product_type.id, series.name)
+                raise RuntimeError(f"Series PDF is missing for {series.name}. Generate the series PDF first.")
+            logger.warning(log_message + "; continuing with empty context summary", product_type.id, series.name)
+        else:
+            source_paths.append(source_path)
 
-        source_paths.append(source_path)
         series_summaries.append(
             {
                 "id": series.id,
@@ -2285,7 +2296,7 @@ def build_product_type_series_pdf_summaries(product_type: ProductType) -> tuple[
                 "series_tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
                 "series_description_html": render_richtext_html(series.description1_html),
                 "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
-                "page_count": pdf_page_count(source_path),
+                "page_count": pdf_page_count(source_path) if source_path is not None else 0,
                 "product_count": len(series.products or []),
                 "products": [
                     {
@@ -2423,7 +2434,7 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
 
 
 def build_product_type_pdf_context_metadata(product_type: ProductType, temp_dir: Path) -> dict:
-    series_summaries, _ = build_product_type_series_pdf_summaries(product_type)
+    series_summaries, _ = build_product_type_series_pdf_summaries(product_type, strict=False)
     series_names_html = build_product_type_series_names_html(product_type.series_names or [])
     series_legend_html = build_product_type_series_legend_html(series_summaries)
     _, intro_page_count, series_groups_html, _ = render_product_type_intro_with_page_ranges(

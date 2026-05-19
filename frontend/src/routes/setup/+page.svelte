@@ -158,6 +158,10 @@
     return maintenanceJobTypeIncludes('product_pdfs', 'series_pdfs', 'product_type_pdfs', 'product_pdf_', 'series_pdf_', 'product_type_pdf_');
   }
 
+  function isGraphImageMaintenanceJob() {
+    return maintenanceJobTypeIncludes('graph_images', 'graph_image_');
+  }
+
   function isProductPdfMaintenanceJob() {
     return maintenanceJobTypeIncludes('product_pdfs', 'product_pdf_');
   }
@@ -1092,7 +1096,7 @@
             Run special admin-only tasks that are otherwise only exposed through the API.
           </p>
 
-          {#if maintenanceJob && !isPdfMaintenanceJob()}
+          {#if maintenanceJob && !isPdfMaintenanceJob() && !isGraphImageMaintenanceJob()}
             <JobProgressPanel job={maintenanceJob} label={`Maintenance job: ${maintenanceJob.job_type}`} />
           {/if}
           <div class="card border mb-3">
@@ -1238,6 +1242,9 @@
                   </button>
                 </div>
               </div>
+              {#if maintenanceJob && isGraphImageMaintenanceJob()}
+                <JobProgressPanel job={maintenanceJob} label="Product Graph Images" />
+              {/if}
             </div>
           </div>
 

@@ -303,6 +303,10 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
+    $$renderer2.push(`<!--]--> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
     $$renderer2.push(`<!--]--> <div class="setup-hero card shadow-sm mb-4 svelte-g40i6i"><div class="card-body bg-body-secondary bg-opacity-10 p-4 p-lg-5"><div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3"><div class="setup-hero-copy svelte-g40i6i"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Setup</p> <h1 class="h2 mb-2">Account and application setup.</h1> <p class="text-body-secondary mb-0">Manage your own password here. Admins can also create and manage internal user accounts, inspect live logs,
           and run maintenance tasks from the same page.</p></div> `);
     if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
@@ -374,10 +378,6 @@ function _page($$renderer, $$props) {
       {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
       $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup DB Data</h3> <p class="mb-2 text-body-secondary">Download the PostgreSQL backup ZIP. This is the plug-and-play restore package for the app database.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download DB Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="db-backup-restore-file">Restore DB Data ZIP</label> <input id="db-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore DB Data ZIP</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup Media Data</h3> <p class="mb-2 text-body-secondary">Download the media-only ZIP for product images, graph images, generated PDFs, and templates. Backups are excluded.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Media Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIP</label> <input id="media-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore Media Data ZIP</button></div></div></div></div> <div class="mb-3">`);
       FileManager($$renderer2, {
         rootName: "data",
@@ -390,7 +390,23 @@ function _page($$renderer, $$props) {
         title: "Template File Manager",
         description: "Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
       });
-      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product PDFs in one pass using the current product templates and graph data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product PDFs</button></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
+      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product PDFs in one pass using the current product templates and graph data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product PDFs</button></div></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Series PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all series PDFs in one pass using the current series templates and linked product data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Series PDFs</button></div></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Type PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product type PDFs in one pass using the current product type templates and series data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Type PDFs</button></div></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
                     flow into the product editor.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingProductTypes, true)}>${escape_html(loadingProductTypes ? "Refreshing..." : "Reload types")}</button></div> `);
       if (typePresetError) {
         $$renderer2.push("<!--[0-->");

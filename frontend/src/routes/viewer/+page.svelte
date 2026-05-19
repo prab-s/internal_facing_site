@@ -629,6 +629,20 @@
       (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
     ) || null;
 
+  $: selectedProductTypeContextMissingSeries =
+    selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
+  $: selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length
+    ? 'One or more linked series PDFs are missing or not generated yet, so this PDF context is incomplete.'
+    : '';
+
+  function reviewMissingSeriesPdfContext() {
+    if (!selectedProductTypeContextMissingSeries.length) return;
+    const firstMissingSeries = selectedProductTypeContextMissingSeries[0];
+    activeViewerTab = 'series';
+    seriesTabProductTypeFilter = selectedProductTypeRecord?.key || '';
+    seriesTabSeriesId = firstMissingSeries?.id != null ? String(firstMissingSeries.id) : '';
+  }
+
   $: if (productTypes.length > 0 && selectedProductTypeId) {
     const normalizedProductType = productTypes.find(
       (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
@@ -1172,6 +1186,23 @@
               <div class="card-body">
                 <h3 class="h5 mb-3">PDF context</h3>
                 {#if selectedProductTypeContext}
+                  {#if selectedProductTypeContextWarning}
+                    <div class="alert alert-warning">
+                      <div class="fw-semibold">Incomplete PDF context</div>
+                      <div>{selectedProductTypeContextWarning}</div>
+                      <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button class="btn btn-warning btn-sm" type="button" on:click={reviewMissingSeriesPdfContext}>
+                          Review missing series
+                        </button>
+                      </div>
+                      {#if selectedProductTypeContextMissingSeries.length}
+                        <div class="mt-2">
+                          Missing series:
+                          {selectedProductTypeContextMissingSeries.map((series) => series.name).join(', ')}
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
                   <div class="small text-body-secondary mb-3">
                     Intro pages: {selectedProductTypeContext.intro_page_count} · Total pages: {selectedProductTypeContext.page_count}
                   </div>
@@ -1182,6 +1213,9 @@
                           <div class="fw-semibold">{series.name}</div>
                           <div class="small text-body-secondary">Pages {series.page_start} to {series.page_end}</div>
                         </div>
+                        {#if Number(series.page_count || 0) === 0}
+                          <div class="small text-warning-emphasis mt-1">Series PDF is missing or not generated yet.</div>
+                        {/if}
                         <div class="small text-body-secondary mb-2">{series.product_count} products</div>
                         <SeriesNamesBadgeList
                           seriesNames={series.products?.map((product) => product.model) || []}

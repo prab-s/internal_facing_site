@@ -61,21 +61,21 @@ const FULL_CHART_LINE_DEFINITIONS = [
     label: "Efficiency Centre",
     colorKey: "efficiency",
     tooltipLabel: "Efficiency centre",
-    lineWidth: 2
+    lineWidth: 3
   },
   {
     key: "efficiency_lower_end",
     label: "Efficiency Lower End",
     colorKey: "permissible",
     tooltipLabel: "Efficiency lower end",
-    lineWidth: 2
+    lineWidth: 3
   },
   {
     key: "efficiency_higher_end",
     label: "Efficiency Higher End",
     colorKey: "permissible",
     tooltipLabel: "Efficiency higher end",
-    lineWidth: 2
+    lineWidth: 3
   },
   {
     key: "permissible_use",
@@ -88,13 +88,13 @@ const FULL_CHART_LINE_DEFINITIONS = [
 const OVERLAY_LINE_DECORATION = {
   outline: {
     color: "#000000",
-    width: 2,
-    opacity: 0.35
+    width: 3,
+    opacity: 0.5
   },
   glow: {
-    color: "#ffffff",
-    width: 4,
-    opacity: 0.18
+    color: "#000000",
+    width: 6,
+    opacity: 0.14
   }
 };
 const FLOW_EPSILON = 1e-6;
@@ -189,6 +189,17 @@ function invertHexColor(color) {
     g: 255 - rgb.g,
     b: 255 - rgb.b
   });
+}
+function getOppositeGlowColor(color) {
+  const normalizedColor = normalizeOptionalColor(color);
+  return normalizedColor ? invertHexColor(normalizedColor) : null;
+}
+function toRgbaColor(color, alpha = 1) {
+  const normalizedColor = normalizeOptionalColor(color);
+  if (!normalizedColor) return null;
+  const rgb = hexToRgb(normalizedColor);
+  if (!rgb) return normalizedColor;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamp(alpha, 0, 1)})`;
 }
 function isDarkColor(color) {
   const rgb = hexToRgb(color);
@@ -649,6 +660,7 @@ function alignPolygonToBandStartPoints(polygon, upperLineData, lowerLineData) {
 }
 function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permissibleBoundaryData, clipRpmAreaToPermissibleUse, maximumVisibleFlow = null, pressureAxisMax = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG) {
   if (!rpmCurveEntries.length) return [];
+  const shouldClipToPermissibleUse = clipRpmAreaToPermissibleUse && permissibleBoundaryData.length > 0;
   const flows = buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData);
   if (!flows.length) return [];
   let previousLineData = null;
@@ -674,7 +686,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
       lineData,
       flows,
       permissibleBoundaryData,
-      clipRpmAreaToPermissibleUse,
+      shouldClipToPermissibleUse,
       maximumVisibleFlow,
       previousLineData == null
     );
@@ -682,7 +694,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
       previousLineData,
       flows,
       permissibleBoundaryData,
-      clipRpmAreaToPermissibleUse,
+      shouldClipToPermissibleUse,
       maximumVisibleFlow
     );
     let polygons = buildBandPolygonsBetweenCurves(flows, currentCurve, lowerBoundary);
@@ -692,7 +704,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
         ...fullPolygons.slice(1)
       ];
     }
-    if (clipRpmAreaToPermissibleUse && polygons.length) {
+    if (shouldClipToPermissibleUse && polygons.length) {
       const upperStartFlow = polygons[0].topPoints[0]?.[0] ?? null;
       const lowerStartFlow = getLowerBoundaryActivationFlow(previousLineData, permissibleBoundaryData) ?? upperStartFlow;
       polygons = [
@@ -707,7 +719,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
     }
     previousLineData = lineData;
     const series = [];
-    if (clipRpmAreaToPermissibleUse && permissibleBoundaryData.length && fullPolygons.length && pressureAxisMax != null) {
+    if (shouldClipToPermissibleUse && fullPolygons.length && pressureAxisMax != null) {
       series.push({
         name: `${formatGraphLineValue(rpm, graphConfig)} band faded`,
         type: "custom",
@@ -728,7 +740,6 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
               type: "polygon",
               shape: {
                 points: (() => {
-                  permissibleBoundaryData[0];
                   const boundaryEnd = permissibleBoundaryData[permissibleBoundaryData.length - 1];
                   return [
                     api.coord([0, pressureAxisMax]),
@@ -768,7 +779,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
         ];
         if (!polygonPoints.length) return null;
         const points = polygonPoints.map(([x, y]) => api.coord([x, y]));
-        const clipPoints = clipRpmAreaToPermissibleUse && permissibleBoundaryData.length && maximumVisibleFlow != null && pressureAxisMax != null ? (() => {
+        const clipPoints = shouldClipToPermissibleUse && maximumVisibleFlow != null && pressureAxisMax != null ? (() => {
           const boundaryStart = permissibleBoundaryData[0];
           const boundaryEnd = permissibleBoundaryData[permissibleBoundaryData.length - 1];
           return [
@@ -804,7 +815,8 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
     return series;
   });
 }
-function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG) {
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1) {
+  const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
     let anchorEndIndex = lineData.length - 1;
@@ -872,8 +884,11 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       z: includeDragHandles ? idx * 2 : rpms.length - idx
     });
     if (!includeDragHandles && displayLineData.length) {
-      const labelAtLineEnd = showRpmBandShading;
-      const labelAnchorData = labelAtLineEnd ? buildBandLabelAnchorData(displayLineData) : displayLineData.slice().reverse();
+      const labelUsesBandStyling = showRpmBandShading;
+      const reversedLineData = displayLineData.slice().reverse();
+      const labelAnchorData = labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData;
+      const labelColor = labelUsesBandStyling ? rpmBandLabelColor ?? chartTheme.text : chartTheme.text;
+      const labelGlowColor = toRgbaColor(getOppositeGlowColor(labelColor), 0.95);
       series.push({
         name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
         type: "line",
@@ -886,18 +901,26 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
         endLabel: {
           show: true,
           formatter: () => formatGraphLineValue(rpm, graphConfig, rpmLine),
-          color: labelAtLineEnd ? rpmBandLabelColor ?? chartTheme.text : chartTheme.text,
+          color: labelColor,
           fontFamily: chartFontFamily,
           distance: 6,
           // ECharts offset format is [x, y].
           // x: negative = left, positive = right
           // y: negative = up, positive = down
-          // Banded graph labels use the first pair; non-banded labels use the second.
-          offset: labelAtLineEnd ? [-95, 28] : [5, -10],
-          fontSize: CHART_STYLE.dragHandleFontSize,
+          // Labels now anchor near the start of the curve, so this is the main
+          // place to tune their manual nudge away from the y-axis.
+          offset: [1, 25],
+          textBorderColor: labelGlowColor ?? void 0,
+          textBorderWidth: 4.5 * resolvedLabelTextScale,
+          shadowBlur: 8 * resolvedLabelTextScale,
+          shadowColor: labelGlowColor ?? void 0,
+          shadowOffsetX: 0,
+          shadowOffsetY: 0,
+          fontSize: CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale,
           fontWeight: "normal"
         },
-        z: rpms.length + 20
+        z: 5e3,
+        zlevel: 10
       });
     }
     if (showRpmBandShading && !includeDragHandles && !clipRpmAreaToPermissibleUse && hasMultiplePoints) {
@@ -1034,7 +1057,12 @@ function buildDecoratedOverlayLineSeries({
     }
   ];
 }
-function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHandles, lineDefinitions, { permissibleLabelColor = null } = {}) {
+function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHandles, lineDefinitions, { permissibleLabelColor = null } = {}, labelTextScale = 1, permissibleLabelOffset = null) {
+  const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
+  const resolvedPermissibleLabelOffset = {
+    x: Number.isFinite(Number(permissibleLabelOffset?.x)) ? Number(permissibleLabelOffset.x) : 0,
+    y: Number.isFinite(Number(permissibleLabelOffset?.y)) ? Number(permissibleLabelOffset.y) : 0
+  };
   const series = [];
   for (const definition of lineDefinitions) {
     const lineData = points.filter((point) => point[definition.key] != null).map((point) => [point.airflow ?? 0, point[definition.key] ?? 0]).sort((a, b) => a[0] - b[0]);
@@ -1053,17 +1081,11 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
       })
     );
     if (!includeDragHandles && definition.key === "permissible_use" && lineData.length >= 2) {
-      const highestPoints = [...lineData].sort((a, b) => {
-        if (b[1] !== a[1]) return b[1] - a[1];
-        return b[0] - a[0];
-      }).slice(0, 2);
-      const anchorPoint = highestPoints[0] ?? null;
-      const gradientPoints = highestPoints.slice().sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-      const segmentStart = gradientPoints[0] ?? null;
-      const segmentEnd = gradientPoints[1] ?? null;
-      if (!anchorPoint || !segmentStart || !segmentEnd) {
+      const anchorPoint = lineData[lineData.length - 1] ?? null;
+      if (!anchorPoint) {
         continue;
       }
+      const labelGlowColor = toRgbaColor(getOppositeGlowColor(permissibleLabelColor ?? chartTheme.text), 0.95);
       series.push({
         name: "Permissible Use Label",
         type: "custom",
@@ -1073,43 +1095,37 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
         silent: true,
         tooltip: { show: false },
         emphasis: { disabled: true },
-        data: [
-          {
-            value: [
-              anchorPoint[0],
-              anchorPoint[1],
-              segmentStart[0],
-              segmentStart[1],
-              segmentEnd[0],
-              segmentEnd[1]
-            ]
-          }
-        ],
+        data: [{ value: [anchorPoint[0], anchorPoint[1]] }],
         renderItem(params, api) {
           const anchor = api.coord([api.value(0), api.value(1)]);
-          const segmentStart2 = api.coord([api.value(2), api.value(3)]);
-          const segmentEnd2 = api.coord([api.value(4), api.value(5)]);
-          const dx = segmentEnd2[0] - segmentStart2[0];
-          const dy = segmentEnd2[1] - segmentStart2[1];
-          const rightOffsetPixels = -40;
-          const verticalOffsetPixels = 60;
-          const rotation = -Math.atan2(dy, dx);
+          const rightOffsetPixels = 70 + resolvedPermissibleLabelOffset.x;
+          const verticalOffsetPixels = -15 + resolvedPermissibleLabelOffset.y;
+          const rotation = 0;
           return {
             type: "text",
             x: anchor[0] + rightOffsetPixels,
             y: anchor[1] + verticalOffsetPixels,
             rotation,
             style: {
-              text: "Permissible Use",
+              text: "⬇️ Permissible Use",
               fill: permissibleLabelColor ?? chartTheme.text,
-              font: `${CHART_STYLE.permissibleLabelFontSize}px ${chartTheme.fontFamily ?? "sans-serif"}`,
+              stroke: labelGlowColor ?? void 0,
+              lineWidth: 3.5 * resolvedLabelTextScale,
+              shadowBlur: 8 * resolvedLabelTextScale,
+              shadowColor: labelGlowColor ?? void 0,
+              shadowOffsetX: 0,
+              shadowOffsetY: 0,
+              font: `${CHART_STYLE.permissibleLabelFontSize * resolvedLabelTextScale}px ${chartTheme.fontFamily ?? "sans-serif"}`,
               textAlign: "center",
               textVerticalAlign: "middle"
             },
-            silent: true
+            silent: true,
+            z: 5e3,
+            zlevel: 10
           };
         },
-        z: 1001
+        z: 5e3,
+        zlevel: 10
       });
     }
     if (!includeDragHandles) continue;
@@ -1154,8 +1170,11 @@ function buildFullChartOption({
   pressureAxisMaxOverride = null,
   tooltip = null,
   graphStyle = null,
-  adaptGraphBackgroundToTheme = false
+  adaptGraphBackgroundToTheme = false,
+  labelTextScale = 1,
+  permissibleLabelOffset = null
 }) {
+  const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const resolvedGraphConfig = resolveGraphConfig(graphConfig);
   const lineDefinitions = resolvedGraphConfig.supports_graph_overlays ? FULL_CHART_LINE_DEFINITIONS : [];
   const xAxisName = formatAxisLabel(
@@ -1197,7 +1216,8 @@ function buildFullChartOption({
     pressureAxisMax,
     bandGraphLabelTextColor,
     bandGraphFadedOpacity,
-    resolvedGraphConfig
+    resolvedGraphConfig,
+    resolvedLabelTextScale
   );
   const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
   return {
@@ -1284,9 +1304,15 @@ function buildFullChartOption({
     ],
     series: [
       ...rpmSeriesBundle.series,
-      ...buildEfficiencyAndPermissibleSeries(efficiencyPoints, chartTheme, includeDragHandles, lineDefinitions, {
-        permissibleLabelColor
-      })
+      ...buildEfficiencyAndPermissibleSeries(
+        efficiencyPoints,
+        chartTheme,
+        includeDragHandles,
+        lineDefinitions,
+        { permissibleLabelColor },
+        resolvedLabelTextScale,
+        permissibleLabelOffset
+      )
     ]
   };
 }
