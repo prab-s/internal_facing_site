@@ -166,6 +166,21 @@ function invertHexColor(color) {
   });
 }
 
+function getOppositeGlowColor(color) {
+  const normalizedColor = normalizeOptionalColor(color);
+  return normalizedColor ? invertHexColor(normalizedColor) : null;
+}
+
+function toRgbaColor(color, alpha = 1) {
+  const normalizedColor = normalizeOptionalColor(color);
+  if (!normalizedColor) return null;
+
+  const rgb = hexToRgb(normalizedColor);
+  if (!rgb) return normalizedColor;
+
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamp(alpha, 0, 1)})`;
+}
+
 function isDarkColor(color) {
   const rgb = hexToRgb(color);
   if (!rgb) return false;
@@ -1111,8 +1126,13 @@ function buildRpmSeries(
   pressureAxisMax = null,
   rpmBandLabelColor = null,
   fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity,
-  graphConfig = DEFAULT_GRAPH_CONFIG
+  graphConfig = DEFAULT_GRAPH_CONFIG,
+  labelTextScale = 1
 ) {
+  const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
+    ? Number(labelTextScale)
+    : 1;
+
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
 
@@ -1199,10 +1219,13 @@ function buildRpmSeries(
     });
 
     if (!includeDragHandles && displayLineData.length) {
-      const labelAtLineEnd = showRpmBandShading;
-      const labelAnchorData = labelAtLineEnd
-        ? buildBandLabelAnchorData(displayLineData)
-        : displayLineData.slice().reverse();
+      const labelUsesBandStyling = showRpmBandShading;
+      const reversedLineData = displayLineData.slice().reverse();
+      const labelAnchorData = labelUsesBandStyling
+        ? buildBandLabelAnchorData(reversedLineData)
+        : reversedLineData;
+      const labelColor = labelUsesBandStyling ? (rpmBandLabelColor ?? chartTheme.text) : chartTheme.text;
+      const labelGlowColor = toRgbaColor(getOppositeGlowColor(labelColor), 0.95);
 
       series.push({
         name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
@@ -1216,18 +1239,26 @@ function buildRpmSeries(
         endLabel: {
           show: true,
           formatter: () => formatGraphLineValue(rpm, graphConfig, rpmLine),
-          color: labelAtLineEnd ? (rpmBandLabelColor ?? chartTheme.text) : chartTheme.text,
+          color: labelColor,
           fontFamily: chartFontFamily,
           distance: 6,
           // ECharts offset format is [x, y].
           // x: negative = left, positive = right
           // y: negative = up, positive = down
-          // Banded graph labels use the first pair; non-banded labels use the second.
-          offset: labelAtLineEnd ? [-95, 28] : [5, -10],
-          fontSize: CHART_STYLE.dragHandleFontSize,
+          // Labels now anchor near the start of the curve, so this is the main
+          // place to tune their manual nudge away from the y-axis.
+          offset: [1, 25],
+          textBorderColor: labelGlowColor ?? undefined,
+          textBorderWidth: 4.5 * resolvedLabelTextScale,
+          shadowBlur: 8 * resolvedLabelTextScale,
+          shadowColor: labelGlowColor ?? undefined,
+          shadowOffsetX: 0,
+          shadowOffsetY: 0,
+          fontSize: CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale,
           fontWeight: 'normal'
         },
-        z: rpms.length + 20
+        z: 5000,
+        zlevel: 10
       });
     }
 
@@ -1393,8 +1424,17 @@ function buildEfficiencyAndPermissibleSeries(
   chartTheme,
   includeDragHandles,
   lineDefinitions,
-  { permissibleLabelColor = null } = {}
+  { permissibleLabelColor = null } = {},
+  labelTextScale = 1,
+  permissibleLabelOffset = null
 ) {
+  const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
+    ? Number(labelTextScale)
+    : 1;
+  const resolvedPermissibleLabelOffset = {
+    x: Number.isFinite(Number(permissibleLabelOffset?.x)) ? Number(permissibleLabelOffset.x) : 0,
+    y: Number.isFinite(Number(permissibleLabelOffset?.y)) ? Number(permissibleLabelOffset.y) : 0
+  };
   const series = [];
 
   for (const definition of lineDefinitions) {
@@ -1421,22 +1461,13 @@ function buildEfficiencyAndPermissibleSeries(
     );
 
     if (!includeDragHandles && definition.key === 'permissible_use' && lineData.length >= 2) {
-      const highestPoints = [...lineData]
-        .sort((a, b) => {
-          if (b[1] !== a[1]) return b[1] - a[1];
-          return b[0] - a[0];
-        })
-        .slice(0, 2);
-      const anchorPoint = highestPoints[0] ?? null;
-      const gradientPoints = highestPoints
-        .slice()
-        .sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-      const segmentStart = gradientPoints[0] ?? null;
-      const segmentEnd = gradientPoints[1] ?? null;
+      const anchorPoint = lineData[lineData.length - 1] ?? null;
 
-      if (!anchorPoint || !segmentStart || !segmentEnd) {
+      if (!anchorPoint) {
         continue;
       }
+
+      const labelGlowColor = toRgbaColor(getOppositeGlowColor(permissibleLabelColor ?? chartTheme.text), 0.95);
 
       series.push({
         name: 'Permissible Use Label',
@@ -1447,34 +1478,15 @@ function buildEfficiencyAndPermissibleSeries(
         silent: true,
         tooltip: { show: false },
         emphasis: { disabled: true },
-        data: [
-          {
-            value: [
-              anchorPoint[0],
-              anchorPoint[1],
-              segmentStart[0],
-              segmentStart[1],
-              segmentEnd[0],
-              segmentEnd[1]
-            ]
-          }
-        ],
+        data: [{ value: [anchorPoint[0], anchorPoint[1]] }],
         renderItem(params, api) {
           const anchor = api.coord([api.value(0), api.value(1)]);
-          const segmentStart = api.coord([api.value(2), api.value(3)]);
-          const segmentEnd = api.coord([api.value(4), api.value(5)]);
-          const dx = segmentEnd[0] - segmentStart[0];
-          const dy = segmentEnd[1] - segmentStart[1];
-          const length = Math.hypot(dx, dy) || 1;
-          // Unit direction vector along the permissible-use line.
-          const tangent = [dx / length, dy / length];
           // Pixel offsets after anchoring the label:
           // rightOffsetPixels: negative = left, positive = right
           // verticalOffsetPixels: negative = up, positive = down
-          const rightOffsetPixels = -40;
-          const verticalOffsetPixels = 60;
-          // Rotation is in radians. This one flips the label to match the line direction.
-          const rotation = -Math.atan2(dy, dx);
+          const rightOffsetPixels = 70 + resolvedPermissibleLabelOffset.x;
+          const verticalOffsetPixels = -15 + resolvedPermissibleLabelOffset.y;
+          const rotation = 0;
 
           return {
             type: 'text',
@@ -1482,16 +1494,25 @@ function buildEfficiencyAndPermissibleSeries(
             y: anchor[1] + verticalOffsetPixels,
             rotation,
             style: {
-              text: 'Permissible Use',
+              text: '⬇️ Permissible Use',
               fill: permissibleLabelColor ?? chartTheme.text,
-              font: `${CHART_STYLE.permissibleLabelFontSize}px ${chartTheme.fontFamily ?? 'sans-serif'}`,
+              stroke: labelGlowColor ?? undefined,
+              lineWidth: 3.5 * resolvedLabelTextScale,
+              shadowBlur: 8 * resolvedLabelTextScale,
+              shadowColor: labelGlowColor ?? undefined,
+              shadowOffsetX: 0,
+              shadowOffsetY: 0,
+              font: `${CHART_STYLE.permissibleLabelFontSize * resolvedLabelTextScale}px ${chartTheme.fontFamily ?? 'sans-serif'}`,
               textAlign: 'center',
               textVerticalAlign: 'middle'
             },
-            silent: true
+            silent: true,
+            z: 5000,
+            zlevel: 10
           };
         },
-        z: 1001
+        z: 5000,
+        zlevel: 10
       });
     }
 
@@ -1554,8 +1575,13 @@ export function buildFullChartOption({
   pressureAxisMaxOverride = null,
   tooltip = null,
   graphStyle = null,
-  adaptGraphBackgroundToTheme = false
+  adaptGraphBackgroundToTheme = false,
+  labelTextScale = 1,
+  permissibleLabelOffset = null
 }) {
+  const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
+    ? Number(labelTextScale)
+    : 1;
   const resolvedGraphConfig = resolveGraphConfig(graphConfig);
   const lineDefinitions = resolvedGraphConfig.supports_graph_overlays ? FULL_CHART_LINE_DEFINITIONS : [];
   const xAxisName = formatAxisLabel(
@@ -1625,7 +1651,8 @@ export function buildFullChartOption({
     pressureAxisMax,
     bandGraphLabelTextColor,
     bandGraphFadedOpacity,
-    resolvedGraphConfig
+    resolvedGraphConfig,
+    resolvedLabelTextScale
   );
   const chartFontFamily = chartTheme.fontFamily ?? 'sans-serif';
 
@@ -1713,9 +1740,15 @@ export function buildFullChartOption({
     ],
     series: [
       ...rpmSeriesBundle.series,
-      ...buildEfficiencyAndPermissibleSeries(efficiencyPoints, chartTheme, includeDragHandles, lineDefinitions, {
-        permissibleLabelColor
-      })
+      ...buildEfficiencyAndPermissibleSeries(
+        efficiencyPoints,
+        chartTheme,
+        includeDragHandles,
+        lineDefinitions,
+        { permissibleLabelColor },
+        resolvedLabelTextScale,
+        permissibleLabelOffset
+      )
     ]
   };
 }

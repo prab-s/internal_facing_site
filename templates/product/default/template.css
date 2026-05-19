@@ -1,12 +1,30 @@
 :root {
   --page-bg: #e8e8e8;
-  --ink: #222222;
+  --black: #000000;
   --muted: #4d4d4d;
   --line: #c7d3e6;
-  --soft-blue: #d7e0ef;
+  --mid-blue: #8bdcdc;
+  --mid-red: #d85c5c;
   --deep-red: #742323;
   --white: #ffffff;
+  --topbar-title-share: 0.90fr;
+  --topbar-model-share: 1.10fr;
 }
+
+/*
+Page structure
+- Top bar
+- Intro / copy / graph
+- Performance and grouped specification tables
+- Fan acoustic table:
+  1. primary heading
+  2. primary cells
+  3. sound-power main heading
+  4. sound-power subheading
+  5. sound-power cells
+- Lower visual panels
+- Footer
+*/
 
 * {
   box-sizing: border-box;
@@ -22,7 +40,7 @@ body {
   margin: 0;
   padding: 0;
   background: var(--page-bg);
-  color: var(--ink);
+  color: var(--black);
   font-family: Arial, Helvetica, sans-serif;
 }
 
@@ -40,7 +58,7 @@ body.vt-sheet-body {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  grid-template-columns: minmax(0, var(--topbar-title-share)) minmax(0, var(--topbar-model-share));
   height: 14mm;
   margin-bottom: 3mm;
 }
@@ -58,7 +76,7 @@ body.vt-sheet-body {
 }
 
 .topbar__title {
-  background: var(--soft-blue);
+  background: var(--mid-red);
   color: #111111;
   font-size: 7.3mm;
 }
@@ -99,17 +117,23 @@ body.vt-sheet-body {
   object-fit: contain;
 }
 
+/* Grouped spec cards */
 .spec-card {
   border: 0.3mm solid var(--line);
   background: rgba(255, 255, 255, 0.32);
+  --spec-card-title-size: 3.8mm;
+  --spec-card-label-size: 2.75mm;
+  --spec-card-value-size: 3.35mm;
+  --spec-card-label-weight: 700;
+  --spec-card-value-weight: 400;
 }
 
 .spec-card__title {
   margin: 0;
-  padding: 1.4mm 2.2mm;
-  background: var(--soft-blue);
-  color: var(--deep-red);
-  font-size: 3.8mm;
+  padding: 0.8mm 2.2mm;
+  background: var(--deep-red);
+  color: var(--white);
+  font-size: var(--spec-card-title-size);
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -117,6 +141,7 @@ body.vt-sheet-body {
 .spec-list {
   margin: 0;
   padding: 1.8mm 2.2mm 2.2mm;
+  font-size: 0; /* Let the label/value pairs size themselves explicitly. */
 }
 
 .spec-list__row {
@@ -124,18 +149,24 @@ body.vt-sheet-body {
   grid-template-columns: 22mm 1fr;
   gap: 1.2mm;
   margin: 0.8mm 0;
-  font-size: 3.35mm;
   line-height: 1.25;
 }
 
 .spec-list__row dt {
   margin: 0;
-  font-weight: 700;
+  font-size: var(--spec-card-label-size);
+  font-weight: var(--spec-card-label-weight);
 }
 
 .spec-list__row dd {
   margin: 0;
   color: var(--muted);
+  font-size: var(--spec-card-value-size);
+  font-weight: var(--spec-card-value-weight);
+}
+
+.spec-card .placeholder {
+  font-size: var(--spec-card-value-size);
 }
 
 .compact-richtext {
@@ -159,6 +190,7 @@ body.vt-sheet-body {
   line-height: 1.35;
 }
 
+/* Intro copy blocks */
 .copy-section h3 {
   margin: 0 0 0.6mm;
   font-size: 4mm;
@@ -198,10 +230,7 @@ body.vt-sheet-body {
   object-fit: contain;
 }
 
-.performance-band {
-  margin-top: 3mm;
-}
-
+/* Performance / grouped spec tables */
 .performance-table {
   width: 100%;
 }
@@ -214,46 +243,6 @@ body.vt-sheet-body {
   margin: 0 0 1.2mm;
   color: var(--deep-red);
   font-size: 3.8mm;
-  font-weight: 700;
-}
-
-.fan-acoustic-panel {
-  margin-top: 3mm;
-}
-
-.fan-acoustic-panel__title {
-  margin: 0 0 1.4mm;
-  color: var(--deep-red);
-  font-size: 4.2mm;
-  font-weight: 700;
-}
-
-.fan-acoustic-panel__table-wrap {
-  width: 100%;
-  overflow-x: hidden;
-}
-
-.fan-acoustic-table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: 3.05mm;
-  background: rgba(255, 255, 255, 0.35);
-}
-
-.fan-acoustic-table th,
-.fan-acoustic-table td {
-  border: 0.25mm solid var(--line);
-  padding: 1.1mm 1.4mm;
-  text-align: center;
-  vertical-align: middle;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.fan-acoustic-table thead th {
-  background: var(--soft-blue);
   font-weight: 700;
 }
 
@@ -282,7 +271,7 @@ body.vt-sheet-body {
 .performance-table thead th,
 .spec-groups thead th,
 .table-slot thead th {
-  background: var(--soft-blue);
+  background: var(--mid-blue);
   font-weight: 700;
 }
 
@@ -291,11 +280,121 @@ body.vt-sheet-body {
 .table-slot caption {
   caption-side: top;
   text-align: left;
-  font-weight: 700;
-  color: var(--deep-red);
-  margin-bottom: 1.4mm;
+  font-weight: 400;
+  color: var(--white);
+  background: var(--deep-red);
+  margin-bottom: 1.2mm;
 }
 
+/* Fan acoustic panel */
+.performance-band.fan-acoustic-panel {
+  margin-top: 3mm;
+}
+
+/* Fan acoustic panel: shared tuning for the whole table */
+.fan-acoustic-panel {
+  --fan-acoustic-speed-col: 15mm;
+  --fan-acoustic-peak-pressure-col: 17mm;
+  --fan-acoustic-peak-power-col: 15mm;
+  --fan-acoustic-running-frequency-col: 18mm;
+  --fan-acoustic-sound-pressure-col: 20mm;
+  --fan-acoustic-sound-power-col: 8mm;
+}
+
+/* Fan acoustic panel: title and outer wrapper */
+.fan-acoustic-panel__title {
+  margin: 0 0 1mm;
+  color: var(--deep-red);
+  font-size: 4mm;
+  font-weight: 700;
+}
+
+.fan-acoustic-panel__table-wrap {
+  width: 100%;
+  overflow-x: visible;
+}
+
+.fan-acoustic-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 2.9mm;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.fan-acoustic-table__col--speed {
+  width: var(--fan-acoustic-speed-col);
+}
+
+.fan-acoustic-table__col--peak-pressure {
+  width: var(--fan-acoustic-peak-pressure-col);
+}
+
+.fan-acoustic-table__col--peak-power {
+  width: var(--fan-acoustic-peak-power-col);
+}
+
+.fan-acoustic-table__col--running-frequency {
+  width: var(--fan-acoustic-running-frequency-col);
+}
+
+.fan-acoustic-table__col--sound-pressure {
+  width: var(--fan-acoustic-sound-pressure-col);
+}
+
+.fan-acoustic-table__col--sound-power {
+  width: var(--fan-acoustic-sound-power-col);
+}
+
+.fan-acoustic-table th,
+.fan-acoustic-table td {
+  border: 0.25mm solid var(--line);
+  padding: 0.9mm 1.15mm;
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.15;
+}
+
+/* Fan acoustic table: 1. primary heading */
+.fan-acoustic-table thead th.fan-acoustic-table__primary-heading {
+  background: var(--mid-blue);
+  color: var(--black);
+  font-weight: 800;
+}
+
+/* Fan acoustic table: 2. primary cells */
+.fan-acoustic-table tbody td.fan-acoustic-table__primary-cell {
+  /* Hook for the first half of the table body. */
+}
+
+/* Fan acoustic table: 3. sound-power main heading */
+.fan-acoustic-table thead th.fan-acoustic-table__sound-power-band-heading {
+  background: var(--deep-red);
+  color: var(--white);
+  font-weight: 800;
+}
+
+/* .fan-acoustic-table__sound-power-band-heading {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+} */
+
+/* Fan acoustic table: 4. sound-power subheading */
+.fan-acoustic-table thead th.fan-acoustic-table__sound-power-subhead {
+  background: var(--mid-red);
+  color: var(--black);
+  font-weight: 800;
+}
+
+/* Fan acoustic table: 5. sound-power cells */
+.fan-acoustic-table__sound-power-cell {
+  /* Hook for the sound-power body cells. */
+}
+
+/* Lower visual panels */
 .lower-grid {
   display: grid;
   grid-template-columns: 1.08fr 0.92fr;
@@ -321,6 +420,7 @@ body.vt-sheet-body {
   opacity: 0.88;
 }
 
+/* Gallery and footer */
 .gallery-grid,
 .image-gallery-slot {
   display: grid;

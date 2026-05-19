@@ -36,7 +36,9 @@ async function main() {
     clipRpmAreaToPermissibleUse: true,
     showSecondaryAxis: false,
     tooltip: { show: false },
-    graphStyle: payload.graphStyle ?? null
+    graphStyle: payload.graphStyle ?? null,
+    labelTextScale: 1.25,
+    permissibleLabelOffset: { x: 20, y: -15 }
   });
 
   option.animation = false;

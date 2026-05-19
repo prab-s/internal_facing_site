@@ -221,7 +221,16 @@ body.vt-sheet-body {
 
 .fan-acoustic-panel__table-wrap {
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: visible;
+}
+
+.fan-acoustic-panel {
+  --fan-acoustic-speed-col: 15mm;
+  --fan-acoustic-peak-pressure-col: 16mm;
+  --fan-acoustic-peak-power-col: 15mm;
+  --fan-acoustic-running-frequency-col: 16mm;
+  --fan-acoustic-sound-pressure-col: 18mm;
+  --fan-acoustic-sound-power-col: 12mm;
 }
 
 .fan-acoustic-table {
@@ -230,6 +239,30 @@ body.vt-sheet-body {
   border-collapse: collapse;
   font-size: 3.05mm;
   background: rgba(255, 255, 255, 0.35);
+}
+
+.fan-acoustic-table__col--speed {
+  width: var(--fan-acoustic-speed-col);
+}
+
+.fan-acoustic-table__col--peak-pressure {
+  width: var(--fan-acoustic-peak-pressure-col);
+}
+
+.fan-acoustic-table__col--peak-power {
+  width: var(--fan-acoustic-peak-power-col);
+}
+
+.fan-acoustic-table__col--running-frequency {
+  width: var(--fan-acoustic-running-frequency-col);
+}
+
+.fan-acoustic-table__col--sound-pressure {
+  width: var(--fan-acoustic-sound-pressure-col);
+}
+
+.fan-acoustic-table__col--sound-power {
+  width: var(--fan-acoustic-sound-power-col);
 }
 
 .fan-acoustic-table th,
@@ -246,6 +279,10 @@ body.vt-sheet-body {
 .fan-acoustic-table thead th {
   background: var(--soft-blue);
   font-weight: 700;
+}
+
+.fan-acoustic-table thead th.fan-acoustic-table__subhead {
+  background: rgba(90, 137, 180, 0.18);
 }
 
 .performance-table table,

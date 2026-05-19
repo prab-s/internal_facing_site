@@ -1,76 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{product.model}} | Product PDF</title>
-    <link rel="stylesheet" href="./template.css" />
-  </head>
-  <body class="product-template vt-sheet-body">
-    <main class="page">
-      <header class="topbar">
-        <div class="topbar__title">
-          {{product.product_type_label}} | {{product.series_name}}
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{product.model}} | Product PDF</title>
+  <link rel="stylesheet" href="./template.css" />
+</head>
+
+<body class="product-template vt-sheet-body">
+  <main class="page">
+    <header class="topbar">
+      <div class="topbar__title">
+        {{product.product_type_label}}s | {{product.series_name}}
+      </div>
+      <div class="topbar__model">{{product.series_name}} - {{product.model}}</div>
+    </header>
+
+    <section class="intro-grid">
+      <aside class="left-rail">
+        <div class="hero-card">
+          <img src="{{product.primary_product_image_url}}" alt="{{product.model}}" class="hero-image">
         </div>
-        <div class="topbar__model">{{product.model}}</div>
-      </header>
+        {{product.grouped_specs_cards}}
+      </aside>
 
-      <section class="intro-grid">
-        <aside class="left-rail">
-          <div class="hero-card">
-            <img src="{{product.primary_product_image_url}}" alt="{{product.model}}" class="hero-image">
+      <section class="main-panel">
+        <div class="copy-block">
+          <div class="copy-section">
+            <h3>Description</h3>
+            <div class="richtext">{{product.description1_html}}</div>
           </div>
-          {{product.grouped_specs_cards}}
-        </aside>
-
-        <section class="main-panel">
-          <div class="copy-block">
-            <div class="copy-section">
-              <h3>Description</h3>
-              <div class="richtext">{{product.description1_html}}</div>
-            </div>
-            <div class="copy-section">
-              <h3>Applications</h3>
-              <div class="richtext">{{product.description2_html}}</div>
-            </div>
+          <div class="copy-section">
+            <h3>Applications</h3>
+            <div class="richtext">{{product.description2_html}}</div>
           </div>
+          <div class="copy-section">
+            <h3>Sizes</h3>
+            <div class="richtext">{{product.description3_html}}</div>
+          </div>
+          <div class="copy-section">
+            <h3>Fan performance</h3>
+            <div class="richtext">{{product.comments_html}}</div>
+          </div>
+        </div>
 
-          <section class="graph-panel">
-            <img src="{{product.graph_image_url}}" alt="{{product.model}} graph" class="graph-image">
-          </section>
+        <section class="graph-panel">
+          <img src="{{product.graph_image_url}}" alt="{{product.model}} graph" class="graph-image">
         </section>
       </section>
+    </section>
 
-      <section class="performance-band">
+    <section class="performance-band fan-acoustic-panel">
+      <h2 class="fan-acoustic-panel__title">Fan Acoustic Table</h2>
+      <div class="fan-acoustic-panel__table-wrap">
         {{product.fan_acoustic_table}}
+      </div>
+    </section>
+
+    <section class="lower-grid">
+      <section class="drawing-panel">
+        <div class="drawing-panel__inner">
+          <img src="{{product.primary_product_image_url}}" alt="{{product.model}} detailed view" class="drawing-image">
+        </div>
       </section>
 
-      <section class="lower-grid">
-        <section class="drawing-panel">
-          <div class="drawing-panel__inner">
-            <img src="{{product.primary_product_image_url}}" alt="{{product.model}} detailed view" class="drawing-image">
-          </div>
-        </section>
-
-        <section class="gallery-panel">
-          <div class="gallery-grid">{{product.image_gallery}}</div>
-        </section>
+      <section class="gallery-panel">
+        <div class="gallery-grid">{{product.image_gallery}}</div>
       </section>
+    </section>
 
-      <footer class="footer-area">
-        <div class="footer-brand-row">
-          <div class="footer-brand footer-brand--left">{{product.product_type_label}}</div>
-          <div class="footer-site">{{product.series_name}}</div>
-          <div class="footer-brand footer-brand--right">{{product.model}}</div>
-        </div>
+    <footer class="footer-area">
+      <div class="footer-brand-row">
+        <div class="footer-brand footer-brand--left">{{product.product_type_label}}</div>
+        <div class="footer-site">{{product.series_name}}</div>
+        <div class="footer-brand footer-brand--right">{{product.model}}</div>
+      </div>
 
-        <div class="footer-contact-row">
-          <div class="footer-contact">
-            {{product.product_type_label}} · {{product.series_name}}
-          </div>
-          <div class="footer-badge">{{product.model}}</div>
+      <div class="footer-contact-row">
+        <div class="footer-contact">
+          {{product.product_type_label}} · {{product.series_name}}
         </div>
-      </footer>
-    </main>
-  </body>
+        <div class="footer-badge">{{product.model}}</div>
+      </div>
+    </footer>
+  </main>
+</body>
+
 </html>

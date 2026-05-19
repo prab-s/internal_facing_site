@@ -1642,11 +1642,11 @@ def render_fan_acoustic_table(product: Product) -> str:
             return html.escape(str(value))
 
     header_cells = [
-        '<th rowspan="2">Speed (rpm)</th>',
-        '<th rowspan="2">Peak Pressure (Pa)</th>',
-        '<th rowspan="2">Peak Power (kW)</th>',
-        '<th rowspan="2">Running Frequency</th>',
-        '<th rowspan="2">Sound Pressure Level dB @ 3 meters</th>',
+        '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--speed">Speed (rpm)</th>',
+        '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--peak-pressure">Peak Pressure (Pa)</th>',
+        '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--peak-power">Peak Power (kW)</th>',
+        '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--running-frequency">Running Frequency (Hz)</th>',
+        '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--sound-pressure">Sound Pressure Level (dB) @ 3 meters</th>',
     ]
 
     body_rows: list[str] = []
@@ -1655,12 +1655,15 @@ def render_fan_acoustic_table(product: Product) -> str:
             sound_power_levels = row.get("sound_power_levels") or {}
             body_rows.append(
                 "<tr>"
-                f"<td>{format_numeric(row.get('speed_rpm'))}</td>"
-                f"<td>{format_numeric(row.get('peak_pressure_pa'))}</td>"
-                f"<td>{format_numeric(row.get('peak_power_kw'))}</td>"
-                f"<td>{format_numeric(row.get('running_frequency_hz'))}</td>"
-                f"<td>{format_numeric(row.get('sound_pressure_db_3m'))}</td>"
-                + "".join(f"<td>{format_numeric(sound_power_levels.get(column))}</td>" for column in sound_power_columns)
+                f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--speed">{format_numeric(row.get("speed_rpm"))}</td>'
+                f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--peak-pressure">{format_numeric(row.get("peak_pressure_pa"))}</td>'
+                f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--peak-power">{format_numeric(row.get("peak_power_kw"))}</td>'
+                f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--running-frequency">{format_numeric(row.get("running_frequency_hz"))}</td>'
+                f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--sound-pressure">{format_numeric(row.get("sound_pressure_db_3m"))}</td>'
+                + "".join(
+                    f'<td class="fan-acoustic-table__cell fan-acoustic-table__sound-power-cell fan-acoustic-table__cell--sound-power">{format_numeric(sound_power_levels.get(column))}</td>'
+                    for column in sound_power_columns
+                )
                 + "</tr>"
             )
     else:
@@ -1670,33 +1673,32 @@ def render_fan_acoustic_table(product: Product) -> str:
             "</tr>"
         )
 
-    colgroup = (
-        '<colgroup>'
-        '<col style="width: 16mm" />'
-        '<col style="width: 18mm" />'
-        '<col style="width: 16mm" />'
-        '<col style="width: 16mm" />'
-        '<col style="width: 32mm" />'
-        + "".join('<col style="width: 8mm" />' for _ in sound_power_columns)
-        + "</colgroup>"
-    )
-
     return (
-        '<section class="fan-acoustic-panel">'
-        '<h2 class="fan-acoustic-panel__title">Fan Acoustic Table</h2>'
-        '<div class="fan-acoustic-panel__table-wrap">'
         '<table class="fan-acoustic-table">'
-        + colgroup
+        + '<colgroup>'
+        + '<col class="fan-acoustic-table__col fan-acoustic-table__col--speed" />'
+        + '<col class="fan-acoustic-table__col fan-acoustic-table__col--peak-pressure" />'
+        + '<col class="fan-acoustic-table__col fan-acoustic-table__col--peak-power" />'
+        + '<col class="fan-acoustic-table__col fan-acoustic-table__col--running-frequency" />'
+        + '<col class="fan-acoustic-table__col fan-acoustic-table__col--sound-pressure" />'
+        + "".join(
+            '<col class="fan-acoustic-table__col fan-acoustic-table__col--sound-power" />'
+            for _ in sound_power_columns
+        )
+        + '</colgroup>'
         + "<thead>"
         + "<tr>"
         + "".join(header_cells)
-        + f'<th colspan="{len(sound_power_columns)}" class="fan-acoustic-table__band-heading">Sound Power Level SWL dB re 1pw</th>'
+        + f'<th colspan="{len(sound_power_columns)}" class="fan-acoustic-table__cell fan-acoustic-table__sound-power-band-heading fan-acoustic-table__band-heading">Sound (Hz) Power Level (dB) SWL re 1pw</th>'
         + "</tr>"
         + "<tr>"
-        + "".join(f"<th>{html.escape(str(column))}</th>" for column in sound_power_columns)
+        + "".join(
+            f'<th class="fan-acoustic-table__cell fan-acoustic-table__sound-power-subhead fan-acoustic-table__subhead">{html.escape(str(column))}</th>'
+            for column in sound_power_columns
+        )
         + "</tr></thead><tbody>"
         + "".join(body_rows)
-        + "</tbody></table></div></section>"
+        + "</tbody></table>"
     )
 
 
@@ -2887,7 +2889,7 @@ def sync_graph_image(product: Product, rpm_lines: list[RpmLine], efficiency_poin
         tmp_path.unlink()
 
     payload = {
-        "title": f"{product.model} Product Graph",
+        "title": f"{product.product_type_label} - {product.series_name} - {product.model} Performance Graph",
         "showRpmBandShading": product.show_rpm_band_shading,
         "graphConfig": build_graph_config(product.product_type),
         "graphStyle": {

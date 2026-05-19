@@ -44,7 +44,12 @@
         <h2>Grouped Specifications</h2>
         <div class="table-slot">{{product.grouped_specs_table}}</div>
       </section>
-      {{product.fan_acoustic_table}}
+      <section class="fan-acoustic-panel">
+        <h2 class="fan-acoustic-panel__title">Fan Acoustic Table</h2>
+        <div class="fan-acoustic-panel__table-wrap">
+          {{product.fan_acoustic_table}}
+        </div>
+      </section>
       <section class="asset-grid">
         <section class="panel">
           <h2>Product Graph</h2><img src="{{product.graph_image_url}}" alt="{{product.model}} graph"

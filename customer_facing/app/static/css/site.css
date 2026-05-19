@@ -84,7 +84,7 @@ body {
 }
 
 .navbar {
-  background: linear-gradient(90deg, rgba(88, 28, 28, 0.98), rgba(127, 29, 29, 0.96));
+  background: linear-gradient(90deg, rgba(128, 0, 0, 0.49), rgba(128, 0, 0, 0.99));
   backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(142, 154, 172, 0.18);
   box-shadow: 0 12px 24px rgba(2, 6, 23, 0.22);
@@ -101,6 +101,8 @@ body {
 .site-navbar .btn-primary {
   letter-spacing: 0.01em;
   white-space: nowrap;
+  border: #aaaaaa 2px solid;
+  font-size: large;
 }
 
 .site-navbar .nav-link,

@@ -205,7 +205,16 @@ body {
 
 .fan-acoustic-panel__table-wrap {
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: visible;
+}
+
+.fan-acoustic-panel {
+  --fan-acoustic-speed-col: 82px;
+  --fan-acoustic-peak-pressure-col: 84px;
+  --fan-acoustic-peak-power-col: 82px;
+  --fan-acoustic-running-frequency-col: 88px;
+  --fan-acoustic-sound-pressure-col: 96px;
+  --fan-acoustic-sound-power-col: 64px;
 }
 
 .fan-acoustic-table {
@@ -213,6 +222,30 @@ body {
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
+}
+
+.fan-acoustic-table__col--speed {
+  width: var(--fan-acoustic-speed-col);
+}
+
+.fan-acoustic-table__col--peak-pressure {
+  width: var(--fan-acoustic-peak-pressure-col);
+}
+
+.fan-acoustic-table__col--peak-power {
+  width: var(--fan-acoustic-peak-power-col);
+}
+
+.fan-acoustic-table__col--running-frequency {
+  width: var(--fan-acoustic-running-frequency-col);
+}
+
+.fan-acoustic-table__col--sound-pressure {
+  width: var(--fan-acoustic-sound-pressure-col);
+}
+
+.fan-acoustic-table__col--sound-power {
+  width: var(--fan-acoustic-sound-power-col);
 }
 
 .fan-acoustic-table th,
@@ -230,6 +263,10 @@ body {
 .fan-acoustic-table thead th {
     background-color: rgba(33, 64, 111, 0.08);
     font-weight: 700;
+}
+
+.fan-acoustic-table thead th.fan-acoustic-table__subhead {
+    background-color: rgba(33, 64, 111, 0.16);
 }
 
 .table-slot th,
