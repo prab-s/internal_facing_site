@@ -236,6 +236,18 @@ def attach_in_memory_log_handler():
 attach_in_memory_log_handler()
 
 
+def request_client_ip(request: Request) -> str:
+    forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+
+    real_ip = str(request.headers.get("x-real-ip") or "").strip()
+    if real_ip:
+        return real_ip
+
+    return request.client.host if request.client else "unknown"
+
+
 def trace_product_filter(message: str, *args):
     if FINDER_DEBUG:
         logger.warning(message, *args)
@@ -3656,6 +3668,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_api_request(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/api/"):
+        logger.info(
+            "[request] %s %s -> %s from %s",
+            request.method,
+            path,
+            response.status_code,
+            request_client_ip(request),
+        )
+    return response
+
 
 @app.on_event("startup")
 def startup():
