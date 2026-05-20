@@ -50,7 +50,24 @@
       </section>
     {% endfor %}
 
-    {% if series.series_graph_image_url %}
+    {% if series_graph.hasGraphData %}
+      <div class="card my-4 product-graph-card">
+        <div class="card-header fw-semibold">Performance graph</div>
+        <div class="card-body">
+          <div
+            id="series-graph"
+            class="product-graph-host"
+            data-product-graph-host
+            aria-label="{{ series.name }} performance graph"
+          ></div>
+          {% if series.series_graph_image_url %}
+            <noscript>
+              <img class="img-fluid mt-3" src="{{ media_url(series.series_graph_image_url) }}" alt="{{ series.name }} graph">
+            </noscript>
+          {% endif %}
+        </div>
+      </div>
+    {% elif series.series_graph_image_url %}
       <div class="card my-4 section-card">
         <div class="card-header fw-semibold">Performance graph</div>
         <div class="card-body">
@@ -79,4 +96,12 @@
   </aside>
 </div>
 
+{% endblock %}
+
+{% block page_scripts %}
+  <script>
+    window.__PRODUCT_GRAPH_DATA__ = {{ series_graph | tojson }};
+  </script>
+  <script src="/static/js/echarts.min.js" defer></script>
+  <script src="/static/js/product-graph.js" defer></script>
 {% endblock %}

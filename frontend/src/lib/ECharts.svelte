@@ -11,6 +11,8 @@
   let container;
   let chart;
   let handlerEntries = [];
+  let zrHoverHandler = null;
+  let zrLeaveHandler = null;
 
   function normalizeGraphicElements(graphic) {
     if (!chart || !Array.isArray(graphic)) return graphic;
@@ -63,9 +65,38 @@
       }
       chart.setOption(normalizeOption(option), { notMerge: true });
       attachHandlers();
+      attachHoverTracking();
     } catch (e) {
       console.error('ECharts error:', e);
     }
+  }
+
+  function attachHoverTracking() {
+    if (!chart) return;
+    const zr = chart.getZr?.();
+    if (!zr) return;
+
+    if (zrHoverHandler) zr.off('mousemove', zrHoverHandler);
+    if (zrLeaveHandler) zr.off('globalout', zrLeaveHandler);
+
+    zrHoverHandler = (event) => {
+      const x = Number(event?.offsetX);
+      const y = Number(event?.offsetY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const coords = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+      if (Array.isArray(coords)) {
+        window.__ECHARTS_HOVER_COORDS__ = { x: coords[0], y: coords[1] };
+      } else if (coords && typeof coords === 'object') {
+        window.__ECHARTS_HOVER_COORDS__ = { x: coords.x ?? coords[0], y: coords.y ?? coords[1] };
+      }
+    };
+
+    zrLeaveHandler = () => {
+      window.__ECHARTS_HOVER_COORDS__ = null;
+    };
+
+    zr.on('mousemove', zrHoverHandler);
+    zr.on('globalout', zrLeaveHandler);
   }
 
   onMount(() => {
@@ -76,12 +107,14 @@
       if (typeof onChartReady === 'function') {
         onChartReady(chart);
       }
+      attachHoverTracking();
     }
     window.addEventListener('resize', resize);
   });
 
   onDestroy(() => {
     window.removeEventListener('resize', resize);
+    window.__ECHARTS_HOVER_COORDS__ = null;
     if (chart) chart.dispose();
   });
 

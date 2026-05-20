@@ -1479,6 +1479,14 @@ def render_grouped_specs_table(product: Product) -> str:
 
 
 def render_grouped_specs_group_html(product: Product, group_name: str) -> str:
+    rows_html = render_grouped_specs_rows_html(product, group_name)
+    if not rows_html:
+        return f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
+
+    return '<div class="spec-list">' + rows_html + "</div>"
+
+
+def render_grouped_specs_rows_html(product: Product, group_name: str) -> str:
     target_slug = template_token_slug(group_name)
     matching_groups = [
         group
@@ -1508,7 +1516,7 @@ def render_grouped_specs_group_html(product: Product, group_name: str) -> str:
     if not rows:
         return f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
 
-    return '<dl class="spec-list">' + "".join(rows) + "</dl>"
+    return "".join(rows)
 
 
 def format_parameter_value(parameter: ProductParameter) -> str:
@@ -1538,46 +1546,17 @@ def build_grouped_spec_token_map(product: Product) -> dict[str, str]:
 def build_grouped_spec_group_token_map(product: Product) -> dict[str, str]:
     replacements: dict[str, str] = {}
     for group_name in ("impeller", "motor", "fan"):
-        target_slug = template_token_slug(group_name)
-        matching_groups = [
-            group
-            for group in sorted(product.parameter_groups, key=lambda item: (item.sort_order, item.id))
-            if template_token_slug(group.group_name or "") == target_slug
-        ]
-        if not matching_groups:
-            replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = (
-                f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
-            )
-            continue
-
-        rows: list[str] = []
-        for group in matching_groups:
-            for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
-                if parameter.value_string not in {None, ""}:
-                    value_html = html.escape(parameter.value_string)
-                elif parameter.value_number is not None:
-                    number_value = f"{parameter.value_number:g}"
-                    value_html = html.escape(f"{number_value} {parameter.unit}".strip())
-                else:
-                    value_html = "—"
-                rows.append(
-                    "<div class=\"spec-list__row\">"
-                    f"<dt>{html.escape(parameter.parameter_name)}</dt>"
-                    f"<dd>{value_html}</dd>"
-                    "</div>"
-                )
-
-        if not rows:
-            replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = (
-                f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
-            )
-            continue
-
-        replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = '<dl class="spec-list">' + "".join(rows) + "</dl>"
+        rows_html = render_grouped_specs_rows_html(product, group_name)
+        replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = (
+            '<div class="spec-list">' + rows_html + "</div>"
+            if rows_html.startswith("<div class=\"spec-list__row\">")
+            else rows_html
+        )
     return replacements
 
 
-def render_grouped_specs_cards(product: Product) -> str:
+def render_grouped_specs_cards(product: Product, excluded_group_names: set[str] | None = None) -> str:
+    excluded_group_names = excluded_group_names or set()
     groups = sorted(product.parameter_groups, key=lambda group: (group.sort_order, group.id))
     if not groups:
         return '<p class="placeholder">No grouped specifications available.</p>'
@@ -1585,6 +1564,8 @@ def render_grouped_specs_cards(product: Product) -> str:
     cards: list[str] = []
     for group in groups:
         group_key = template_token_slug(group.group_name or "")
+        if group_key in excluded_group_names:
+            continue
         rows: list[str] = []
         for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
             if parameter.value_string not in {None, ""}:
@@ -1702,19 +1683,34 @@ def render_fan_acoustic_table(product: Product) -> str:
     )
 
 
-def render_image_gallery_html(product: Product) -> str:
+def render_product_image_html(product: Product, image_index: int, css_class: str, alt_text: str) -> str:
+    ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
+    if image_index < 1 or len(ordered_images) < image_index:
+        return '<p class="placeholder">No product image available.</p>'
+
+    image = ordered_images[image_index - 1]
+    image_path = image_file_path(image.file_name)
+    if not image_path.is_file():
+        return '<p class="placeholder">No product image available.</p>'
+
+    return (
+        f'<img src="{image_path.as_uri()}" alt="{html.escape(alt_text)}" class="{css_class}" />'
+    )
+
+
+def render_image_gallery_html(product: Product, start_index: int = 1) -> str:
     ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
     if not ordered_images:
         return '<p class="placeholder">No product images available.</p>'
 
     items: list[str] = []
-    for index, image in enumerate(ordered_images, start=1):
+    for index, image in enumerate(ordered_images[start_index - 1 :], start=start_index):
         image_path = image_file_path(image.file_name)
         if not image_path.is_file():
             continue
         items.append(
             '<figure class="gallery-item">'
-            f'<img src="{image_path.as_uri()}" alt="{html.escape(product.model)} image {index}" class="gallery-image" />'
+            f'<img src="{image_path.as_uri()}" alt="{html.escape(product.model or "")} image {index}" class="gallery-image" />'
             f'<figcaption>{html.escape("Primary image" if index == 1 else f"Image {index}")}</figcaption>'
             "</figure>"
         )
@@ -1774,6 +1770,13 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
         "{{product.grouped_specs_table}}": render_grouped_specs_table(product),
         "{{product.fan_acoustic_table}}": render_fan_acoustic_table(product),
         "{{product.image_gallery}}": render_image_gallery_html(product),
+        "{{product.image_gallery_from_third}}": render_image_gallery_html(product, start_index=3),
+        "{{product.secondary_product_image_html}}": render_product_image_html(
+            product,
+            image_index=2,
+            css_class="drawing-image",
+            alt_text=f"{product.model or ''} detailed view",
+        ),
         "{{product.primary_product_image_url}}": primary_image_uri,
         "{{product.graph_image_url}}": graph_image_uri,
     }
@@ -2900,7 +2903,7 @@ def sync_graph_image(product: Product, rpm_lines: list[RpmLine], efficiency_poin
         tmp_path.unlink()
 
     payload = {
-        "title": f"{product.product_type_label} - {product.series_name} - {product.model} Performance Graph",
+        "title": f"{product.product_type_label} | {product.series_name} - {product.model} Performance Graph",
         "showRpmBandShading": product.show_rpm_band_shading,
         "graphConfig": build_graph_config(product.product_type),
         "graphStyle": {

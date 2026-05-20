@@ -270,12 +270,19 @@
   function buildChartOptions() {
     const currentProduct = selectedProduct;
     const chartTheme = getChartTheme($theme);
+    const productTypeName = String(currentProduct?.product_type_label || currentProduct?.product_type_key || '').trim();
+    const seriesName = String(currentProduct?.series_name || '').trim();
+    const productName = String(currentProduct?.model || 'Product Graph').trim();
+    const titleParts = [];
+    if (productTypeName) titleParts.push(productTypeName);
+    const productSegment = `${seriesName ? `${seriesName} - ` : ''}${productName}`.trim();
+    const chartTitle = `${titleParts.join(' | ')}${titleParts.length ? ' | ' : ''}${productSegment} performance graph`.trim();
     chartOption = buildFullChartOption({
       rpmLines,
       rpmPoints,
       efficiencyPoints,
       chartTheme,
-      title: currentProduct ? currentProduct.model : 'Product Graph',
+      title: chartTitle || (currentProduct ? currentProduct.model : 'Product Graph'),
       graphConfig: getCurrentGraphConfig(),
       clipRpmAreaToPermissibleUse: true,
       showRpmBandShading: supportsBandGraphStyle() ? (currentProduct?.show_rpm_band_shading ?? true) : false,
@@ -960,7 +967,7 @@
                 <div class="border rounded p-3">
                   <div class="fw-semibold mb-2">{group.group_name}</div>
                   <div class="table-responsive">
-                    <table class="table table-sm mb-0">
+                    <table class="table table-sm mb-0 spec-group-table">
                       <tbody>
                         {#each group.parameters as parameter}
                           <tr>
@@ -1477,6 +1484,21 @@
 
   .viewer-html :global(:last-child) {
     margin-bottom: 0;
+  }
+
+  .spec-group-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .spec-group-table tbody tr:nth-child(even) th,
+  .spec-group-table tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--bs-secondary-bg) 58%, var(--bs-body-bg) 42%);
+  }
+
+  .spec-group-table tbody th:first-child,
+  .spec-group-table tbody td:first-child {
+    padding-left: 1.15rem;
   }
 
 </style>

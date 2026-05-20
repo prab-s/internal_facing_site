@@ -10,6 +10,11 @@ mkdir -p "$ROOT_DIR/app/templates/partials"
 mkdir -p "$ROOT_DIR/app/templates/errors"
 mkdir -p "$ROOT_DIR/app/static/css"
 mkdir -p "$ROOT_DIR/app/static/js"
+mkdir -p "$ROOT_DIR/app/static/vendor"
+
+cp "$ROOT_DIR/../frontend/node_modules/echarts/dist/echarts.min.js" "$ROOT_DIR/app/static/js/echarts.min.js"
+cp "$ROOT_DIR/../frontend/node_modules/bootstrap/dist/css/bootstrap.min.css" "$ROOT_DIR/app/static/vendor/bootstrap.min.css"
+cp "$ROOT_DIR/../frontend/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js" "$ROOT_DIR/app/static/vendor/bootstrap.bundle.min.js"
 
 touch "$ROOT_DIR/app/__init__.py"
 touch "$ROOT_DIR/app/routes/__init__.py"
@@ -220,6 +225,226 @@ async def common_context():
     return {"product_types": product_types}
 
 
+def build_product_graph_payload(product: dict, product_type: dict | None) -> dict:
+    graph_config_source = product_type or {}
+
+    def resolve_field(name: str, fallback=None):
+        value = graph_config_source.get(name)
+        if value not in (None, ""):
+            return value
+        value = product.get(name)
+        if value not in (None, ""):
+            return value
+        return fallback
+
+    rpm_lines = []
+    for index, line in enumerate(sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))):
+        rpm_lines.append({
+            "rpm": line.get("rpm"),
+            "band_color": line.get("band_color"),
+            "sort_order": line.get("sort_order", index),
+            "points": [
+                {
+                    "airflow": point.get("airflow"),
+                    "pressure": point.get("pressure"),
+                    "sort_order": point.get("sort_order", point_index),
+                }
+                for point_index, point in enumerate(sorted(line.get("points", []) or [], key=lambda item: item.get("sort_order", item.get("id", 0))))
+            ],
+        })
+
+    efficiency_points = []
+    for index, point in enumerate(sorted(product.get("efficiency_points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0)))):
+        efficiency_points.append({
+            "airflow": point.get("airflow"),
+            "sort_order": point.get("sort_order", index),
+            "efficiency_centre": point.get("efficiency_centre"),
+            "efficiency_lower_end": point.get("efficiency_lower_end"),
+            "efficiency_higher_end": point.get("efficiency_higher_end"),
+            "permissible_use": point.get("permissible_use"),
+        })
+
+    return {
+        "productModel": product.get("model"),
+        "hasGraphData": bool(rpm_lines or efficiency_points),
+        "graphConfig": {
+            "graph_kind": resolve_field("graph_kind"),
+            "supports_graph": bool(resolve_field("supports_graph", False)),
+            "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+            "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+            "graph_line_value_label": resolve_field("graph_line_value_label"),
+            "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+            "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+            "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+            "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+            "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            "band_graph_background_color": resolve_field("band_graph_background_color"),
+            "band_graph_label_text_color": resolve_field("band_graph_label_text_color"),
+            "band_graph_faded_opacity": resolve_field("band_graph_faded_opacity"),
+            "band_graph_permissible_label_color": resolve_field("band_graph_permissible_label_color"),
+        },
+        "showRpmBandShading": bool(product.get("show_rpm_band_shading", True)),
+        "rpmLines": rpm_lines,
+        "efficiencyPoints": efficiency_points,
+    }
+
+
+def build_series_graph_payload(series: dict, product_type: dict | None, series_products: list[dict]) -> dict:
+    graph_config_source = product_type or {}
+
+    def resolve_field(name: str, fallback=None):
+        value = graph_config_source.get(name)
+        if value not in (None, ""):
+            return value
+        return fallback
+
+    if not product_type or not product_type.get("supports_graph", False):
+        return {
+            "productModel": series.get("name"),
+            "hasGraphData": False,
+            "graphConfig": {
+                "graph_kind": resolve_field("graph_kind"),
+                "supports_graph": False,
+                "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+                "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+                "graph_line_value_label": resolve_field("graph_line_value_label"),
+                "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+                "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+                "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+                "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+                "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            },
+            "showRpmBandShading": False,
+            "rpmLines": [],
+            "efficiencyPoints": [],
+        }
+
+    synthetic_lines: list[dict] = []
+    next_line_id = 1
+
+    ordered_products = sorted(series_products or [], key=lambda item: str(item.get("model") or "").casefold())
+    for product in ordered_products:
+        ordered_lines = sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))
+        if not ordered_lines:
+            continue
+
+        selected_lines = [ordered_lines[0]]
+        if len(ordered_lines) > 1 and ordered_lines[-1] != ordered_lines[0]:
+            selected_lines.append(ordered_lines[-1])
+
+        for index, line in enumerate(selected_lines):
+            synthetic_line_id = next_line_id
+            next_line_id += 1
+            display_label = (
+                f"{product.get('model')} low"
+                if len(selected_lines) > 1 and index == 0
+                else f"{product.get('model')} high"
+                if len(selected_lines) > 1
+                else f"{product.get('model')}"
+            )
+            synthetic_lines.append({
+                "id": synthetic_line_id,
+                "rpm": synthetic_line_id,
+                "display_label": display_label,
+                "band_color": line.get("band_color"),
+                "points": [],
+            })
+            for point in sorted(line.get("points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0))):
+                synthetic_lines[-1]["points"].append({
+                    "id": point.get("id"),
+                    "airflow": point.get("airflow"),
+                    "pressure": point.get("pressure"),
+                })
+
+    return {
+        "productModel": series.get("name"),
+        "hasGraphData": bool(synthetic_lines),
+        "graphConfig": {
+            "graph_kind": resolve_field("graph_kind"),
+            "supports_graph": True,
+            "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+            "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+            "graph_line_value_label": resolve_field("graph_line_value_label"),
+            "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+            "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+            "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+            "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+            "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            "band_graph_background_color": resolve_field("band_graph_background_color"),
+            "band_graph_label_text_color": resolve_field("band_graph_label_text_color"),
+            "band_graph_faded_opacity": resolve_field("band_graph_faded_opacity"),
+            "band_graph_permissible_label_color": resolve_field("band_graph_permissible_label_color"),
+        },
+        "showRpmBandShading": False,
+        "rpmLines": synthetic_lines,
+        "efficiencyPoints": [],
+    }
+
+
+def build_product_graph_payload(product: dict, product_type: dict | None) -> dict:
+    graph_config_source = product_type or {}
+
+    def resolve_field(name: str, fallback=None):
+        value = graph_config_source.get(name)
+        if value not in (None, ""):
+            return value
+        value = product.get(name)
+        if value not in (None, ""):
+            return value
+        return fallback
+
+    rpm_lines = []
+    for index, line in enumerate(sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))):
+        rpm_lines.append({
+            "rpm": line.get("rpm"),
+            "band_color": line.get("band_color"),
+            "sort_order": line.get("sort_order", index),
+            "points": [
+                {
+                    "airflow": point.get("airflow"),
+                    "pressure": point.get("pressure"),
+                    "sort_order": point.get("sort_order", point_index),
+                }
+                for point_index, point in enumerate(sorted(line.get("points", []) or [], key=lambda item: item.get("sort_order", item.get("id", 0))))
+            ],
+        })
+
+    efficiency_points = []
+    for index, point in enumerate(sorted(product.get("efficiency_points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0)))):
+        efficiency_points.append({
+            "airflow": point.get("airflow"),
+            "sort_order": point.get("sort_order", index),
+            "efficiency_centre": point.get("efficiency_centre"),
+            "efficiency_lower_end": point.get("efficiency_lower_end"),
+            "efficiency_higher_end": point.get("efficiency_higher_end"),
+            "permissible_use": point.get("permissible_use"),
+        })
+
+    return {
+        "productModel": product.get("model"),
+        "hasGraphData": bool(rpm_lines or efficiency_points),
+        "graphConfig": {
+            "graph_kind": resolve_field("graph_kind"),
+            "supports_graph": bool(resolve_field("supports_graph", False)),
+            "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+            "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+            "graph_line_value_label": resolve_field("graph_line_value_label"),
+            "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+            "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+            "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+            "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+            "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            "band_graph_background_color": resolve_field("band_graph_background_color"),
+            "band_graph_label_text_color": resolve_field("band_graph_label_text_color"),
+            "band_graph_faded_opacity": resolve_field("band_graph_faded_opacity"),
+            "band_graph_permissible_label_color": resolve_field("band_graph_permissible_label_color"),
+        },
+        "showRpmBandShading": bool(product.get("show_rpm_band_shading", True)),
+        "rpmLines": rpm_lines,
+        "efficiencyPoints": efficiency_points,
+    }
+
+
 @router.get("/")
 async def homepage(request: Request):
     products = await api.products()
@@ -273,6 +498,8 @@ async def series_page(request: Request, series_slug: str):
     series = await api.series(series_id)
 
     context = await common_context()
+    product_type = next((x for x in context["product_types"] if x["key"] == series.get("product_type_key")), None)
+    series_products = await api.products(series_id=series_id)
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -281,6 +508,9 @@ async def series_page(request: Request, series_slug: str):
             f"/series/{series_slug}",
         ),
         "series": series,
+        "product_type": product_type,
+        "series_products": series_products,
+        "series_graph": build_series_graph_payload(series, product_type, series_products),
     })
 
     return templates.TemplateResponse("series.html", context)
@@ -292,6 +522,7 @@ async def product_page(request: Request, product_slug: str):
     product = await api.product(product_id)
 
     context = await common_context()
+    product_type = next((x for x in context["product_types"] if x["key"] == product.get("product_type_key")), None)
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -300,6 +531,7 @@ async def product_page(request: Request, product_slug: str):
             f"/products/{product_slug}",
         ),
         "product": product,
+        "product_graph": build_product_graph_payload(product, product_type),
     })
 
     return templates.TemplateResponse("product.html", context)
@@ -640,7 +872,7 @@ cat > "$ROOT_DIR/app/templates/base.html" <<'EOF'
   <link rel="canonical" href="{{ seo.canonical }}">
 
   <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    href="/static/vendor/bootstrap.min.css"
     rel="stylesheet"
   >
 
@@ -660,6 +892,7 @@ cat > "$ROOT_DIR/app/templates/base.html" <<'EOF'
     </div>
   </footer>
 
+  <script src="/static/vendor/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', path='js/finder.js') }}?v=20260427"></script>
 </body>
 </html>
@@ -815,7 +1048,24 @@ cat > "$ROOT_DIR/app/templates/series.html" <<'EOF'
       </div>
     {% endif %}
 
-    {% if series.series_graph_image_url %}
+    {% if series_graph.hasGraphData %}
+      <div class="card my-4 product-graph-card">
+        <div class="card-header fw-semibold">Performance graph</div>
+        <div class="card-body">
+          <div
+            id="series-graph"
+            class="product-graph-host"
+            data-product-graph-host
+            aria-label="{{ series.name }} performance graph"
+          ></div>
+          {% if series.series_graph_image_url %}
+            <noscript>
+              <img class="img-fluid mt-3" src="{{ media_url(series.series_graph_image_url) }}" alt="{{ series.name }} graph">
+            </noscript>
+          {% endif %}
+        </div>
+      </div>
+    {% elif series.series_graph_image_url %}
       <div class="card my-4">
         <div class="card-header fw-semibold">Performance graph</div>
         <div class="card-body">
@@ -840,6 +1090,13 @@ cat > "$ROOT_DIR/app/templates/series.html" <<'EOF'
   </aside>
 </div>
 
+{% endblock %}
+{% block page_scripts %}
+  <script>
+    window.__PRODUCT_GRAPH_DATA__ = {{ series_graph | tojson }};
+  </script>
+  <script src="/static/js/echarts.min.js" defer></script>
+  <script src="/static/js/product-graph.js" defer></script>
 {% endblock %}
 EOF
 
@@ -873,7 +1130,24 @@ cat > "$ROOT_DIR/app/templates/product.html" <<'EOF'
       </div>
     {% endif %}
 
-    {% if product.graph_image_url %}
+    {% if product_graph.hasGraphData %}
+      <div class="card my-4 product-graph-card">
+        <div class="card-header fw-semibold">Performance graph</div>
+        <div class="card-body">
+          <div
+            id="product-graph"
+            class="product-graph-host"
+            data-product-graph-host
+            aria-label="{{ product.model }} performance graph"
+          ></div>
+          {% if product.graph_image_url %}
+            <noscript>
+              <img class="img-fluid mt-3" src="{{ media_url(product.graph_image_url) }}" alt="{{ product.model }} graph">
+            </noscript>
+          {% endif %}
+        </div>
+      </div>
+    {% elif product.graph_image_url %}
       <div class="card my-4">
         <div class="card-header fw-semibold">Performance graph</div>
         <div class="card-body">
@@ -893,6 +1167,13 @@ cat > "$ROOT_DIR/app/templates/product.html" <<'EOF'
   </aside>
 </div>
 
+{% endblock %}
+{% block page_scripts %}
+  <script>
+    window.__PRODUCT_GRAPH_DATA__ = {{ product_graph | tojson }};
+  </script>
+  <script src="/static/js/echarts.min.js" defer></script>
+  <script src="/static/js/product-graph.js" defer></script>
 {% endblock %}
 EOF
 
@@ -1043,7 +1324,7 @@ cat > "$ROOT_DIR/app/templates/partials/specs_table.html" <<'EOF'
     </div>
 
     <div class="table-responsive">
-      <table class="table table-sm mb-0">
+      <table class="table table-sm mb-0 spec-group-table">
         <tbody>
           {% for param in group.parameters %}
             <tr>
@@ -1138,12 +1419,46 @@ body {
   object-fit: contain;
 }
 
+.product-graph-card .card-body {
+  padding: 1rem;
+}
+
+.product-graph-host {
+  width: 100%;
+  min-height: 18rem;
+  height: min(34rem, 56.25vw);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #d9d9d9;
+  border: 1px solid rgba(142, 154, 172, 0.5);
+}
+
+.product-graph-card noscript img {
+  display: block;
+  margin-inline: auto;
+}
+
 .content-block {
   line-height: 1.6;
 }
 
 .fan-acoustic-section .text-muted {
   max-width: 60rem;
+}
+
+.spec-group-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.spec-group-table tbody tr:nth-child(even) th,
+.spec-group-table tbody tr:nth-child(even) td {
+  background-color: rgba(185, 28, 28, 0.05);
+}
+
+.spec-group-table tbody th:first-child,
+.spec-group-table tbody td:first-child {
+  padding-left: 1.15rem;
 }
 
 .fan-acoustic-table-wrap {
@@ -1166,6 +1481,27 @@ body {
 
 .fan-acoustic-table thead th {
   background-color: rgba(15, 118, 110, 0.08);
+}
+
+@media (max-width: 767.98px) {
+  .product-graph-host {
+    min-height: 15rem;
+    height: min(22rem, 72vw);
+  }
+
+  .fan-acoustic-table thead th {
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .fan-acoustic-table td {
+    padding: 0.35rem 0.45rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
 }
 
 .table th {
@@ -1196,6 +1532,428 @@ if (form) {
     window.finderTimer = setTimeout(updateResults, 250);
   });
 }
+EOF
+
+cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
+(function () {
+  const host = document.querySelector('[data-product-graph-host]');
+  const payload = window.__PRODUCT_GRAPH_DATA__ || null;
+
+  if (!host || !payload || !window.echarts) {
+    return;
+  }
+
+  const RPM_BAND_FALLBACK_COLORS = ['#0066e3', '#009760', '#e69100', '#ff399f', '#6e57b3', '#259eb0'];
+
+  const themeName = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light';
+  const chartTheme = themeName === 'dark'
+    ? {
+        background: '#1a1b26',
+        text: '#c0caf5',
+        grid: '#3b4261',
+        accent: '#7aa2f7',
+        efficiency: '#4ade80',
+        permissible: '#f87171',
+        neutralLine: '#d1d5db',
+        fontFamily: 'DejaVu Sans, Liberation Sans, Arial, sans-serif'
+      }
+    : {
+        background: '#ffffff',
+        text: '#1e293b',
+        grid: '#d7dde8',
+        accent: '#2563eb',
+        efficiency: '#15803d',
+        permissible: '#dc2626',
+        neutralLine: '#dddddd',
+        fontFamily: 'DejaVu Sans, Liberation Sans, Arial, sans-serif'
+      };
+
+  const graphConfig = payload.graphConfig || {};
+  const rpmLines = Array.isArray(payload.rpmLines) ? payload.rpmLines : [];
+  const efficiencyPoints = Array.isArray(payload.efficiencyPoints) ? payload.efficiencyPoints : [];
+  const showRpmBandShading = payload.showRpmBandShading !== false;
+  const supportsOverlays = graphConfig.supports_graph_overlays !== false;
+
+  function normalizeOptionalColor(value) {
+    const normalized = String(value ?? '').trim();
+    return normalized || null;
+  }
+
+  function numericValue(value) {
+    if (value == null || value === '') return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  function formatNumericValue(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return String(value ?? '');
+    return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2).replace(/\.?0+$/, '');
+  }
+
+  function resolveBandColor(line, index) {
+    return (
+      normalizeOptionalColor(line?.band_color) ||
+      RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+    );
+  }
+
+  function axisLabel(label, unit) {
+    const cleanLabel = String(label || '').trim();
+    const cleanUnit = String(unit || '').trim();
+    if (!cleanLabel && !cleanUnit) return '';
+    if (!cleanUnit) return cleanLabel;
+    if (!cleanLabel) return cleanUnit;
+    return `${cleanLabel} (${cleanUnit})`;
+  }
+
+  function formatGraphLineValue(value, line = null) {
+    const explicitLabel = String(line?.display_label ?? '').trim();
+    if (explicitLabel) return explicitLabel;
+    const unit = String(graphConfig.graph_line_value_unit ?? '').trim();
+    const numeric = formatNumericValue(value);
+    return unit ? `${numeric} ${unit}` : numeric;
+  }
+
+  function niceAxisMax(values, fallback) {
+    const numericValues = values.filter((value) => Number.isFinite(value) && value >= 0);
+    if (!numericValues.length) return fallback;
+    const maxValue = Math.max(...numericValues);
+    return maxValue > 0 ? maxValue * 1.05 : fallback;
+  }
+
+  function toLineData(points, xKey, yKey) {
+    return points
+      .map((point) => [numericValue(point?.[xKey]), numericValue(point?.[yKey])])
+      .filter((point) => point[0] != null && point[1] != null)
+      .sort((a, b) => a[0] - b[0]);
+  }
+
+  function buildAxisTooltipFormatter() {
+    return (params) => {
+      const items = Array.isArray(params) ? params : [params];
+      if (!items.length) return '';
+
+      const header = `${items[0].axisValueLabel ?? items[0].axisValue ?? ''}`;
+      const rows = items
+        .filter((item) => item && item.seriesName)
+        .map((item) => {
+          const value = Array.isArray(item.value) ? item.value : [item.value, null];
+          const xValue = value[0] != null ? formatNumericValue(value[0]) : '—';
+          const yValue = value[1] != null ? formatNumericValue(value[1]) : '—';
+          return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${item.color || chartTheme.accent};"></span>${item.seriesName}: ${xValue}, ${yValue}</div>`;
+        });
+
+      return `<div style="font-family:${chartTheme.fontFamily};"><div style="margin-bottom:6px;font-weight:600;">${header}</div>${rows.join('')}</div>`;
+    };
+  }
+
+  const rpmSeriesData = [];
+  const airflowValues = [];
+  const pressureValues = [];
+
+  for (const [index, line] of rpmLines.entries()) {
+    const lineData = toLineData(Array.isArray(line?.points) ? line.points : [], 'airflow', 'pressure');
+    if (!lineData.length) continue;
+
+    rpmSeriesData.push({
+      name: formatGraphLineValue(line?.rpm, line),
+      data: lineData,
+      color: chartTheme.accent,
+      bandColor: resolveBandColor(line, index),
+      z: rpmLines.length - index
+    });
+
+    for (const [airflow, pressure] of lineData) {
+      airflowValues.push(airflow);
+      pressureValues.push(pressure);
+    }
+  }
+
+  const overlayDefinitions = supportsOverlays
+    ? [
+        { key: 'efficiency_centre', label: 'Efficiency centre', color: chartTheme.efficiency },
+        { key: 'efficiency_lower_end', label: 'Efficiency lower end', color: chartTheme.permissible },
+        { key: 'efficiency_higher_end', label: 'Efficiency higher end', color: chartTheme.permissible },
+        { key: 'permissible_use', label: 'Permissible use', color: chartTheme.neutralLine }
+      ]
+    : [];
+
+  const overlaySeriesData = [];
+  for (const definition of overlayDefinitions) {
+    const points = efficiencyPoints
+      .map((point) => {
+        const airflow = numericValue(point?.airflow);
+        const value = numericValue(point?.[definition.key]);
+        return airflow != null && value != null ? [airflow, value] : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a[0] - b[0]);
+
+    if (!points.length) continue;
+
+    overlaySeriesData.push({
+      name: definition.label,
+      data: points,
+      color: definition.color
+    });
+
+    for (const [airflow] of points) {
+      airflowValues.push(airflow);
+    }
+  }
+
+  if (!rpmSeriesData.length && !overlaySeriesData.length) {
+    return;
+  }
+
+  const chart = window.echarts.init(host, null, { renderer: 'canvas' });
+  const xAxisMax = niceAxisMax(airflowValues, 100);
+  const yAxisMax = niceAxisMax(pressureValues, 100);
+  const bandLabelColor = normalizeOptionalColor(graphConfig.band_graph_label_text_color) || chartTheme.text;
+  const permissibleLabelColor = normalizeOptionalColor(graphConfig.band_graph_permissible_label_color) || bandLabelColor;
+  const chartFontFamily = chartTheme.fontFamily;
+  const chartBackgroundColor = '#d9d9d9';
+  host.style.background = chartBackgroundColor;
+  const hostWidth = host.getBoundingClientRect?.().width || host.clientWidth || 0;
+  const titleWidth = Math.max(280, Math.floor(hostWidth * 0.9));
+  const titleFontSize = hostWidth > 0 && hostWidth < 640 ? 20 : hostWidth < 900 ? 26 : 32;
+  const hoverState = {
+    cursorX: null,
+    cursorY: null
+  };
+  const overlaySeriesLabels = new Set(overlayDefinitions.map((definition) => definition.label));
+  const airflowUnit = String(graphConfig.graph_x_axis_unit || 'L/s').trim();
+  const pressureUnit = String(graphConfig.graph_y_axis_unit || 'Pa').trim();
+
+  function formatReading(value, unit) {
+    const numeric = Number(value);
+    const formatted = Number.isFinite(numeric) ? String(Math.round(numeric)) : '';
+    return unit ? `${formatted} ${unit}` : formatted;
+  }
+
+  const option = {
+    backgroundColor: chartBackgroundColor,
+    textStyle: {
+      color: chartTheme.text,
+      fontFamily: chartFontFamily
+    },
+    title: {
+      text: payload.productModel || 'Performance graph',
+      left: 'center',
+      width: titleWidth,
+      textStyle: {
+        color: chartTheme.text,
+        fontFamily: chartFontFamily,
+        fontWeight: 700,
+        fontSize: titleFontSize,
+        width: titleWidth,
+        overflow: 'break',
+        lineHeight: titleFontSize + 4
+      }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'line', snap: true },
+      confine: true,
+      formatter: (params) => {
+        const items = Array.isArray(params) ? params : [params];
+        const rpmItems = items.filter((item) => item && item.seriesName && !overlaySeriesLabels.has(String(item.seriesName)));
+        if (!rpmItems.length) return '';
+        const cursorX = hoverState.cursorX ?? (Array.isArray(rpmItems[0]?.value) ? rpmItems[0].value[0] : rpmItems[0]?.axisValue);
+        const cursorY = hoverState.cursorY ?? (Array.isArray(rpmItems[0]?.value) ? rpmItems[0].value[1] : null);
+        const rows = rpmItems.map((item) => {
+          const value = Array.isArray(item.value) ? item.value : [item.value, null];
+          const xValue = value[0] != null ? value[0] : null;
+          const yValue = value[1] != null ? value[1] : null;
+          return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${item.color || chartTheme.accent};"></span>${item.seriesName}: ${formatReading(xValue, airflowUnit)} - ${formatReading(yValue, pressureUnit)}</div>`;
+        });
+        const lines = [
+          `<div style="margin-bottom:6px;font-weight:600;">Cursor : ${formatReading(cursorX, airflowUnit)} - ${formatReading(cursorY, pressureUnit)}</div>`
+        ];
+        lines.push(...rows);
+        return `<div style="font-family:${chartFontFamily};">${lines.join('')}</div>`;
+      }
+    },
+    grid: {
+      left: '7%',
+      right: '6%',
+      top: '12%',
+      bottom: '8%'
+    },
+    xAxis: {
+      type: 'value',
+      name: axisLabel(graphConfig.graph_x_axis_label || 'Airflow', graphConfig.graph_x_axis_unit || 'L/s'),
+      nameLocation: 'middle',
+      nameGap: 32,
+      min: 0,
+      max: xAxisMax,
+      axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily },
+      splitLine: { lineStyle: { color: chartTheme.grid } }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: axisLabel(graphConfig.graph_y_axis_label || 'Pressure', graphConfig.graph_y_axis_unit || 'Pa'),
+        min: 0,
+        max: yAxisMax,
+        axisLabel: { color: chartTheme.text, fontFamily: chartFontFamily },
+        splitLine: { lineStyle: { color: chartTheme.grid } }
+      },
+      {
+        type: 'value',
+        show: false,
+        min: 0,
+        max: 100
+      }
+    ],
+    series: [
+      ...rpmSeriesData.map((entry) => ({
+        name: entry.name,
+        type: 'line',
+        data: entry.data,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 4,
+        smooth: entry.data.length > 1 ? 0.18 : false,
+        lineStyle: {
+          width: 3,
+          color: entry.color
+        },
+        itemStyle: {
+          color: entry.color
+        },
+        color: entry.color,
+        areaStyle: showRpmBandShading
+          ? {
+              color: entry.bandColor,
+              opacity: 0.18
+            }
+          : undefined,
+        label: {
+          show: true,
+          formatter: () => entry.name,
+          color: bandLabelColor,
+          fontFamily: chartFontFamily,
+          distance: 6,
+          offset: [1, 25],
+          textBorderColor: bandLabelColor === chartTheme.text ? '#ffffff' : '#000000',
+          textBorderWidth: 3
+        },
+        blur: {
+          lineStyle: {
+            opacity: 0
+          },
+          label: {
+            show: true,
+            formatter: () => entry.name,
+            color: bandLabelColor,
+            fontFamily: chartFontFamily,
+            distance: 6,
+            offset: [1, 25],
+            textBorderColor: bandLabelColor === chartTheme.text ? '#ffffff' : '#000000',
+            textBorderWidth: 3
+          }
+        },
+        emphasis: {
+          focus: 'series',
+          scale: true,
+          scaleSize: 1.6,
+          showSymbol: true,
+          symbolSize: 16
+        },
+        z: entry.z
+      })),
+      ...overlaySeriesData.map((entry) => ({
+        name: entry.name,
+        type: 'line',
+        data: entry.data,
+        yAxisIndex: 1,
+        showSymbol: false,
+        smooth: entry.data.length > 1 ? 0.18 : false,
+        lineStyle: {
+          width: 3,
+          color: entry.color
+        },
+        itemStyle: {
+          color: entry.color
+        },
+        endLabel: {
+          show: true,
+          formatter: () => entry.name,
+          color: entry.name === 'Permissible Use' ? permissibleLabelColor : chartTheme.text,
+          fontFamily: chartFontFamily,
+          distance: 6,
+          offset: [1, 0],
+          textBorderColor: '#000000',
+          textBorderWidth: 3
+        },
+        emphasis: { disabled: true },
+        z: 2000
+      }))
+    ]
+  };
+
+  chart.setOption(option, { notMerge: true });
+  const zr = chart.getZr();
+  const onMouseMove = (event) => {
+    const x = Number(event?.offsetX);
+    const y = Number(event?.offsetY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const coords = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+    if (Array.isArray(coords)) {
+      hoverState.cursorX = coords[0];
+      hoverState.cursorY = coords[1];
+    } else if (coords && typeof coords === 'object') {
+      hoverState.cursorX = coords.x ?? coords[0] ?? null;
+      hoverState.cursorY = coords.y ?? coords[1] ?? null;
+    }
+  };
+  zr.on('mousemove', onMouseMove);
+  zr.on('globalout', () => {
+    hoverState.cursorX = null;
+    hoverState.cursorY = null;
+  });
+  const applyCanvasBackground = () => {
+    const canvas = host.querySelector('canvas');
+    if (canvas) {
+      canvas.style.backgroundColor = chartBackgroundColor;
+    }
+    const viewportRoot = chart.getZr?.().painter?.getViewportRoot?.();
+    if (viewportRoot) {
+      viewportRoot.style.backgroundColor = chartBackgroundColor;
+    }
+    chart.getDom().style.backgroundColor = chartBackgroundColor;
+  };
+  applyCanvasBackground();
+
+  const updateResponsiveTitle = () => {
+    const currentWidth = host.getBoundingClientRect?.().width || host.clientWidth || 0;
+    const nextTitleWidth = Math.max(280, Math.floor(currentWidth * 0.9));
+    const nextTitleFontSize = currentWidth > 0 && currentWidth < 640 ? 20 : currentWidth < 900 ? 26 : 32;
+    chart.setOption({
+      title: {
+        width: nextTitleWidth,
+        textStyle: {
+          fontSize: nextTitleFontSize,
+          lineHeight: nextTitleFontSize + 4
+        }
+      }
+    });
+    applyCanvasBackground();
+  };
+
+  const resize = () => {
+    updateResponsiveTitle();
+    chart.resize();
+  };
+  window.addEventListener('resize', resize);
+  window.addEventListener('beforeunload', () => {
+    window.removeEventListener('resize', resize);
+    zr.off('mousemove', onMouseMove);
+    chart.dispose();
+  }, { once: true });
+})();
 EOF
 
 cat > "$ROOT_DIR/Containerfile" <<'EOF'

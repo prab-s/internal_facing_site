@@ -64,6 +64,172 @@ def product_downloads(product: dict) -> list[dict]:
     return [item for item in items if item["url"]]
 
 
+def build_product_graph_payload(product: dict, product_type: dict | None) -> dict:
+    graph_config_source = product_type or {}
+
+    def resolve_field(name: str, fallback=None):
+        value = graph_config_source.get(name)
+        if value not in (None, ""):
+            return value
+        value = product.get(name)
+        if value not in (None, ""):
+            return value
+        return fallback
+
+    rpm_lines = []
+    for index, line in enumerate(sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))):
+        rpm_lines.append({
+            "rpm": line.get("rpm"),
+            "band_color": line.get("band_color"),
+            "sort_order": line.get("sort_order", index),
+            "points": [
+                {
+                    "airflow": point.get("airflow"),
+                    "pressure": point.get("pressure"),
+                    "sort_order": point.get("sort_order", point_index),
+                }
+                for point_index, point in enumerate(sorted(line.get("points", []) or [], key=lambda item: item.get("sort_order", item.get("id", 0))))
+            ],
+        })
+
+    efficiency_points = []
+    for index, point in enumerate(sorted(product.get("efficiency_points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0)))):
+        efficiency_points.append({
+            "airflow": point.get("airflow"),
+            "sort_order": point.get("sort_order", index),
+            "efficiency_centre": point.get("efficiency_centre"),
+            "efficiency_lower_end": point.get("efficiency_lower_end"),
+            "efficiency_higher_end": point.get("efficiency_higher_end"),
+            "permissible_use": point.get("permissible_use"),
+        })
+
+    product_type_name = str(product.get("product_type_label") or product_type.get("label") or product_type.get("key") or "").strip()
+    series_name = str(product.get("series_name") or "").strip()
+    product_name = str(product.get("model") or "").strip()
+    title_prefix = f"{product_type_name} | " if product_type_name else ""
+    title_middle = f"{series_name} - " if series_name else ""
+    graph_title = f"{title_prefix}{title_middle}{product_name} performance graph".strip()
+
+    return {
+        "productModel": product.get("model"),
+        "graphTitle": graph_title,
+        "hasGraphData": bool(rpm_lines or efficiency_points),
+        "graphConfig": {
+            "graph_kind": resolve_field("graph_kind"),
+            "supports_graph": bool(resolve_field("supports_graph", False)),
+            "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+            "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+            "graph_line_value_label": resolve_field("graph_line_value_label"),
+            "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+            "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+            "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+            "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+            "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            "band_graph_background_color": resolve_field("band_graph_background_color"),
+            "band_graph_label_text_color": resolve_field("band_graph_label_text_color"),
+            "band_graph_faded_opacity": resolve_field("band_graph_faded_opacity"),
+            "band_graph_permissible_label_color": resolve_field("band_graph_permissible_label_color"),
+        },
+        "showRpmBandShading": bool(product.get("show_rpm_band_shading", True)),
+        "rpmLines": rpm_lines,
+        "efficiencyPoints": efficiency_points,
+    }
+
+
+def build_series_graph_payload(series: dict, product_type: dict | None, series_products: list[dict]) -> dict:
+    graph_config_source = product_type or {}
+
+    def resolve_field(name: str, fallback=None):
+        value = graph_config_source.get(name)
+        if value not in (None, ""):
+            return value
+        return fallback
+
+    if not product_type or not product_type.get("supports_graph", False):
+        return {
+            "productModel": series.get("name"),
+            "graphTitle": f"{str(series.get('name') or '').strip()} performance graph".strip(),
+            "hasGraphData": False,
+            "graphConfig": {
+                "graph_kind": resolve_field("graph_kind"),
+                "supports_graph": False,
+                "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+                "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+                "graph_line_value_label": resolve_field("graph_line_value_label"),
+                "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+                "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+                "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+                "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+                "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            },
+            "showRpmBandShading": False,
+            "rpmLines": [],
+            "efficiencyPoints": [],
+        }
+
+    synthetic_lines: list[dict] = []
+    next_line_id = 1
+
+    ordered_products = sorted(series_products or [], key=lambda item: str(item.get("model") or "").casefold())
+    for product in ordered_products:
+        ordered_lines = sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))
+        if not ordered_lines:
+            continue
+
+        selected_lines = [ordered_lines[0]]
+        if len(ordered_lines) > 1 and ordered_lines[-1] != ordered_lines[0]:
+            selected_lines.append(ordered_lines[-1])
+
+        for index, line in enumerate(selected_lines):
+            synthetic_line_id = next_line_id
+            next_line_id += 1
+            display_label = (
+                f"{product.get('model')} low"
+                if len(selected_lines) > 1 and index == 0
+                else f"{product.get('model')} high"
+                if len(selected_lines) > 1
+                else f"{product.get('model')}"
+            )
+            synthetic_lines.append({
+                "id": synthetic_line_id,
+                "rpm": synthetic_line_id,
+                "display_label": display_label,
+                "band_color": line.get("band_color"),
+                "points": [],
+            })
+            for point in sorted(line.get("points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0))):
+                synthetic_lines[-1]["points"].append({
+                    "id": point.get("id"),
+                    "airflow": point.get("airflow"),
+                    "pressure": point.get("pressure"),
+                })
+
+    return {
+        "productModel": series.get("name"),
+        "graphTitle": f"{str(series.get('name') or '').strip()} performance graph".strip(),
+        "hasGraphData": bool(synthetic_lines),
+        "graphConfig": {
+            "graph_kind": resolve_field("graph_kind"),
+            "supports_graph": True,
+            "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+            "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+            "graph_line_value_label": resolve_field("graph_line_value_label"),
+            "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+            "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+            "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+            "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+            "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            "band_graph_background_color": resolve_field("band_graph_background_color"),
+            "band_graph_label_text_color": resolve_field("band_graph_label_text_color"),
+            "band_graph_faded_opacity": resolve_field("band_graph_faded_opacity"),
+            "band_graph_permissible_label_color": resolve_field("band_graph_permissible_label_color"),
+        },
+        "showRpmBandShading": False,
+        "rpmLines": synthetic_lines,
+        "efficiencyPoints": [],
+    }
+
+
 @router.get("/")
 async def homepage(request: Request):
     start = time.perf_counter()
@@ -243,6 +409,7 @@ async def series_page(request: Request, series_slug: str):
         "series_downloads": series_downloads(series),
         "product_type_downloads": product_type_downloads(product_type) if product_type else [],
         "request_quote_url": request_quote_url(),
+        "series_graph": build_series_graph_payload(series, product_type, cached_products),
         "series_sections": optional_sections(
             ("Overview", series.get("description1_html")),
             ("Features", series.get("description2_html")),
@@ -293,6 +460,7 @@ async def product_page(request: Request, product_slug: str):
         "series_downloads": series_downloads(series) if series else [],
         "product_type_downloads": product_type_downloads(product_type) if product_type else [],
         "request_quote_url": request_quote_url(),
+        "product_graph": build_product_graph_payload(product, product_type),
         "product_sections": optional_sections(
             ("Overview", product.get("description1_html")),
             ("Features", product.get("description2_html")),

@@ -259,6 +259,25 @@ body {
   object-fit: contain;
 }
 
+.product-graph-card .card-body {
+  padding: 1rem;
+}
+
+.product-graph-host {
+  width: 100%;
+  min-height: 18rem;
+  height: min(34rem, 56.25vw);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #d9d9d9;
+  border: 1px solid rgba(142, 154, 172, 0.5);
+}
+
+.product-graph-card noscript img {
+  display: block;
+  margin-inline: auto;
+}
+
 .content-block {
   line-height: 1.6;
 }
@@ -271,13 +290,28 @@ body {
   max-width: 60rem;
 }
 
+.spec-group-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.spec-group-table tbody tr:nth-child(even) th,
+.spec-group-table tbody tr:nth-child(even) td {
+  background-color: rgba(185, 28, 28, 0.05);
+}
+
+.spec-group-table tbody th:first-child,
+.spec-group-table tbody td:first-child {
+  padding-left: 1.15rem;
+}
+
 .fan-acoustic-table-wrap {
   overflow-x: auto;
 }
 
 .fan-acoustic-table {
   width: max-content;
-  min-width: 100%;
+  max-width: 100%;
   table-layout: fixed;
 }
 
@@ -287,10 +321,35 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
   vertical-align: top;
+  border: 1px solid #aaaaaa;
+  text-align: center;
 }
 
 .fan-acoustic-table thead th {
   background-color: rgba(185, 28, 28, 0.08);
+  vertical-align: middle;
+  text-align: center;
+}
+
+@media (max-width: 767.98px) {
+  .product-graph-host {
+    min-height: 15rem;
+    height: min(22rem, 72vw);
+  }
+
+  .fan-acoustic-table thead th {
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .fan-acoustic-table td {
+    padding: 0.35rem 0.45rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
 }
 
 .hero-shell {

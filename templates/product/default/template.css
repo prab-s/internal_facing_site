@@ -3,8 +3,8 @@
   --black: #000000;
   --muted: #4d4d4d;
   --line: #c7d3e6;
-  --mid-blue: #8bdcdc;
-  --mid-red: #d85c5c;
+  --mid-blue: rgba(208, 225, 253, 0.8);
+  --mid-red: #ff6d6d;
   --deep-red: #742323;
   --white: #ffffff;
   --topbar-title-share: 0.90fr;
@@ -107,7 +107,7 @@ body.vt-sheet-body {
 }
 
 .hero-card {
-  padding: 2.5mm;
+  padding: 0.5mm;
 }
 
 .hero-image {
@@ -121,16 +121,16 @@ body.vt-sheet-body {
 .spec-card {
   border: 0.3mm solid var(--line);
   background: rgba(255, 255, 255, 0.32);
-  --spec-card-title-size: 3.8mm;
-  --spec-card-label-size: 2.75mm;
-  --spec-card-value-size: 3.35mm;
-  --spec-card-label-weight: 700;
+  --spec-card-title-size: 3.5mm;
+  --spec-card-label-size: 2.5mm;
+  --spec-card-value-size: 2.25mm;
+  --spec-card-label-weight: 600;
   --spec-card-value-weight: 400;
 }
 
 .spec-card__title {
   margin: 0;
-  padding: 0.8mm 2.2mm;
+  padding: 0.5mm 2.2mm;
   background: var(--deep-red);
   color: var(--white);
   font-size: var(--spec-card-title-size);
@@ -140,16 +140,31 @@ body.vt-sheet-body {
 
 .spec-list {
   margin: 0;
-  padding: 1.8mm 2.2mm 2.2mm;
+  padding: 0.5mm 1.2mm 0.5mm; /* top left-right bottom*/
   font-size: 0; /* Let the label/value pairs size themselves explicitly. */
 }
 
 .spec-list__row {
   display: grid;
-  grid-template-columns: 22mm 1fr;
-  gap: 1.2mm;
+  grid-template-columns: 28mm 1.2fr;
+  gap: 1.0mm;
   margin: 0.8mm 0;
-  line-height: 1.25;
+  line-height: 1;
+}
+
+.spec-list__row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.spec-list__row:nth-child(even) {
+  background: rgba(208, 225, 253, 0.8);
+}
+
+.spec-list__row dt,
+.spec-list__row dd {
+  /* padding: 0.8mm 1.2mm; */
+  /* top-bottom left-right */
+  padding: 0mm 0mm;
 }
 
 .spec-list__row dt {
@@ -169,20 +184,10 @@ body.vt-sheet-body {
   font-size: var(--spec-card-value-size);
 }
 
-.compact-richtext {
-  padding: 1.8mm 2.2mm 2.2mm;
-  font-size: 3.2mm;
-  line-height: 1.28;
-}
-
-.compact-richtext p {
-  margin: 0 0 1.2mm;
-}
-
 .main-panel {
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 3mm;
+  gap: 2mm;
 }
 
 .copy-block {
@@ -197,15 +202,24 @@ body.vt-sheet-body {
 }
 
 .copy-section {
-  margin-bottom: 1.8mm;
+  margin-bottom: 2.5mm;
 }
 
 .copy-section--inline {
-  margin-bottom: 1.8mm;
+  margin-bottom: 0.5mm;
 }
 
 .richtext > :first-child {
   margin-top: 0;
+}
+
+.copy-section h3 + .richtext {
+  margin-top: -1.25mm;
+}
+
+.richtext {
+  font-size: 3mm;
+  line-height: 1.25;
 }
 
 .richtext > :last-child {
@@ -213,7 +227,8 @@ body.vt-sheet-body {
 }
 
 .richtext p {
-  margin: 0 0 1.2mm;
+  margin: 0 0 1mm;
+  font-size: inherit;
 }
 
 .graph-panel {
@@ -263,7 +278,7 @@ body.vt-sheet-body {
 .table-slot th,
 .table-slot td {
   border: 0.25mm solid var(--line);
-  padding: 1.1mm 1.6mm;
+  padding: 0.75mm 1.6mm;
   text-align: center;
   vertical-align: middle;
 }
@@ -288,7 +303,7 @@ body.vt-sheet-body {
 
 /* Fan acoustic panel */
 .performance-band.fan-acoustic-panel {
-  margin-top: 3mm;
+  margin-top: 2mm;
 }
 
 /* Fan acoustic panel: shared tuning for the whole table */
@@ -349,13 +364,13 @@ body.vt-sheet-body {
 .fan-acoustic-table th,
 .fan-acoustic-table td {
   border: 0.25mm solid var(--line);
-  padding: 0.9mm 1.15mm;
+  padding: 0.75mm 1.15mm;
   text-align: center;
   vertical-align: middle;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
-  line-height: 1.15;
+  line-height: 1.0;
 }
 
 /* Fan acoustic table: 1. primary heading */
@@ -399,7 +414,7 @@ body.vt-sheet-body {
   display: grid;
   grid-template-columns: 1.08fr 0.92fr;
   gap: 5mm;
-  margin-top: 4mm;
+  margin-top: 3mm;
   align-items: start;
 }
 
@@ -414,7 +429,7 @@ body.vt-sheet-body {
 .drawing-image {
   display: block;
   max-width: 100%;
-  max-height: 58mm;
+  max-height: 50mm;
   object-fit: contain;
   filter: grayscale(100%) contrast(0.9);
   opacity: 0.88;
