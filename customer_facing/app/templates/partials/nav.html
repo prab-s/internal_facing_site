@@ -28,7 +28,14 @@
         <span class="nav-actions-divider d-none d-lg-block" aria-hidden="true"></span>
 
         {% for nav_page in site_navigation or [] %}
-          <a class="btn btn-outline-light nav-cms-page-button nav-cms-{{ nav_page.slug }} btn-sm" href="/{{ nav_page.slug }}" {% if request.url.path.startswith('/' ~ nav_page.slug) %}aria-current="page"{% endif %}>{{ nav_page.label }}</a>
+          {% set nav_action = nav_page.action or {'type': 'page', 'target': nav_page.href or '/' ~ nav_page.slug} %}
+          {% if nav_action.type == 'page' %}
+            <a class="btn btn-outline-light nav-cms-page-button nav-cms-{{ nav_page.slug }} btn-sm" href="{{ nav_action.target }}" {% if request.url.path.startswith('/' ~ nav_page.slug) %}aria-current="page"{% endif %}>{{ nav_page.label }}</a>
+          {% elif nav_action.type == 'modal' and nav_action.target == 'quoteRequestModal' %}
+            <a class="btn btn-outline-light nav-cms-page-button nav-cms-{{ nav_page.slug }} btn-sm" href="#quoteRequestModal" data-quote-request-trigger data-bs-toggle="modal" data-bs-target="#quoteRequestModal">{{ nav_page.label }}</a>
+          {% elif nav_action.type == 'external_url' %}
+            <a class="btn btn-outline-light nav-cms-page-button nav-cms-{{ nav_page.slug }} btn-sm" href="{{ nav_action.target }}" target="_blank" rel="noopener noreferrer">{{ nav_page.label }}</a>
+          {% endif %}
         {% endfor %}
 
       </div>

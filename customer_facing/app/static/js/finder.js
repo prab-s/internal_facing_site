@@ -10,6 +10,36 @@ const typeSelect = form?.querySelector('[name="product_type_key"]');
 
 let metadata = { groups: [], series: [] };
 let requestId = 0;
+const initialParams = new URLSearchParams(window.location.search);
+const finderStorageKey = "customerFacingFinderState";
+let savedStateParams = initialParams;
+let restoringInitialState = true;
+
+try {
+  // A URL is the shareable source of truth. If the chooser was opened via a
+  // normal site link, restore the last local chooser state instead.
+  if (!["product_type_key", "search", "series_id", "parameter_filters"]
+    .some(key => initialParams.has(key))) {
+    savedStateParams = new URLSearchParams(window.localStorage.getItem(finderStorageKey) || "");
+  }
+} catch (_error) {}
+
+function savedFilters() {
+  const raw = savedStateParams.get("parameter_filters");
+  if (!raw) return [];
+  try {
+    const filters = JSON.parse(raw);
+    return Array.isArray(filters) ? filters : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function setResetVisibility(params) {
+  resetButton?.classList.toggle("d-none", ![
+    "product_type_key", "search", "series_id", "parameter_filters",
+  ].some(key => params.has(key) && params.get(key)));
+}
 
 function setLoading(value) {
   loading?.classList.toggle("d-none", !value);
@@ -86,6 +116,26 @@ function renderMetadata() {
     seriesHost.classList.add("d-none");
     seriesHost.innerHTML = "";
   }
+
+  if (restoringInitialState) {
+    const filtersByKey = new Map(savedFilters().map(item => [
+      `${item.group_name}::${item.parameter_name}`,
+      item,
+    ]));
+    form?.querySelectorAll("[data-filter-key]").forEach(input => {
+      const item = filtersByKey.get(input.dataset.filterKey);
+      if (!item) return;
+      if (input.dataset.kind === "select") {
+        input.value = item.value_string || "";
+      } else if (item.min_number != null) {
+        input.value = item.min_number;
+      }
+    });
+    const savedSeries = savedStateParams.get("series_id");
+    const seriesSelect = form?.querySelector('[name="series_id"]');
+    if (seriesSelect && savedSeries) seriesSelect.value = savedSeries;
+    restoringInitialState = false;
+  }
 }
 
 function selectedFilters() {
@@ -117,18 +167,42 @@ function queryParams() {
   return params;
 }
 
+function rememberQuery(params) {
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+  window.history.replaceState(null, "", nextUrl);
+  setResetVisibility(params);
+  try {
+    if (query) window.localStorage.setItem(finderStorageKey, query);
+    else window.localStorage.removeItem(finderStorageKey);
+  } catch (_error) {}
+}
+
 async function updateResults() {
   if (!form || !results) return;
   const current = ++requestId;
+  const params = queryParams();
+  rememberQuery(params);
   setLoading(true);
   try {
-    const response = await fetch(`/finder/results?${queryParams()}`);
+    const response = await fetch(`/finder/results?${params}`);
     if (!response.ok) throw new Error("Results request failed");
     if (current === requestId) results.innerHTML = await response.text();
   } catch (_error) {
     if (current === requestId) results.innerHTML = '<div class="alert alert-warning border mb-0">Unable to load matching products right now.</div>';
   } finally {
     if (current === requestId) setLoading(false);
+  }
+}
+
+function restoreFormState() {
+  setResetVisibility(savedStateParams);
+  if (typeSelect && savedStateParams.has("product_type_key")) {
+    typeSelect.value = savedStateParams.get("product_type_key") || "";
+  }
+  const searchInput = form?.querySelector('[name="search"]');
+  if (searchInput && savedStateParams.has("search")) {
+    searchInput.value = savedStateParams.get("search") || "";
   }
 }
 
@@ -166,4 +240,5 @@ resetButton?.addEventListener("click", async () => {
   await updateResults();
 });
 
+restoreFormState();
 loadMetadata().then(updateResults);

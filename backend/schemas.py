@@ -340,6 +340,7 @@ class SitePageCreateRequest(BaseModel):
 
 class CmsNavigationUpdateRequest(BaseModel):
     order: list[str] = Field(default_factory=list)
+    items: Optional[list[dict]] = None
 
 
 class SiteAssetResponse(BaseModel):
@@ -953,6 +954,7 @@ class SMTPSettings(BaseModel):
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_use_tls: bool = True
+    smtp_security: Literal["starttls", "ssl", "none"] = "starttls"
     smtp_from_address: str = ""
     password_configured: bool = False
     status: Literal["configured", "not_configured"] = "not_configured"
@@ -965,6 +967,7 @@ class SMTPSettingsUpdate(BaseModel):
     smtp_username: str = ""
     smtp_password: Optional[str] = None
     smtp_use_tls: bool = True
+    smtp_security: Literal["starttls", "ssl", "none"] = "starttls"
     smtp_from_address: str = ""
 
 
@@ -975,6 +978,20 @@ class QuoteRequestEmailTestRequest(BaseModel):
 class QuoteRequestEmailTestResponse(BaseModel):
     message: str
     recipient_email: str
+
+
+class SMTPTestRequest(BaseModel):
+    recipient_email: Optional[str] = None
+
+
+class SMTPTestResponse(BaseModel):
+    success: bool = True
+    operation: Literal["connection", "delivery"]
+    stage: str
+    code: str
+    message: str
+    detail: Optional[str] = None
+    correlation_id: str
 
 
 class LoginRequest(BaseModel):

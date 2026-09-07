@@ -1,4 +1,10 @@
-import { b as attr, f as attr_style, e as escape_html, i as bind_props, h as head, d as ensure_array_like, c as attr_class } from "../../../chunks/index2.js";
+import { b as attr, f as attr_style, e as escape_html, i as bind_props, c as attr_class, d as ensure_array_like, h as head } from "../../../chunks/index2.js";
+import "@sveltejs/kit/internal";
+import "../../../chunks/exports.js";
+import "../../../chunks/utils.js";
+import "@sveltejs/kit/internal/server";
+import "../../../chunks/root.js";
+import "../../../chunks/state.svelte.js";
 import { R as RichTextEditor } from "../../../chunks/RichTextEditor.js";
 import { f as fallback } from "../../../chunks/equality.js";
 function BackgroundControls($$renderer, $$props) {
@@ -38,6 +44,90 @@ function BackgroundControls($$renderer, $$props) {
     bind_props($$props, { value, label, compact });
   });
 }
+function ActionEditor($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let action;
+    let value = fallback($$props["value"], null);
+    let label = fallback($$props["label"], "Action");
+    let compact = fallback($$props["compact"], false);
+    const actionTypes = [
+      { value: "none", label: "No action" },
+      { value: "page", label: "Open CMS page" },
+      { value: "modal", label: "Open modal" },
+      { value: "external_url", label: "Open external URL" },
+      { value: "email", label: "Email address" },
+      { value: "event", label: "Dispatch event" }
+    ];
+    action = { type: "none", ...value || {} };
+    $$renderer2.push(`<div${attr_class("action-editor svelte-40nju0", void 0, { "action-editor-compact": compact })}><label class="form-label svelte-40nju0"${attr("for", `${label.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-type`)}>${escape_html(label)}</label> `);
+    $$renderer2.select(
+      {
+        id: `${label.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-type`,
+        class: "form-select form-select-sm",
+        value: action.type
+      },
+      ($$renderer3) => {
+        $$renderer3.push(`<!--[-->`);
+        const each_array = ensure_array_like(actionTypes);
+        for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+          let type = each_array[$$index];
+          $$renderer3.option({ value: type.value }, ($$renderer4) => {
+            $$renderer4.push(`${escape_html(type.label)}`);
+          });
+        }
+        $$renderer3.push(`<!--]-->`);
+      }
+    );
+    $$renderer2.push(` `);
+    if (action.type === "page") {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<input class="form-control form-control-sm mt-2"${attr("value", action.target || "")} placeholder="/page-slug"${attr("aria-label", `${label} page path`)}/>`);
+    } else if (action.type === "modal") {
+      $$renderer2.push("<!--[1-->");
+      $$renderer2.select(
+        {
+          class: "form-select form-select-sm mt-2",
+          value: action.target || "quoteRequestModal",
+          "aria-label": `${label} modal`
+        },
+        ($$renderer3) => {
+          $$renderer3.option({ value: "quoteRequestModal" }, ($$renderer4) => {
+            $$renderer4.push(`Enquiries modal`);
+          });
+        }
+      );
+      $$renderer2.push(` `);
+      $$renderer2.select(
+        {
+          class: "form-select form-select-sm mt-2",
+          value: action.defaultType || "",
+          "aria-label": `${label} enquiry type`
+        },
+        ($$renderer3) => {
+          $$renderer3.option({ value: "" }, ($$renderer4) => {
+            $$renderer4.push(`Default enquiry type`);
+          });
+          $$renderer3.option({ value: "standard" }, ($$renderer4) => {
+            $$renderer4.push(`Quote this item`);
+          });
+          $$renderer3.option({ value: "tailored" }, ($$renderer4) => {
+            $$renderer4.push(`Tailored product`);
+          });
+          $$renderer3.option({ value: "unsure" }, ($$renderer4) => {
+            $$renderer4.push(`Help me choose`);
+          });
+        }
+      );
+    } else if (action.type === "external_url" || action.type === "email" || action.type === "event") {
+      $$renderer2.push("<!--[2-->");
+      $$renderer2.push(`<input class="form-control form-control-sm mt-2"${attr("value", action.target || "")}${attr("placeholder", action.type === "event" ? "event-name" : action.type === "email" ? "mailto:team@example.com" : "https://example.com")}${attr("aria-label", `${label} target`)}/>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div>`);
+    bind_props($$props, { value, label, compact });
+  });
+}
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let protectedPage;
@@ -64,6 +154,11 @@ function _page($$renderer, $$props) {
       columns: 1,
       content: `<h2>${title}</h2><p>${text}</p>`
     });
+    const enquiryAction = (defaultType = "") => ({
+      type: "modal",
+      target: "quoteRequestModal",
+      ...defaultType ? { defaultType } : {}
+    });
     const cards = (title, items, width = "full", columns = 3) => ({
       id: makeId(),
       type: "cards",
@@ -71,12 +166,11 @@ function _page($$renderer, $$props) {
       width,
       columns,
       content: "",
-      cards: items.map(([cardTitle, text, image = "", ctaLabel = ""]) => ({
+      cards: items.map(([cardTitle, text, image = ""]) => ({
         id: makeId(),
         title: cardTitle,
         content: `<p>${text}</p>`,
-        image,
-        ctaLabel
+        image
       }))
     });
     const cta = (title, text) => ({
@@ -85,7 +179,9 @@ function _page($$renderer, $$props) {
       title,
       width: "full",
       columns: 1,
-      content: `<h2>${title}</h2><p>${text}</p>`
+      content: `<h2>${title}</h2><p>${text}</p>`,
+      actionLabel: "Make an enquiry",
+      action: enquiryAction()
     });
     function pageSections(page) {
       if (page === "About Us") return [
@@ -188,9 +284,7 @@ function _page($$renderer, $$props) {
           [
             [
               "Workshop capabilities",
-              "Laser cutting<br>Brake pressing<br>Rolling<br>Flanging",
-              "",
-              "Make an enquiry"
+              "Laser cutting<br>Brake pressing<br>Rolling<br>Flanging"
             ]
           ],
           "half",
@@ -334,7 +428,7 @@ function _page($$renderer, $$props) {
         $$renderer4.push(`<title>Experimental page builder — Internal Facing</title>`);
       });
     });
-    $$renderer2.push(`<div class="experiment-page svelte-18913cj"><div class="experiment-heading svelte-18913cj"><div><p class="eyebrow mb-2 svelte-18913cj">Content management</p><h1 class="svelte-18913cj">CMS page builder</h1><p class="text-body-secondary mb-0">Edit page sections, save drafts, publish content, and manage CMS navigation.</p></div><div class="d-flex gap-2 align-items-center"><button class="btn btn-outline-danger" type="button"${attr("disabled", !undoStack.length, true)}>Undo</button><button class="btn btn-outline-primary" type="button"${attr("disabled", savingPage, true)}>${escape_html("Save as draft")}</button><button class="btn btn-primary" type="button"${attr("disabled", savingPage, true)}>Publish</button></div></div> `);
+    $$renderer2.push(`<div class="experiment-page svelte-18913cj"><div class="experiment-heading svelte-18913cj"><div><p class="eyebrow mb-2 svelte-18913cj">Content management</p><h1 class="svelte-18913cj">CMS page builder</h1><p class="text-body-secondary mb-0">Edit page sections, save drafts, publish content, and manage CMS navigation.</p></div><div class="d-flex gap-2 align-items-center"><button class="btn btn-outline-secondary" type="button">${escape_html("Preview page")}</button><button class="btn btn-outline-danger" type="button"${attr("disabled", !undoStack.length, true)}>Undo</button><button class="btn btn-outline-primary" type="button"${attr("disabled", savingPage, true)}>${escape_html("Save as draft")}</button><button class="btn btn-primary" type="button"${attr("disabled", savingPage, true)}>Publish</button></div></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }
@@ -370,9 +464,17 @@ function _page($$renderer, $$props) {
       const each_array_2 = ensure_array_like(navigation);
       for (let index = 0, $$length = each_array_2.length; index < $$length; index++) {
         let item = each_array_2[index];
-        $$renderer2.push(`<span class="nav-order-item svelte-18913cj"><span>${escape_html(index + 1)}. ${escape_html(item.label)}</span><span><button class="btn btn-sm btn-link svelte-18913cj" type="button"${attr("disabled", index === 0, true)}${attr("aria-label", `Move ${item.label} up`)}>↑</button><button class="btn btn-sm btn-link svelte-18913cj" type="button"${attr("disabled", index === navigation.length - 1, true)}${attr("aria-label", `Move ${item.label} down`)}>↓</button></span></span>`);
+        $$renderer2.push(`<span class="nav-order-item svelte-18913cj"><span>${escape_html(index + 1)}. ${escape_html(item.label)}`);
+        if (item.slug) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<small class="text-body-secondary d-block">/${escape_html(item.slug)}</small>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+          $$renderer2.push(`<small class="text-primary d-block">custom action</small>`);
+        }
+        $$renderer2.push(`<!--]--></span><span><button class="btn btn-sm btn-link svelte-18913cj" type="button"${attr("disabled", index === 0, true)}${attr("aria-label", `Move ${item.label} up`)}>↑</button><button class="btn btn-sm btn-link svelte-18913cj" type="button"${attr("disabled", index === navigation.length - 1, true)}${attr("aria-label", `Move ${item.label} down`)}>↓</button></span></span>`);
       }
-      $$renderer2.push(`<!--]--></div><button class="btn btn-sm btn-outline-primary mt-2" type="button">Save navigation</button>`);
+      $$renderer2.push(`<!--]--></div><button class="btn btn-sm btn-outline-primary mt-2" type="button">+ Add Enquiries item</button><button class="btn btn-sm btn-outline-primary mt-2 ms-2" type="button">Save navigation</button>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }
@@ -382,146 +484,165 @@ function _page($$renderer, $$props) {
       let template = each_array_3[$$index_3];
       $$renderer2.push(`<button class="template-button svelte-18913cj" type="button"${attr("disabled", protectedPage, true)}><span class="template-icon svelte-18913cj">${escape_html(template.value === "cards" ? "▦" : template.value === "carousel" ? "◫" : template.value === "cta" ? "↗" : template.value === "image-text" ? "▤" : "≡")}</span><span><strong class="svelte-18913cj">${escape_html(template.label)}</strong><small class="svelte-18913cj">${escape_html(template.value === "cards" ? "Configurable grid" : template.value === "carousel" ? "Image slides" : template.value === "cta" ? "Opens enquiries" : "Rich text content")}</small></span><span>+</span></button>`);
     }
-    $$renderer2.push(`<!--]--><hr class="svelte-18913cj"/><p class="small text-body-secondary mb-0 svelte-18913cj"><strong>${escape_html(sections.length)}</strong> sections · <strong>${escape_html(undoStack.length)}</strong> undo step${escape_html(undoStack.length === 1 ? "" : "s")}</p></div></aside> <main><div class="page-canvas-header svelte-18913cj"><div><span class="small text-body-secondary">Draft canvas</span><h2 class="svelte-18913cj">${escape_html(activePage)}</h2></div><span class="canvas-status svelte-18913cj">Session draft</span></div><div class="page-canvas svelte-18913cj">`);
-    if (sections.length === 0) {
+    $$renderer2.push(`<!--]--><hr class="svelte-18913cj"/><p class="small text-body-secondary mb-0 svelte-18913cj"><strong>${escape_html(sections.length)}</strong> sections · <strong>${escape_html(undoStack.length)}</strong> undo step${escape_html(undoStack.length === 1 ? "" : "s")}</p></div></aside> <main><div class="page-canvas-header svelte-18913cj"><div><span class="small text-body-secondary">${escape_html("Draft canvas")}</span><h2 class="svelte-18913cj">${escape_html(activePage)}</h2></div><span class="canvas-status svelte-18913cj">${escape_html("Session draft")}</span></div>`);
+    if (sections.find((item) => item.id === selectedSectionId)) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="empty-canvas svelte-18913cj"><h3 class="svelte-18913cj">No sections yet</h3><p class="svelte-18913cj">Choose a template to start building this page.</p></div>`);
+      const selectedSection = sections.find((item) => item.id === selectedSectionId);
+      $$renderer2.push(`<div class="card mb-3 p-3"><div class="row g-2 align-items-end"><div class="col-md-5"><label class="form-label" for="selected-section-action-label">Selected section action label</label><input id="selected-section-action-label" class="form-control form-control-sm"${attr("value", selectedSection.actionLabel || "")}/></div><div class="col-md-7">`);
+      ActionEditor($$renderer2, {
+        label: "Selected section action",
+        compact: true,
+        value: selectedSection.action || { type: "none" }
+      });
+      $$renderer2.push(`<!----></div></div></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <!--[-->`);
-    const each_array_4 = ensure_array_like(sections);
-    for (let sectionIndex = 0, $$length = each_array_4.length; sectionIndex < $$length; sectionIndex++) {
-      let section = each_array_4[sectionIndex];
-      $$renderer2.push(`<div${attr_class(`builder-section section-${section.width} ${selectedSectionId === section.id ? "selected" : ""} ${sectionDropTarget?.index === sectionIndex && sectionDropTarget.position === "before" ? "drop-before" : ""} ${sectionDropTarget?.index === sectionIndex && sectionDropTarget.position === "after" ? "drop-after" : ""}`, "svelte-18913cj")}${attr_style(paintStyle(section))} role="button" tabindex="0"${attr("aria-label", `Select ${section.title} section`)} draggable="true"><div class="section-controls svelte-18913cj"><div class="svelte-18913cj"><span class="drag-handle svelte-18913cj" title="Drag to reorder">⠿</span><span class="section-type svelte-18913cj">${escape_html(sectionLabel(section.type))}</span></div><div class="d-flex gap-2 align-items-center svelte-18913cj"><label class="small text-body-secondary"${attr("for", `width-${section.id}`)}>Width</label>`);
-      $$renderer2.select(
-        {
-          id: `width-${section.id}`,
-          class: "form-select form-select-sm width-select",
-          value: section.width
-        },
-        ($$renderer3) => {
-          $$renderer3.option({ value: "auto" }, ($$renderer4) => {
-            $$renderer4.push(`Auto`);
-          });
-          $$renderer3.option({ value: "full" }, ($$renderer4) => {
-            $$renderer4.push(`Full`);
-          });
-          $$renderer3.option({ value: "half" }, ($$renderer4) => {
-            $$renderer4.push(`Half`);
-          });
-          $$renderer3.option({ value: "third" }, ($$renderer4) => {
-            $$renderer4.push(`Third`);
-          });
-        },
-        "svelte-18913cj"
-      );
-      $$renderer2.push(`<button class="btn btn-sm btn-outline-danger svelte-18913cj" type="button"${attr("disabled", protectedPage, true)}>Remove</button></div></div> <div class="section-fields svelte-18913cj"><div class="row g-2 mb-3"><div class="col-md-8"><label class="form-label svelte-18913cj"${attr("for", `title-${section.id}`)}>Section title</label><input${attr("id", `title-${section.id}`)} class="form-control"${attr("value", section.title)}/></div>`);
-      if (section.type === "cards") {
+    $$renderer2.push(`<!--]-->`);
+    {
+      $$renderer2.push("<!--[-1-->");
+      $$renderer2.push(`<div class="page-canvas svelte-18913cj">`);
+      if (sections.length === 0) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="col-md-4"><label class="form-label svelte-18913cj"${attr("for", `columns-${section.id}`)}>Card grid</label>`);
-        $$renderer2.select(
-          {
-            id: `columns-${section.id}`,
-            class: "form-select",
-            value: section.columns
-          },
-          ($$renderer3) => {
-            $$renderer3.option({ value: "1" }, ($$renderer4) => {
-              $$renderer4.push(`1 column`);
-            });
-            $$renderer3.option({ value: "2" }, ($$renderer4) => {
-              $$renderer4.push(`2 columns`);
-            });
-            $$renderer3.option({ value: "3" }, ($$renderer4) => {
-              $$renderer4.push(`3 columns`);
-            });
-            $$renderer3.option({ value: "4" }, ($$renderer4) => {
-              $$renderer4.push(`4 columns`);
-            });
-          }
-        );
-        $$renderer2.push(`</div>`);
+        $$renderer2.push(`<div class="empty-canvas svelte-18913cj"><h3 class="svelte-18913cj">No sections yet</h3><p class="svelte-18913cj">Choose a template to start building this page.</p></div>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--></div> `);
-      if (section.type === "cards" || section.type === "carousel") {
-        $$renderer2.push("<!--[0-->");
-        BackgroundControls($$renderer2, { value: section, label: "Section background", compact: true });
-        $$renderer2.push(`<!---->`);
-        if (section.type === "carousel") {
+      $$renderer2.push(`<!--]--> <!--[-->`);
+      const each_array_6 = ensure_array_like(sections);
+      for (let sectionIndex = 0, $$length = each_array_6.length; sectionIndex < $$length; sectionIndex++) {
+        let section = each_array_6[sectionIndex];
+        $$renderer2.push(`<div${attr_class(`builder-section section-${section.width} ${selectedSectionId === section.id ? "selected" : ""} ${sectionDropTarget?.index === sectionIndex && sectionDropTarget.position === "before" ? "drop-before" : ""} ${sectionDropTarget?.index === sectionIndex && sectionDropTarget.position === "after" ? "drop-after" : ""}`, "svelte-18913cj")}${attr_style(paintStyle(section))} role="button" tabindex="0"${attr("aria-label", `Select ${section.title} section`)} draggable="true"><div class="section-controls svelte-18913cj"><div class="svelte-18913cj"><span class="drag-handle svelte-18913cj" title="Drag to reorder">⠿</span><span class="section-type svelte-18913cj">${escape_html(sectionLabel(section.type))}</span></div><div class="d-flex gap-2 align-items-center svelte-18913cj"><label class="small text-body-secondary"${attr("for", `width-${section.id}`)}>Width</label>`);
+        $$renderer2.select(
+          {
+            id: `width-${section.id}`,
+            class: "form-select form-select-sm width-select",
+            value: section.width
+          },
+          ($$renderer3) => {
+            $$renderer3.option({ value: "auto" }, ($$renderer4) => {
+              $$renderer4.push(`Auto`);
+            });
+            $$renderer3.option({ value: "full" }, ($$renderer4) => {
+              $$renderer4.push(`Full`);
+            });
+            $$renderer3.option({ value: "half" }, ($$renderer4) => {
+              $$renderer4.push(`Half`);
+            });
+            $$renderer3.option({ value: "third" }, ($$renderer4) => {
+              $$renderer4.push(`Third`);
+            });
+          },
+          "svelte-18913cj"
+        );
+        $$renderer2.push(`<button class="btn btn-sm btn-outline-danger svelte-18913cj" type="button"${attr("disabled", protectedPage, true)}>Remove</button></div></div> <div class="section-fields svelte-18913cj"><div class="row g-2 mb-3"><div class="col-md-8"><label class="form-label svelte-18913cj"${attr("for", `title-${section.id}`)}>Section title</label><input${attr("id", `title-${section.id}`)} class="form-control"${attr("value", section.title)}/></div>`);
+        if (section.type === "cards") {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<label class="form-check small mb-3"><input class="form-check-input" type="checkbox"${attr("checked", section.autoplay !== false, true)}/> Auto-advance slides</label>`);
+          $$renderer2.push(`<div class="col-md-4"><label class="form-label svelte-18913cj"${attr("for", `columns-${section.id}`)}>Card grid</label>`);
+          $$renderer2.select(
+            {
+              id: `columns-${section.id}`,
+              class: "form-select",
+              value: section.columns
+            },
+            ($$renderer3) => {
+              $$renderer3.option({ value: "1" }, ($$renderer4) => {
+                $$renderer4.push(`1 column`);
+              });
+              $$renderer3.option({ value: "2" }, ($$renderer4) => {
+                $$renderer4.push(`2 columns`);
+              });
+              $$renderer3.option({ value: "3" }, ($$renderer4) => {
+                $$renderer4.push(`3 columns`);
+              });
+              $$renderer3.option({ value: "4" }, ($$renderer4) => {
+                $$renderer4.push(`4 columns`);
+              });
+            }
+          );
+          $$renderer2.push(`</div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--><div${attr_class("card-list svelte-18913cj", void 0, { "carousel-editor": section.type === "carousel" })}${attr_style(`--card-columns:${section.type === "carousel" ? 1 : section.columns || 3}`)}><!--[-->`);
-        const each_array_5 = ensure_array_like(section.cards || []);
-        for (let cardIndex = 0, $$length2 = each_array_5.length; cardIndex < $$length2; cardIndex++) {
-          let card = each_array_5[cardIndex];
-          $$renderer2.push(`<div class="sub-card svelte-18913cj"${attr_style(paintStyle(card))} role="listitem" draggable="true"><div class="sub-card-toolbar svelte-18913cj"><span class="drag-handle svelte-18913cj">⠿</span><strong class="svelte-18913cj">${escape_html(section.type === "carousel" ? `Slide ${cardIndex + 1}` : `Card ${cardIndex + 1}`)}</strong><button class="btn btn-sm btn-link text-danger svelte-18913cj" type="button"${attr("disabled", protectedPage || (section.cards || []).length <= 1, true)}>Remove</button></div><input class="form-control mb-2" aria-label="Card title"${attr("value", card.title)}/>`);
-          if (card.image) {
+        $$renderer2.push(`<!--]--></div> `);
+        if (section.type === "cards" || section.type === "carousel") {
+          $$renderer2.push("<!--[0-->");
+          BackgroundControls($$renderer2, { value: section, label: "Section background", compact: true });
+          $$renderer2.push(`<!---->`);
+          if (section.type === "carousel") {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<img class="card-image-preview svelte-18913cj"${attr("src", card.image)} alt=""/>`);
+            $$renderer2.push(`<label class="form-check small mb-3"><input class="form-check-input" type="checkbox"${attr("checked", section.autoplay !== false, true)}/> Auto-advance slides</label>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }
-          $$renderer2.push(`<!--]--><input class="form-control form-control-sm mb-2" aria-label="Card image URL" placeholder="Optional image URL"${attr("value", card.image || "")}/>`);
+          $$renderer2.push(`<!--]--><div${attr_class("card-list svelte-18913cj", void 0, { "carousel-editor": section.type === "carousel" })}${attr_style(`--card-columns:${section.type === "carousel" ? 1 : section.columns || 3}`)}><!--[-->`);
+          const each_array_7 = ensure_array_like(section.cards || []);
+          for (let cardIndex = 0, $$length2 = each_array_7.length; cardIndex < $$length2; cardIndex++) {
+            let card = each_array_7[cardIndex];
+            $$renderer2.push(`<div class="sub-card svelte-18913cj"${attr_style(paintStyle(card))} role="listitem" draggable="true"><div class="sub-card-toolbar svelte-18913cj"><span class="drag-handle svelte-18913cj">⠿</span><strong class="svelte-18913cj">${escape_html(section.type === "carousel" ? `Slide ${cardIndex + 1}` : `Card ${cardIndex + 1}`)}</strong><button class="btn btn-sm btn-link text-danger svelte-18913cj" type="button"${attr("disabled", protectedPage || (section.cards || []).length <= 1, true)}>Remove</button></div><input class="form-control mb-2" aria-label="Card title"${attr("value", card.title)}/>`);
+            if (card.image) {
+              $$renderer2.push("<!--[0-->");
+              $$renderer2.push(`<img class="card-image-preview svelte-18913cj"${attr("src", card.image)} alt=""/>`);
+            } else {
+              $$renderer2.push("<!--[-1-->");
+            }
+            $$renderer2.push(`<!--]--><input class="form-control form-control-sm mb-2" aria-label="Card image URL" placeholder="Optional image URL"${attr("value", card.image || "")}/>`);
+            RichTextEditor($$renderer2, {
+              id: `card-${card.id}`,
+              rows: 3,
+              value: card.content,
+              $$slots: {
+                "toolbar-end": ($$renderer3) => {
+                  BackgroundControls($$renderer3, {
+                    slot: "toolbar-end",
+                    value: card,
+                    label: section.type === "carousel" ? `Slide ${cardIndex + 1} background` : `Card ${cardIndex + 1} background`,
+                    compact: true
+                  });
+                }
+              }
+            });
+            $$renderer2.push(`<!----><input class="form-control form-control-sm mt-2 svelte-18913cj" aria-label="Card enquiry button label" placeholder="Optional enquiry button label"${attr("value", card.ctaLabel || "")}/>`);
+            if (card.ctaLabel) {
+              $$renderer2.push("<!--[0-->");
+              $$renderer2.push(`<button class="btn btn-sm btn-primary mt-2 svelte-18913cj" type="button">${escape_html(card.ctaLabel)}</button>`);
+            } else {
+              $$renderer2.push("<!--[-1-->");
+            }
+            $$renderer2.push(`<!--]--></div>`);
+          }
+          $$renderer2.push(`<!--]--></div><button class="btn btn-sm btn-outline-primary mt-3 svelte-18913cj" type="button"${attr("disabled", protectedPage, true)}>+ Add ${escape_html(section.type === "carousel" ? "slide" : "card")}</button>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
           RichTextEditor($$renderer2, {
-            id: `card-${card.id}`,
-            rows: 3,
-            value: card.content,
+            id: `section-${section.id}`,
+            rows: 5,
+            value: section.content,
             $$slots: {
               "toolbar-end": ($$renderer3) => {
                 BackgroundControls($$renderer3, {
                   slot: "toolbar-end",
-                  value: card,
-                  label: section.type === "carousel" ? `Slide ${cardIndex + 1} background` : `Card ${cardIndex + 1} background`,
+                  value: section,
+                  label: "Section background",
                   compact: true
                 });
               }
             }
           });
-          $$renderer2.push(`<!----><input class="form-control form-control-sm mt-2" aria-label="Card enquiry button label" placeholder="Optional enquiry button label"${attr("value", card.ctaLabel || "")}/>`);
-          if (card.ctaLabel) {
+          $$renderer2.push(`<!---->`);
+          if (section.type === "image-text") {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<button class="btn btn-sm btn-primary mt-2 svelte-18913cj" type="button">${escape_html(card.ctaLabel)}</button>`);
+            $$renderer2.push(`<div class="mt-3"><label class="form-label svelte-18913cj"${attr("for", `image-${section.id}`)}>Section image URL</label><input${attr("id", `image-${section.id}`)} class="form-control"${attr("value", section.image || "")}/></div>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }
-          $$renderer2.push(`<!--]--></div>`);
+          $$renderer2.push(`<!--]--><div class="form-text svelte-18913cj">Rich text supports headings, lists, links, images, font styling, colour, and line spacing.</div>`);
         }
-        $$renderer2.push(`<!--]--></div><button class="btn btn-sm btn-outline-primary mt-3 svelte-18913cj" type="button"${attr("disabled", protectedPage, true)}>+ Add ${escape_html(section.type === "carousel" ? "slide" : "card")}</button>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-        RichTextEditor($$renderer2, {
-          id: `section-${section.id}`,
-          rows: 5,
-          value: section.content,
-          $$slots: {
-            "toolbar-end": ($$renderer3) => {
-              BackgroundControls($$renderer3, {
-                slot: "toolbar-end",
-                value: section,
-                label: "Section background",
-                compact: true
-              });
-            }
-          }
-        });
-        $$renderer2.push(`<!---->`);
-        if (section.type === "image-text") {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="mt-3"><label class="form-label svelte-18913cj"${attr("for", `image-${section.id}`)}>Section image URL</label><input${attr("id", `image-${section.id}`)} class="form-control"${attr("value", section.image || "")}/></div>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-        }
-        $$renderer2.push(`<!--]--><div class="form-text svelte-18913cj">Rich text supports headings, lists, links, images, font styling, colour, and line spacing.</div>`);
+        $$renderer2.push(`<!--]--></div></div>`);
       }
-      $$renderer2.push(`<!--]--></div></div>`);
+      $$renderer2.push(`<!--]--></div>`);
     }
-    $$renderer2.push(`<!--]--></div></main></div> `);
+    $$renderer2.push(`<!--]--></main></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }
@@ -529,9 +650,9 @@ function _page($$renderer, $$props) {
     if (eventLog.length) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<!--[-->`);
-      const each_array_7 = ensure_array_like(eventLog);
-      for (let $$index_7 = 0, $$length = each_array_7.length; $$index_7 < $$length; $$index_7++) {
-        let event = each_array_7[$$index_7];
+      const each_array_9 = ensure_array_like(eventLog);
+      for (let $$index_9 = 0, $$length = each_array_9.length; $$index_9 < $$length; $$index_9++) {
+        let event = each_array_9[$$index_9];
         $$renderer2.push(`<div class="svelte-18913cj"><time class="svelte-18913cj">${escape_html(event.time)}</time><span>${escape_html(event.message)}</span></div>`);
       }
       $$renderer2.push(`<!--]-->`);

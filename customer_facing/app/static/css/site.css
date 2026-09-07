@@ -326,6 +326,105 @@ body {
   box-shadow: 0 10px 24px rgba(2, 6, 23, 0.08);
 }
 
+.product-image-tile--button {
+  display: block;
+  padding: 0;
+  cursor: zoom-in;
+  text-align: inherit;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.product-image-tile--button:hover,
+.product-image-tile--button:focus-visible {
+  border-color: rgba(185, 28, 28, 0.62);
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.14);
+  transform: translateY(-1px);
+}
+
+.product-image-tile--button:focus-visible {
+  outline: 3px solid rgba(185, 28, 28, 0.3);
+  outline-offset: 3px;
+}
+
+.product-image-modal .modal-content {
+  background: var(--catalogue-surface-strong);
+}
+
+.product-image-modal .modal-body {
+  position: relative;
+  min-height: min(70vh, 48rem);
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.product-image-modal__img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.product-image-modal__nav {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 2.75rem;
+  height: 5rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 0.5rem;
+  color: var(--catalogue-ink);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.16);
+  font-size: 2.5rem;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.product-image-modal__nav:hover,
+.product-image-modal__nav:focus-visible {
+  color: var(--catalogue-accent);
+  background: #fff;
+}
+
+.product-image-modal__nav:focus-visible {
+  outline: 3px solid rgba(185, 28, 28, 0.3);
+  outline-offset: 3px;
+}
+
+.product-image-modal__nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.product-image-modal__nav--previous {
+  left: 1rem;
+}
+
+.product-image-modal__nav--next {
+  right: 1rem;
+}
+
+@media (max-width: 575.98px) {
+  .product-image-modal__nav {
+    width: 2.25rem;
+    height: 4rem;
+  }
+
+  .product-image-modal__nav--previous {
+    left: 0.5rem;
+  }
+
+  .product-image-modal__nav--next {
+    right: 0.5rem;
+  }
+}
+
 .product-image-tile__img {
   display: block;
   width: 100%;

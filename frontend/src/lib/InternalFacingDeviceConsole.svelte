@@ -46,7 +46,7 @@
     return {
       ...entry,
       timestamp: entry.occurred_at || entry.timestamp,
-      username: entry.username || payload.username || 'Unknown / unauthenticated',
+      username: entry.username || payload.username || '',
       route_group: entry.route_group || payload.route_group || payload.page_route_group || 'other',
       path: payload.path || telemetry.page_url || '',
       method: payload.method || '—',
@@ -62,30 +62,30 @@
     };
   }
 
-  function isWithinWindow(entry) {
+  function isWithinWindow(entry, currentTimeWindow = timeWindow) {
     const timestamp = parseTimestamp(entry.timestamp);
     if (!timestamp) return false;
     const ageMs = Date.now() - timestamp.getTime();
-    if (timeWindow === '24h') return ageMs <= 24 * 60 * 60 * 1000;
-    if (timeWindow === '7d') return ageMs <= 7 * 24 * 60 * 60 * 1000;
+    if (currentTimeWindow === '24h') return ageMs <= 24 * 60 * 60 * 1000;
+    if (currentTimeWindow === '7d') return ageMs <= 7 * 24 * 60 * 60 * 1000;
     return true;
   }
 
-  function matchesFilters(entry) {
-    if (!isWithinWindow(entry)) return false;
-    if (deviceFilter !== 'all' && entry.device_type !== deviceFilter) return false;
-    if (routeFilter !== 'all' && entry.route_group !== routeFilter) return false;
-    const needle = searchQuery.trim().toLowerCase();
+  function matchesFilters(entry, currentTimeWindow = timeWindow, currentDeviceFilter = deviceFilter, currentRouteFilter = routeFilter, currentSearchQuery = searchQuery) {
+    if (!isWithinWindow(entry, currentTimeWindow)) return false;
+    if (currentDeviceFilter !== 'all' && entry.device_type !== currentDeviceFilter) return false;
+    if (currentRouteFilter !== 'all' && entry.route_group !== currentRouteFilter) return false;
+    const needle = currentSearchQuery.trim().toLowerCase();
     if (!needle) return true;
     return [entry.username, entry.path, entry.method, entry.user_agent, entry.platform, entry.route_group, entry.event]
       .filter(Boolean).join(' ').toLowerCase().includes(needle);
   }
 
-  function buildGroups(entries) {
+  function buildGroups(entries, currentTimeWindow, currentDeviceFilter, currentRouteFilter, currentSearchQuery) {
     const users = new Map();
     for (const rawEntry of entries) {
       const entry = summarizeEntry(rawEntry);
-      if (!matchesFilters(entry)) continue;
+      if (!entry.username || !matchesFilters(entry, currentTimeWindow, currentDeviceFilter, currentRouteFilter, currentSearchQuery)) continue;
       const userKey = entry.username;
       const deviceKey = `${userKey}:${rawEntry.device_fingerprint || entry.user_agent}`;
       let user = users.get(userKey);
@@ -112,7 +112,7 @@
     })).sort((a, b) => b.latestAt - a.latestAt);
   }
 
-  $: groups = buildGroups(rawEntries);
+  $: groups = buildGroups(rawEntries, timeWindow, deviceFilter, routeFilter, searchQuery);
   $: visibleUserCount = groups.length;
   $: visibleDeviceCount = groups.reduce((total, group) => total + group.devices.length, 0);
   $: totalEventCount = rawEntries.length;

@@ -101,6 +101,7 @@ def init_db():
     _ensure_product_type_parameter_preset_columns(engine)
     _remove_deprecated_product_type_secondary_axis_label(engine)
     _ensure_user_columns(engine)
+    _ensure_app_settings_smtp_columns(engine)
     _migrate_silencer_product_type_to_attenuator(engine)
     _migrate_silencer_product_type_pdfs(engine)
     _seed_product_types(engine)
@@ -389,6 +390,8 @@ def _ensure_product_type_columns(target_engine):
         "graph_x_axis_unit": "VARCHAR(64)",
         "graph_y_axis_label": "VARCHAR(128)",
         "graph_y_axis_unit": "VARCHAR(64)",
+        "product_type_template_id": "VARCHAR(128)",
+        "product_type_pdf_series_order": "JSON",
         "product_template_id": "VARCHAR(128)",
         "series_template_id": "VARCHAR(128)",
         "printed_product_template_id": "VARCHAR(128)",
@@ -925,6 +928,16 @@ def _ensure_user_columns(target_engine):
                 connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"))
         connection.execute(text(f"UPDATE users SET is_admin = {boolean_true_sql} WHERE is_admin IS NULL"))
         connection.execute(text(f"UPDATE users SET is_active = {boolean_true_sql} WHERE is_active IS NULL"))
+
+
+def _ensure_app_settings_smtp_columns(target_engine):
+    inspector = inspect(target_engine)
+    if "app_settings" not in set(inspector.get_table_names()):
+        return
+    existing_columns = {column["name"] for column in inspector.get_columns("app_settings")}
+    if "smtp_security" not in existing_columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE app_settings ADD COLUMN smtp_security VARCHAR(16)"))
 
 
 def _ensure_rpm_line_columns(target_engine):

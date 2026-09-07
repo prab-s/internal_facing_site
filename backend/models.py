@@ -818,6 +818,7 @@ class AppSettings(Base):
     smtp_username = Column(String(255), nullable=True)
     smtp_password_encrypted = Column(Text, nullable=True)
     smtp_use_tls = Column(Boolean, nullable=True)
+    smtp_security = Column(String(16), nullable=True)
     smtp_from_address = Column(String(255), nullable=True)
     cms_navigation_order = Column(Text, nullable=True)
 

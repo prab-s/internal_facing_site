@@ -2,6 +2,8 @@ import os
 import secrets
 import logging
 
+import httpx
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -64,6 +66,40 @@ async def refresh_cache(request: Request):
         "products": len(snapshot.products),
         "fetched_at": snapshot.fetched_at,
     }
+
+
+@app.post("/api/quote-requests", include_in_schema=False)
+async def proxy_quote_request(request: Request):
+    """Forward public enquiries to the backend while keeping the browser same-origin."""
+    try:
+        payload = await request.json()
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=400, content={"detail": "Enquiry request must contain valid JSON."})
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+            response = await client.post(
+                f"{settings.backend_api_base_url}/api/quote-requests",
+                json=payload,
+                headers={"Accept": "application/json"},
+            )
+    except httpx.HTTPError:
+        logger.exception("Unable to forward customer enquiry to the backend")
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "We could not reach the enquiry service. Please try again."},
+        )
+
+    try:
+        response_payload = response.json()
+    except ValueError:
+        logger.error("Backend returned a non-JSON response for a customer enquiry (status %s)", response.status_code)
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "The enquiry service returned an invalid response. Please try again."},
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response_payload)
 
 app.include_router(pages.router)
 app.include_router(finder.router)

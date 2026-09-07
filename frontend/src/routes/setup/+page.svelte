@@ -1,5 +1,6 @@
 <script>
   import { browser } from '$app/environment';
+  import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { auth } from '$lib/auth.js';
@@ -34,10 +35,10 @@
     startRestoreDataBackupBundleJob,
     startRestoreDatabaseBackupBundleJob,
     updateProductType,
-    sendQuoteRequestEmailTest,
     getSmtpSettings,
     updateSmtpSettings,
     clearSmtpSettings,
+    testSmtpSettings,
     updateUser,
     updateUserPassword,
     updateProductTypePresets
@@ -62,8 +63,9 @@
   let smtpTestRecipient = '';
   let sendingSmtpTest = false;
   let smtpTestError = '';
+  let smtpTestResult = null;
   let smtpSettings = null;
-  let smtpForm = { smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_use_tls: true, smtp_from_address: '' };
+  let smtpForm = { smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_use_tls: true, smtp_security: 'starttls', smtp_from_address: '' };
   let loadingSmtpSettings = false;
   let savingSmtpSettings = false;
   let clearingSmtpSettings = false;
@@ -122,7 +124,39 @@
   let isHttpOrigin = false;
   let seriesByIdMap = new Map();
   let productsByIdMap = new Map();
+  const setupSections = [
+    { id: 'account', label: 'Account', description: 'Your password and session details.', adminOnly: false },
+    { id: 'users', label: 'Users', description: 'Manage internal user accounts.', adminOnly: true },
+    { id: 'communications', label: 'Communications', description: 'SMTP and enquiry delivery.', adminOnly: true },
+    { id: 'diagnostics', label: 'Diagnostics', description: 'Logs and device activity.', adminOnly: true },
+    { id: 'maintenance', label: 'Maintenance', description: 'Customer refresh and generation.', adminOnly: true },
+    { id: 'backups', label: 'Backups', description: 'Database and media backup tools.', adminOnly: true },
+    { id: 'file-managers', label: 'File Managers', description: 'Manage media and templates.', adminOnly: true },
+    { id: 'presets', label: 'Presets', description: 'Product type defaults.', adminOnly: true }
+  ];
+  let activeSection = 'account';
+  let setupPopStateHandler = null;
   const MAINTENANCE_JOB_STORAGE_KEY = 'fan-graphs.active-maintenance-job';
+
+  function normalizeSetupSection(value) {
+    const section = String(value || '').toLowerCase();
+    return setupSections.some((item) => item.id === section) ? section : 'account';
+  }
+
+  function setupSectionFromLocation() {
+    if (!browser) return 'account';
+    return normalizeSetupSection(new URLSearchParams(window.location.search).get('section'));
+  }
+
+  function selectSetupSection(section) {
+    const nextSection = normalizeSetupSection(section);
+    const selected = setupSections.find((item) => item.id === nextSection);
+    if (selected?.adminOnly && !$auth.is_admin) return;
+    activeSection = nextSection;
+    if (browser) {
+      goto(`/setup?section=${encodeURIComponent(nextSection)}`, { replaceState: true, keepFocus: true, noScroll: true });
+    }
+  }
 
   function clearSuccessToast() {
     successMessages = [];
@@ -167,7 +201,14 @@
 
   onMount(() => {
     isHttpOrigin = browser && window.location.protocol === 'http:';
+    activeSection = setupSectionFromLocation();
+    setupPopStateHandler = () => (activeSection = setupSectionFromLocation());
+    window.addEventListener('popstate', setupPopStateHandler);
     const session = get(auth);
+    if (!session.is_admin && activeSection !== 'account') {
+      activeSection = 'account';
+      goto('/setup?section=account', { replaceState: true, keepFocus: true, noScroll: true });
+    }
     if (session.authenticated) {
       loadUsers();
       loadProducts();
@@ -180,6 +221,9 @@
   });
 
   onDestroy(() => {
+    if (setupPopStateHandler) {
+      window.removeEventListener('popstate', setupPopStateHandler);
+    }
     if (successDismissTimeout) {
       clearTimeout(successDismissTimeout);
     }
@@ -273,7 +317,15 @@
   }
 
   function isPdfMaintenanceJob() {
-    return maintenanceJobTypeIncludes('product_pdfs', 'series_pdfs', 'product_type_pdfs', 'product_pdf_', 'series_pdf_', 'product_type_pdf_');
+    return maintenanceJobTypeIncludes(
+      'product_pdfs',
+      'series_pdfs',
+      'product_type_pdfs',
+      'product_pdf_',
+      'series_pdf_',
+      'product_type_pdf_',
+      'refresh_all_product_types_pdf'
+    );
   }
 
   function isGraphImageMaintenanceJob() {
@@ -337,15 +389,18 @@
     }
   }
 
-  async function sendSmtpTestEmail() {
+  async function runSmtpTest(sendEmail = false) {
     sendingSmtpTest = true;
     smtpTestError = '';
+    smtpTestResult = null;
     clearSuccessToast();
     try {
-      const result = await sendQuoteRequestEmailTest({ recipient_email: smtpTestRecipient });
-      addSuccess(result?.message || 'SMTP test email sent.');
+      const result = await testSmtpSettings(sendEmail ? { recipient_email: smtpTestRecipient } : {});
+      smtpTestResult = result;
+      if (result?.success) addSuccess(result.message);
+      else smtpTestError = result?.message || 'SMTP test failed.';
     } catch (error) {
-      smtpTestError = error?.message || 'Unable to send SMTP test email.';
+      smtpTestError = error?.message || 'Unable to test SMTP settings.';
     } finally {
       sendingSmtpTest = false;
     }
@@ -362,6 +417,7 @@
         smtp_username: smtpSettings.smtp_username || '',
         smtp_password: '',
         smtp_use_tls: smtpSettings.smtp_use_tls ?? true,
+        smtp_security: smtpSettings.smtp_security || (smtpSettings.smtp_use_tls ? 'starttls' : 'none'),
         smtp_from_address: smtpSettings.smtp_from_address || ''
       };
     } catch (error) {
@@ -400,6 +456,7 @@
         smtp_username: smtpSettings.smtp_username || '',
         smtp_password: '',
         smtp_use_tls: smtpSettings.smtp_use_tls ?? true,
+        smtp_security: smtpSettings.smtp_security || (smtpSettings.smtp_use_tls ? 'starttls' : 'none'),
         smtp_from_address: smtpSettings.smtp_from_address || ''
       };
       addSuccess('Saved SMTP settings cleared.');
@@ -1262,8 +1319,38 @@
   </div>
 </div>
 
-<div class="row g-4 align-items-start">
+<div class="row g-4 align-items-start setup-shell">
+  <aside class="col-12 col-xl-3">
+    <div class="card shadow-sm setup-section-nav">
+      <div class="card-body bg-body-secondary bg-opacity-10 p-2">
+        <p class="small text-uppercase text-body-secondary fw-semibold px-3 pt-2 mb-2">Setup sections</p>
+        <nav aria-label="Setup sections">
+          {#each setupSections as section}
+            {@const locked = section.adminOnly && !$auth.is_admin}
+            <button
+              class:active={activeSection === section.id}
+              class:disabled={locked}
+              class="setup-section-nav-item"
+              type="button"
+              on:click={() => selectSetupSection(section.id)}
+              disabled={locked}
+              aria-current={activeSection === section.id ? 'page' : undefined}
+              title={locked ? 'Administrator access required' : section.description}
+            >
+              <span class="setup-section-nav-label">{section.label}</span>
+              {#if locked}<span class="setup-section-nav-lock" aria-label="Administrator access required">🔒</span>{/if}
+              <span class="setup-section-nav-description">{locked ? 'Admin access required' : section.description}</span>
+            </button>
+          {/each}
+        </nav>
+      </div>
+    </div>
+  </aside>
+
+  <div class="col-12 col-xl-9 setup-section-content">
+    <div class="row g-4 align-items-start">
   <div class="col-12 col-xl-4 d-flex flex-column gap-4">
+    {#if activeSection === 'account'}
     <div class="card shadow-sm">
       <div class="card-body bg-body-secondary bg-opacity-10">
         <p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p>
@@ -1291,8 +1378,9 @@
         </form>
       </div>
     </div>
+    {/if}
 
-    {#if $auth.is_admin}
+    {#if $auth.is_admin && activeSection === 'communications'}
       <div class="card shadow-sm mb-4">
         <div class="card-body bg-body-secondary bg-opacity-10">
           <div class="d-flex justify-content-between align-items-start gap-2">
@@ -1343,9 +1431,13 @@
               <input id="smtp-from-address" class="form-control" type="email" bind:value={smtpForm.smtp_from_address} placeholder="catalogue@example.com" disabled={loadingSmtpSettings || savingSmtpSettings}>
             </div>
             <div class="col-12 col-lg-6 d-flex align-items-end">
-              <div class="form-check mb-2">
-                <input id="smtp-use-tls" class="form-check-input" type="checkbox" bind:checked={smtpForm.smtp_use_tls} disabled={loadingSmtpSettings || savingSmtpSettings}>
-                <label class="form-check-label" for="smtp-use-tls">Use TLS</label>
+              <div>
+                <label class="form-label" for="smtp-security">Connection security</label>
+                <select id="smtp-security" class="form-select" bind:value={smtpForm.smtp_security} disabled={loadingSmtpSettings || savingSmtpSettings}>
+                  <option value="starttls">STARTTLS (usually port 587)</option>
+                  <option value="ssl">SSL/TLS (usually port 465)</option>
+                  <option value="none">None (usually port 25)</option>
+                </select>
               </div>
             </div>
             {#if smtpSettingsError}
@@ -1360,9 +1452,44 @@
               </button>
             </div>
           </form>
+
+          <div class="border-top mt-4 pt-4">
+            <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Diagnostics</p>
+            <h3 class="h5">Test SMTP</h3>
+            <p class="text-body-secondary mb-3">Save settings before testing. Test the connection first, then optionally send a real test email.</p>
+            <div class="row g-3 align-items-end">
+              <div class="col-12 col-lg-7">
+                <label class="form-label" for="smtp-test-recipient">Test email recipient <span class="text-body-secondary">(optional)</span></label>
+                <input id="smtp-test-recipient" class="form-control" type="email" bind:value={smtpTestRecipient} placeholder="recipient@example.com" disabled={sendingSmtpTest}>
+              </div>
+              <div class="col-12 col-lg-5 d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-primary" type="button" on:click={() => runSmtpTest()} disabled={sendingSmtpTest || loadingSmtpSettings || savingSmtpSettings || smtpSettings?.status !== 'configured'}>
+                  {sendingSmtpTest ? 'Testing...' : 'Test Connection'}
+                </button>
+                <button class="btn btn-primary" type="button" on:click={() => runSmtpTest(true)} disabled={sendingSmtpTest || loadingSmtpSettings || savingSmtpSettings || smtpSettings?.status !== 'configured' || !smtpTestRecipient}>
+                  {sendingSmtpTest ? 'Sending...' : 'Send Test Email'}
+                </button>
+              </div>
+            </div>
+            {#if smtpTestError}
+              <div class="alert alert-danger py-2 mt-3 mb-0" role="alert">
+                <div>{smtpTestError}</div>
+                {#if smtpTestResult?.detail}<div class="small mt-1">Provider detail: {smtpTestResult.detail}</div>{/if}
+                {#if smtpTestResult?.correlation_id}<div class="small mt-1">Reference: {smtpTestResult.correlation_id}</div>{/if}
+              </div>
+            {:else if smtpTestResult}
+              <div class="alert alert-success py-2 mt-3 mb-0" role="status">
+                <div>{smtpTestResult.message}</div>
+                <div class="small mt-1">Stage: {smtpTestResult.stage} · Reference: {smtpTestResult.correlation_id}</div>
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
 
+    {/if}
+
+    {#if $auth.is_admin && activeSection === 'users'}
       <div class="card shadow-sm">
         <div class="card-body bg-body-secondary bg-opacity-10">
           <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p>
@@ -1388,10 +1515,11 @@
           </form>
         </div>
       </div>
-    {/if}
+      {/if}
   </div>
 
-  <div class="col-12 col-xl-8 d-flex flex-column gap-4">
+  <div class={`col-12 d-flex flex-column gap-4 ${activeSection === 'users' ? 'col-xl-8' : ''}`}>
+    {#if $auth.is_admin && activeSection === 'users'}
     <div class="card shadow-sm">
       <div class="card-body bg-body-secondary bg-opacity-10">
         <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
@@ -1475,38 +1603,9 @@
       </div>
     </div>
 
-    {#if $auth.is_admin}
-      <div class="card shadow-sm">
-        <div class="card-body bg-body-secondary bg-opacity-10">
-          <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p>
-          <h2 class="h4">SMTP test</h2>
-          <p class="text-body-secondary mb-3">
-            Send a quick test email through the current SMTP settings to confirm delivery is working.
-          </p>
+    {/if}
 
-          <form class="vstack gap-3" on:submit|preventDefault={sendSmtpTestEmail}>
-            <div>
-              <label class="form-label" for="smtp-test-recipient">Recipient email</label>
-              <input
-                id="smtp-test-recipient"
-                class="form-control"
-                type="email"
-                bind:value={smtpTestRecipient}
-                placeholder="recipient@example.com"
-              >
-            </div>
-
-            {#if smtpTestError}
-              <div class="alert alert-danger py-2 mb-0">{smtpTestError}</div>
-            {/if}
-
-            <button class="btn btn-primary align-self-start" type="submit" disabled={sendingSmtpTest}>
-              {sendingSmtpTest ? 'Sending...' : 'Send Test Email'}
-            </button>
-          </form>
-        </div>
-      </div>
-
+    {#if $auth.is_admin && activeSection === 'diagnostics'}
     <div class="card shadow-sm">
       <div class="card-body bg-body-secondary bg-opacity-10">
         <div class="d-flex justify-content-between align-items-start gap-2">
@@ -1576,10 +1675,10 @@
       </div>
     </div>
   {/if}
-</div>
-</div>
+  </div>
+    </div>
 
-{#if $auth.is_admin}
+{#if $auth.is_admin && ['maintenance', 'backups', 'file-managers', 'presets'].includes(activeSection)}
   <div class="mt-4">
     <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-3">
       <div>
@@ -1595,15 +1694,16 @@
         <div class="col-12">
           <div class="card shadow-sm h-100">
             <div class="card-body bg-body-secondary bg-opacity-10">
-          <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p>
-          <h2 class="h4">Operational Tools</h2>
+          <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Administration</p>
+          <h2 class="h4">{activeSection === 'backups' ? 'Backups' : activeSection === 'file-managers' ? 'File Managers' : activeSection === 'presets' ? 'Presets' : 'Maintenance'}</h2>
           <p class="text-body-secondary">
-            Run special admin-only tasks that are otherwise only exposed through the API.
+            {activeSection === 'backups' ? 'Create and restore database and media backups.' : activeSection === 'file-managers' ? 'Manage deployment media and template files.' : activeSection === 'presets' ? 'Edit product type defaults used by the product editor.' : 'Run customer-facing refreshes and regenerate graphs and PDFs.'}
           </p>
 
           {#if maintenanceJob && !isPdfMaintenanceJob() && !isGraphImageMaintenanceJob() && maintenanceJob.job_type !== 'refresh_customer_facing_cache'}
             <JobProgressPanel job={maintenanceJob} label={`Maintenance job: ${maintenanceJob.job_type}`} />
           {/if}
+          {#if activeSection === 'maintenance'}
           <div class="card border mb-3">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
@@ -1630,6 +1730,8 @@
               {/if}
             </div>
           </div>
+          {/if}
+          {#if activeSection === 'backups'}
           <div class="card border mb-3">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
@@ -1747,7 +1849,9 @@
               {/if}
             </div>
           </div>
+          {/if}
 
+          {#if activeSection === 'file-managers'}
           <div class="mb-3">
             <FileManager
               rootName="data"
@@ -1764,7 +1868,9 @@
               description="Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
             />
           </div>
+          {/if}
 
+          {#if activeSection === 'maintenance'}
           <div class="card border mb-3">
             <div class="card-body">
               <div class="mb-3">
@@ -1999,6 +2105,8 @@
             </div>
           </div>
 
+          {/if}
+          {#if activeSection === 'presets'}
           <div class="card border">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
@@ -2325,12 +2433,16 @@
               {/if}
             </div>
           </div>
+          {/if}
         </div>
       </div>
     </div>
   </div>
   </div>
 {/if}
+
+  </div>
+</div>
 
 <style>
   .setup-hero {
@@ -2344,6 +2456,74 @@
 
   .setup-hero-badge {
     max-width: 20rem;
+  }
+
+  .setup-section-nav {
+    position: sticky;
+    top: 1rem;
+  }
+
+  .setup-section-nav-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    width: 100%;
+    padding: 0.8rem 0.9rem;
+    border: 0;
+    border-left: 0.25rem solid transparent;
+    border-radius: 0.6rem;
+    background: transparent;
+    color: var(--bs-body-color);
+    text-align: left;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .setup-section-nav-item:hover:not(:disabled) {
+    background: var(--bs-secondary-bg);
+  }
+
+  .setup-section-nav-item.active {
+    border-left-color: var(--bs-primary);
+    background: var(--bs-primary-bg-subtle);
+    color: var(--bs-primary-text-emphasis);
+  }
+
+  .setup-section-nav-item:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+  }
+
+  .setup-section-nav-label {
+    font-weight: 600;
+  }
+
+  .setup-section-nav-lock {
+    font-size: 0.8rem;
+  }
+
+  .setup-section-nav-description {
+    grid-column: 1 / -1;
+    margin-top: 0.15rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.78rem;
+    line-height: 1.3;
+  }
+
+  @media (max-width: 1199.98px) {
+    .setup-section-nav {
+      position: static;
+    }
+
+    .setup-section-nav nav {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.35rem;
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    .setup-section-nav nav {
+      grid-template-columns: 1fr;
+    }
   }
 
   .success-toast {

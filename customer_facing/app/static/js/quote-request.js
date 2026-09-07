@@ -7,6 +7,21 @@ const quoteRequestSubmit = quoteRequestModal?.querySelector("[data-quote-request
 const quoteRequestAttributesNode = quoteRequestModal?.querySelector("[data-quote-request-attributes-section]") || null;
 const quoteRequestHelperNode = quoteRequestModal?.querySelector("[data-quote-request-helper]") || null;
 const quoteRequestTailoredNode = quoteRequestModal?.querySelector("[data-quote-request-tailored-fields]") || null;
+
+// CMS actions are declarative: the CMS never stores executable JavaScript.
+// Consumers can listen for these events, while the built-in enquiry event has
+// a useful default behaviour for the customer-facing site.
+document.addEventListener("click", (event) => {
+  const trigger = event.target instanceof Element ? event.target.closest("[data-cms-event]") : null;
+  if (!trigger) return;
+  const eventName = trigger.getAttribute("data-cms-event");
+  if (!eventName) return;
+  window.dispatchEvent(new CustomEvent(eventName, { detail: { trigger } }));
+  if (eventName === "open-enquiry" && quoteRequestModal && window.bootstrap?.Modal) {
+    event.preventDefault();
+    window.bootstrap.Modal.getOrCreateInstance(quoteRequestModal).show();
+  }
+});
 const defaultSubmitLabel = quoteRequestSubmit?.textContent || "Send enquiry";
 const suggestedAttributeLabels = {
   airflow: "Airflow",
@@ -72,6 +87,24 @@ function clearStatus() {
   quoteRequestStatus.textContent = "";
   quoteRequestStatus.classList.add("d-none");
   quoteRequestStatus.classList.remove("alert-success", "alert-danger", "alert-warning", "alert-info");
+}
+
+function responseErrorMessage(response, parsed, rawText) {
+  const fallback = "We could not send your enquiry right now. Please try again.";
+  const contentType = response?.headers?.get("content-type")?.toLowerCase() || "";
+  const candidate = typeof parsed?.detail === "string"
+    ? parsed.detail
+    : typeof parsed?.message === "string"
+      ? parsed.message
+      : contentType.includes("text/plain")
+        ? rawText
+        : "";
+  const message = text(candidate);
+
+  // Reverse proxies and framework error pages can return a complete HTML
+  // document. Never expose that response body in the customer-facing alert.
+  if (!message || /<\/?[a-z][^>]*>/i.test(message)) return fallback;
+  return message.slice(0, 500);
 }
 
 function setSubmitting(isSubmitting) {
@@ -303,8 +336,7 @@ async function submitQuoteRequest(event) {
     }
 
     if (!response.ok) {
-      const detail = parsed?.detail || parsed?.message || rawText || "Unable to send enquiry.";
-      throw new Error(detail);
+      throw new Error(responseErrorMessage(response, parsed, rawText));
     }
 
     setStatus("success", parsed?.message || "Thanks, your enquiry has been sent.");

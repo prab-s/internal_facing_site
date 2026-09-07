@@ -3107,7 +3107,6 @@ export {
   derived as a7,
   ssr_context as a8,
   stringify as a9,
-  clsx as aa,
   attr as b,
   attr_class as c,
   ensure_array_like as d,

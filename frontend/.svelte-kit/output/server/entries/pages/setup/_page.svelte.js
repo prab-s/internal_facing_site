@@ -1,222 +1,27 @@
-import { e as escape_html, b as attr, d as ensure_array_like, i as bind_props, s as store_get, h as head, c as attr_class, u as unsubscribe_stores, aa as clsx } from "../../../chunks/index2.js";
+import { s as store_get, h as head, d as ensure_array_like, e as escape_html, c as attr_class, b as attr, u as unsubscribe_stores } from "../../../chunks/index2.js";
 import { b as browser } from "../../../chunks/false.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
+import "@sveltejs/kit/internal";
+import "../../../chunks/exports.js";
+import "../../../chunks/utils.js";
+import "@sveltejs/kit/internal/server";
+import "../../../chunks/root.js";
+import "../../../chunks/state.svelte.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
-import { f as fallback } from "../../../chunks/equality.js";
-import { J as JobProgressPanel } from "../../../chunks/JobProgressPanel.js";
-import { y as startRegenerateEverythingJob, z as startDeleteAllGraphImagesJob, g as getProducts, A as getSeries, B as getUsers, C as getProductTypes } from "../../../chunks/api.js";
-function FileManager($$renderer, $$props) {
-  $$renderer.component(($$renderer2) => {
-    let currentPath, pathSegments, canModifyCurrentFolder;
-    let rootName = fallback($$props["rootName"], "");
-    let title = fallback($$props["title"], "");
-    let description = fallback($$props["description"], "");
-    let entryLabelResolver = fallback($$props["entryLabelResolver"], () => "");
-    let listing = { root: rootName, path: "", parent_path: null, entries: [] };
-    let loading = false;
-    let createFolderName = "";
-    let uploadFiles = [];
-    let replaceExisting = false;
-    const editableExactNames = /* @__PURE__ */ new Set(["registry.json", ".env", ".gitignore", ".npmrc"]);
-    const editableExtensions = /* @__PURE__ */ new Set([
-      ".css",
-      ".csv",
-      ".html",
-      ".htm",
-      ".ini",
-      ".js",
-      ".json",
-      ".jsonl",
-      ".jsx",
-      ".log",
-      ".md",
-      ".mjs",
-      ".py",
-      ".sh",
-      ".svg",
-      ".toml",
-      ".ts",
-      ".tsx",
-      ".txt",
-      ".xml",
-      ".yaml",
-      ".yml"
-    ]);
-    function formatBytes(value) {
-      if (value == null) return "";
-      const units = ["B", "KB", "MB", "GB", "TB"];
-      let size = Number(value);
-      let unit = units[0];
-      for (const nextUnit of units) {
-        unit = nextUnit;
-        if (size < 1024 || nextUnit === units[units.length - 1]) break;
-        size /= 1024;
-      }
-      return `${size.toFixed(size >= 10 || unit === "B" ? 0 : 1)} ${unit}`;
-    }
-    function formatDate(value) {
-      if (!value) return "";
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-    }
-    function isEditableTextFile(entry) {
-      if (!entry || entry.type !== "file") return false;
-      const lowerName = String(entry.name || "").toLowerCase();
-      if (editableExactNames.has(lowerName)) return true;
-      const suffixIndex = lowerName.lastIndexOf(".");
-      if (suffixIndex <= 0) return false;
-      return editableExtensions.has(lowerName.slice(suffixIndex));
-    }
-    currentPath = listing?.path || "";
-    pathSegments = currentPath ? currentPath.split("/") : [];
-    canModifyCurrentFolder = true;
-    $$renderer2.push(`<div class="card border shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">${escape_html(title)}</p> <h3 class="h5 mb-1">${escape_html(rootName)}/${escape_html(currentPath || "")}</h3> <p class="text-body-secondary mb-0">${escape_html(description)}</p></div> <div class="d-flex align-items-center gap-2 flex-wrap"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loading, true)}>${escape_html("Refresh")}</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !listing?.parent_path && !currentPath, true)}>Up</button></div></div> `);
-    {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> `);
-    {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> <div class="mt-3"><div class="d-flex flex-wrap gap-2 mb-2"><span class="badge text-bg-secondary">Root</span> `);
-    if (pathSegments.length) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<!--[-->`);
-      const each_array = ensure_array_like(pathSegments);
-      for (let index = 0, $$length = each_array.length; index < $$length; index++) {
-        let segment = each_array[index];
-        $$renderer2.push(`<button class="btn btn-link btn-sm p-0" type="button">${escape_html(segment)}</button>`);
-      }
-      $$renderer2.push(`<!--]-->`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-      $$renderer2.push(`<span class="text-body-secondary small">top level</span>`);
-    }
-    $$renderer2.push(`<!--]--></div> <div class="row g-2 align-items-end"><div class="col-12 col-lg-5"><label class="form-label form-label-sm"${attr("for", `create-folder-${rootName}`)}>Create folder</label> <input${attr("id", `create-folder-${rootName}`)} class="form-control form-control-sm" type="text"${attr("value", createFolderName)} placeholder="New folder name"${attr("disabled", loading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", !createFolderName.trim(), true)}>Create Folder</button></div> <div class="col-12 col-lg"><label class="form-label form-label-sm"${attr("for", `upload-${rootName}`)}>Upload files</label> <input${attr("id", `upload-${rootName}`)} class="form-control form-control-sm" type="file" multiple=""${attr("disabled", loading, true)}/></div> <div class="col-12 col-lg-auto d-flex align-items-center gap-2"><div class="form-check mb-0"><input${attr("checked", replaceExisting, true)} class="form-check-input" type="checkbox"${attr("id", `replace-${rootName}`)}${attr("disabled", !canModifyCurrentFolder, true)}/> <label class="form-check-label"${attr("for", `replace-${rootName}`)}>Replace existing</label></div> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", !canModifyCurrentFolder || !uploadFiles.length, true)}>Upload</button></div></div></div> <div class="table-responsive mt-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Modified</th><th class="text-end">Actions</th></tr></thead><tbody><!--[-->`);
-    const each_array_1 = ensure_array_like(listing?.entries || []);
-    for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
-      let entry = each_array_1[$$index_1];
-      const entryLabel = entry.type === "directory" ? entryLabelResolver(entry, listing) : "";
-      $$renderer2.push(`<tr><td><div class="d-grid gap-1"><div class="d-flex align-items-center gap-2 flex-wrap">`);
-      if (entry.type === "directory") {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<button class="btn btn-link p-0 text-decoration-none" type="button">${escape_html(entry.name)}</button>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-        $$renderer2.push(`<span>${escape_html(entry.name)}</span>`);
-      }
-      $$renderer2.push(`<!--]--> `);
-      if (entry.protected) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<span class="badge text-bg-warning">Protected</span>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div> `);
-      if (entryLabel) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="small text-body-secondary">${escape_html(entryLabel)}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></td><td class="text-body-secondary text-capitalize">${escape_html(entry.type)}</td><td class="text-body-secondary">${escape_html(entry.type === "file" ? formatBytes(entry.size_bytes) : "—")}</td><td class="text-body-secondary">${escape_html(formatDate(entry.modified_at))}</td><td class="text-end"><div class="d-flex justify-content-end gap-2 flex-wrap">`);
-      if (entry.type === "file") {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button">Download</button> `);
-        if (isEditableTextFile(entry)) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loading, true)}>Edit</button>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-        }
-        $$renderer2.push(`<!--]-->`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", entry.protected, true)}>Rename</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", entry.protected, true)}>Delete</button></div></td></tr>`);
-    }
-    $$renderer2.push(`<!--]-->`);
-    if (!(listing?.entries || []).length) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<tr><td colspan="5" class="text-body-secondary">This folder is empty.</td></tr>`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--></tbody></table></div></div></div> `);
-    {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]-->`);
-    bind_props($$props, { rootName, title, description, entryLabelResolver });
-  });
-}
+import { g as getProducts, y as getSeries, z as getUsers, A as getProductTypes } from "../../../chunks/api.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
     let showCookieWarning;
     let users = [];
     let usersLoaded = false;
-    let filteredUsers = [];
     let userFilter = "";
-    let userError = "";
     let loadingUsers = false;
-    let savingUser = false;
     let currentPassword = "";
     let newOwnPassword = "";
-    let newUsername = "";
-    let newPassword = "";
-    let newIsAdmin = false;
-    let smtpTestRecipient = "";
-    let sendingSmtpTest = false;
-    let smtpSettings = null;
-    let smtpForm = {
-      smtp_host: "",
-      smtp_port: 587,
-      smtp_username: "",
-      smtp_password: "",
-      smtp_use_tls: true,
-      smtp_from_address: ""
-    };
-    let savingSmtpSettings = false;
-    let clearingSmtpSettings = false;
-    let maintenanceLoading = false;
     let maintenanceErrorToast = "";
-    let mediaBackupFiles = [];
-    const mediaBackupChunks = [
-      {
-        id: "uploaded-images",
-        label: "Uploaded images",
-        description: "Product and series images."
-      },
-      {
-        id: "associated-documents",
-        label: "Associated documents",
-        description: "Documents attached to products, series, and product types."
-      },
-      {
-        id: "generated-graphs",
-        label: "Generated graphs",
-        description: "Product and series graph images."
-      },
-      {
-        id: "generated-pdfs",
-        label: "Generated PDFs",
-        description: "Product, series, and product type PDF files."
-      },
-      {
-        id: "templates",
-        label: "Templates",
-        description: "Product, series, product type templates, and the template registry."
-      }
-    ];
-    let backupJobs = {};
-    let backupLoading = {};
     let backupPollTimeouts = {};
-    let regenerationOverview = {
-      last_completed_by_type: {}
-    };
-    let pendingMaintenanceConfirmation = null;
     let products = [];
     let productsLoaded = false;
     let loadingProducts = false;
@@ -226,50 +31,64 @@ function _page($$renderer, $$props) {
     let productTypes = [];
     let productTypesLoaded = false;
     let loadingProductTypes = false;
-    let typePresetError = "";
     let selectedProductTypeId = "";
-    let presetGroups = [];
-    let presetRpmLines = [];
-    let presetEfficiencyPoints = [];
-    let presetProductTemplateId = "";
-    let presetSeriesTemplateId = "";
-    let presetBandGraphStyle = {
-      band_graph_background_color: "#ffffff",
-      band_graph_label_text_color: "#000000",
-      band_graph_faded_opacity: 0.18,
-      band_graph_permissible_label_color: "#000000"
-    };
-    let templateRegistry = { product_templates: [], series_templates: [] };
     let successMessages = [];
-    let seriesByIdMap = /* @__PURE__ */ new Map();
-    let productsByIdMap = /* @__PURE__ */ new Map();
+    const setupSections = [
+      {
+        id: "account",
+        label: "Account",
+        description: "Your password and session details.",
+        adminOnly: false
+      },
+      {
+        id: "users",
+        label: "Users",
+        description: "Manage internal user accounts.",
+        adminOnly: true
+      },
+      {
+        id: "communications",
+        label: "Communications",
+        description: "SMTP and enquiry delivery.",
+        adminOnly: true
+      },
+      {
+        id: "diagnostics",
+        label: "Diagnostics",
+        description: "Logs and device activity.",
+        adminOnly: true
+      },
+      {
+        id: "maintenance",
+        label: "Maintenance",
+        description: "Customer refresh and generation.",
+        adminOnly: true
+      },
+      {
+        id: "backups",
+        label: "Backups",
+        description: "Database and media backup tools.",
+        adminOnly: true
+      },
+      {
+        id: "file-managers",
+        label: "File Managers",
+        description: "Manage media and templates.",
+        adminOnly: true
+      },
+      {
+        id: "presets",
+        label: "Presets",
+        description: "Product type defaults.",
+        adminOnly: true
+      }
+    ];
+    let activeSection = "account";
     onDestroy(() => {
       for (const timeout of Object.values(backupPollTimeouts)) {
         if (timeout) clearTimeout(timeout);
       }
     });
-    function productTemplates() {
-      return templateRegistry.product_templates ?? [];
-    }
-    function mediaFolderLabelResolver(entry) {
-      if (!entry || entry.type !== "directory") return "";
-      const match = String(entry.name || "").match(/^(series|product)_(\d+)$/i);
-      if (!match) return "";
-      const kind = match[1].toLowerCase();
-      const id = match[2];
-      if (kind === "series") {
-        const seriesItem = seriesByIdMap.get(id);
-        return seriesItem?.name ? `Series ${id} · ${seriesItem.name}` : `Series ${id}`;
-      }
-      const productItem = productsByIdMap.get(id);
-      return productItem?.model ? `Product ${id} · ${productItem.model}` : `Product ${id}`;
-    }
-    function lastSuccessfulLabel(jobType) {
-      const completedAt = regenerationOverview.last_completed_by_type?.[jobType]?.completed_at;
-      if (!completedAt) return "";
-      const date = new Date(completedAt);
-      return Number.isNaN(date.getTime()) ? completedAt : date.toLocaleString();
-    }
     async function loadProducts() {
       loadingProducts = true;
       try {
@@ -294,12 +113,11 @@ function _page($$renderer, $$props) {
     }
     async function loadUsers() {
       loadingUsers = true;
-      userError = "";
       try {
         users = await getUsers();
         usersLoaded = true;
       } catch (error) {
-        userError = error?.message || "Unable to load users.";
+        error?.message || "Unable to load users.";
       } finally {
         loadingUsers = false;
       }
@@ -387,28 +205,22 @@ function _page($$renderer, $$props) {
       };
     }
     function clearPresetDrafts() {
-      presetGroups = [];
-      presetRpmLines = [];
-      presetEfficiencyPoints = [];
-      presetProductTemplateId = "";
-      presetSeriesTemplateId = "";
-      presetBandGraphStyle = clonePresetBandGraphStyleForType("");
+      clonePresetBandGraphStyleForType("");
     }
     function syncPresetDraftsForSelectedType(productTypeId = selectedProductTypeId) {
       if (!productTypeId) {
         clearPresetDrafts();
         return;
       }
-      presetGroups = clonePresetGroupsForType(productTypeId);
-      presetRpmLines = clonePresetRpmLinesForType(productTypeId);
-      presetEfficiencyPoints = clonePresetEfficiencyPointsForType(productTypeId);
-      presetProductTemplateId = clonePresetProductTemplateIdForType(productTypeId);
-      presetSeriesTemplateId = clonePresetSeriesTemplateIdForType(productTypeId);
-      presetBandGraphStyle = clonePresetBandGraphStyleForType(productTypeId);
+      clonePresetGroupsForType(productTypeId);
+      clonePresetRpmLinesForType(productTypeId);
+      clonePresetEfficiencyPointsForType(productTypeId);
+      clonePresetProductTemplateIdForType(productTypeId);
+      clonePresetSeriesTemplateIdForType(productTypeId);
+      clonePresetBandGraphStyleForType(productTypeId);
     }
     async function loadProductTypes() {
       loadingProductTypes = true;
-      typePresetError = "";
       try {
         productTypes = await getProductTypes();
         productTypesLoaded = true;
@@ -418,7 +230,7 @@ function _page($$renderer, $$props) {
         }
         syncPresetDraftsForSelectedType();
       } catch (error) {
-        typePresetError = error?.message || "Unable to load product types.";
+        error?.message || "Unable to load product types.";
       } finally {
         loadingProductTypes = false;
       }
@@ -436,8 +248,8 @@ function _page($$renderer, $$props) {
       loadSeries();
     }
     showCookieWarning = browser;
-    seriesByIdMap = new Map(series.map((item) => [String(item.id), item]));
-    productsByIdMap = new Map(products.map((item) => [String(item.id), item]));
+    new Map(series.map((item) => [String(item.id), item]));
+    new Map(products.map((item) => [String(item.id), item]));
     if (productTypesLoaded) {
       if (selectedProductTypeId) {
         syncPresetDraftsForSelectedType(selectedProductTypeId);
@@ -445,7 +257,7 @@ function _page($$renderer, $$props) {
         clearPresetDrafts();
       }
     }
-    filteredUsers = users.filter((user) => {
+    users.filter((user) => {
       const needle = userFilter.trim().toLowerCase();
       if (!needle) return true;
       return user.username.toLowerCase().includes(needle);
@@ -497,159 +309,54 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></div></div></div> <div class="row g-4 align-items-start"><div class="col-12 col-xl-4 d-flex flex-column gap-4"><div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p> <h2 class="h4">Change Password</h2> <p class="text-body-secondary">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}.</p> <p class="small text-body-secondary mb-0">Device IP: IPv4 ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).device_ip_v4 || store_get($$store_subs ??= {}, "$auth", auth).client_ip_v4 || "—")} · IPv6 ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).device_ip_v6 || store_get($$store_subs ??= {}, "$auth", auth).client_ip_v6 || "—")}</p> <form class="vstack gap-3"><div><label class="form-label" for="current-password">Current Password</label> <input id="current-password" class="form-control" type="password"${attr("value", currentPassword)}/></div> <div><label class="form-label" for="new-own-password">New Password</label> <input id="new-own-password" class="form-control" type="password"${attr("value", newOwnPassword)}/></div> `);
-    {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !currentPassword, true)}>${escape_html("Update Password")}</button></form></div></div> `);
-    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="card shadow-sm mb-4"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p> <h2 class="h4">SMTP configuration</h2> <p class="text-body-secondary mb-0">Configure the application’s generic SMTP connection for outbound email.</p></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> <form class="row g-3 mt-1"><div class="col-12 col-lg-8"><label class="form-label" for="smtp-host">SMTP host</label> <input id="smtp-host" class="form-control"${attr("value", smtpForm.smtp_host)} placeholder="smtp.example.com"${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-4"><label class="form-label" for="smtp-port">Port</label> <input id="smtp-port" class="form-control" type="number" min="1" max="65535"${attr("value", smtpForm.smtp_port)}${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-6"><label class="form-label" for="smtp-username">Username</label> <input id="smtp-username" class="form-control"${attr("value", smtpForm.smtp_username)}${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-6"><label class="form-label" for="smtp-password">Password</label> <div class="input-group"><input id="smtp-password" class="form-control"${attr("type", "password")}${attr("value", smtpForm.smtp_password)}${attr("placeholder", "")} autocomplete="new-password"${attr("disabled", savingSmtpSettings, true)}/> <button class="btn btn-outline-secondary" type="button"${attr("disabled", savingSmtpSettings, true)}>${escape_html("Show")}</button></div> <div class="form-text">Existing passwords are never displayed. The toggle only reveals what you type here.</div></div> <div class="col-12 col-lg-6"><label class="form-label" for="smtp-from-address">From address</label> <input id="smtp-from-address" class="form-control" type="email"${attr("value", smtpForm.smtp_from_address)} placeholder="catalogue@example.com"${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-6 d-flex align-items-end"><div class="form-check mb-2"><input id="smtp-use-tls" class="form-check-input" type="checkbox"${attr("checked", smtpForm.smtp_use_tls, true)}${attr("disabled", savingSmtpSettings, true)}/> <label class="form-check-label" for="smtp-use-tls">Use TLS</label></div></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> <div class="col-12 d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit"${attr("disabled", clearingSmtpSettings, true)}>${escape_html("Save SMTP Settings")}</button> <button class="btn btn-outline-danger" type="button"${attr("disabled", smtpSettings?.source !== "saved", true)}>${escape_html("Clear Saved Settings")}</button></div></form></div></div> <div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p> <h2 class="h4">User Accounts</h2> <p class="text-body-secondary">Create and manage accounts for internal users.</p> <form class="vstack gap-3"><div><label class="form-label" for="new-user-username">Username</label> <input id="new-user-username" class="form-control"${attr("value", newUsername)}/></div> <div><label class="form-label" for="new-user-password">Password</label> <input id="new-user-password" class="form-control" type="password"${attr("value", newPassword)}/></div> <div class="form-check"><input id="new-user-admin" class="form-check-input" type="checkbox"${attr("checked", newIsAdmin, true)}/> <label class="form-check-label" for="new-user-admin">Admin access</label></div> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !newUsername, true)}>${escape_html("Create User")}</button></form></div></div>`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--></div> <div class="col-12 col-xl-8 d-flex flex-column gap-4"><div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Current Users</p> <h2 class="h4 mb-0">Accounts</h2></div> <div class="d-flex align-items-center gap-2 flex-wrap justify-content-lg-end"><input class="form-control form-control-sm" type="search" placeholder="Filter users"${attr("value", userFilter)} style="max-width: 180px;"/> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingUsers, true)}>${escape_html(loadingUsers ? "Refreshing..." : "Refresh")}</button></div></div> `);
-    if (userError) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="alert alert-danger py-2">${escape_html(userError)}</div>`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Username</th><th>Role</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody><!--[-->`);
-    const each_array_1 = ensure_array_like(filteredUsers);
+    $$renderer2.push(`<!--]--></div></div></div> <div class="row g-4 align-items-start setup-shell"><aside class="col-12 col-xl-3"><div class="card shadow-sm setup-section-nav svelte-g40i6i"><div class="card-body bg-body-secondary bg-opacity-10 p-2"><p class="small text-uppercase text-body-secondary fw-semibold px-3 pt-2 mb-2">Setup sections</p> <nav aria-label="Setup sections" class="svelte-g40i6i"><!--[-->`);
+    const each_array_1 = ensure_array_like(setupSections);
     for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
-      let user = each_array_1[$$index_1];
-      $$renderer2.push(`<tr><td><div class="d-flex align-items-center gap-2 justify-content-start"><span>${escape_html(user.username)}</span> `);
-      if (user.username === store_get($$store_subs ??= {}, "$auth", auth).username) {
+      let section = each_array_1[$$index_1];
+      const locked = section.adminOnly && !store_get($$store_subs ??= {}, "$auth", auth).is_admin;
+      $$renderer2.push(`<button${attr_class("setup-section-nav-item svelte-g40i6i", void 0, { "active": activeSection === section.id, "disabled": locked })} type="button"${attr("disabled", locked, true)}${attr("aria-current", activeSection === section.id ? "page" : void 0)}${attr("title", locked ? "Administrator access required" : section.description)}><span class="setup-section-nav-label svelte-g40i6i">${escape_html(section.label)}</span> `);
+      if (locked) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<span class="badge text-bg-primary">You</span>`);
+        $$renderer2.push(`<span class="setup-section-nav-lock svelte-g40i6i" aria-label="Administrator access required">🔒</span>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--></div></td><td><span${attr_class(`badge ${user.is_admin ? "text-bg-dark" : "text-bg-secondary"}`, "svelte-g40i6i")}>${escape_html(user.is_admin ? "Admin" : "User")}</span></td><td><span${attr_class(`badge ${user.is_active ? "text-bg-success" : "text-bg-warning"}`, "svelte-g40i6i")}>${escape_html(user.is_active ? "Active" : "Disabled")}</span></td><td class="text-end"><div class="d-flex justify-content-end gap-2 flex-wrap">`);
-      if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", user.username === store_get($$store_subs ??= {}, "$auth", auth).username, true)}>${escape_html(user.is_admin ? "Remove Admin" : "Make Admin")}</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", user.username === store_get($$store_subs ??= {}, "$auth", auth).username, true)}>${escape_html(user.is_active ? "Disable" : "Enable")}</button> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", savingUser, true)}>Reset Password</button>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></td></tr>`);
+      $$renderer2.push(`<!--]--> <span class="setup-section-nav-description svelte-g40i6i">${escape_html(locked ? "Admin access required" : section.description)}</span></button>`);
     }
-    $$renderer2.push(`<!--]-->`);
-    if (!filteredUsers.length) {
+    $$renderer2.push(`<!--]--></nav></div></div></aside> <div class="col-12 col-xl-9 setup-section-content"><div class="row g-4 align-items-start"><div class="col-12 col-xl-4 d-flex flex-column gap-4">`);
+    {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<tr><td colspan="4" class="text-body-secondary">No user accounts found.</td></tr>`);
-    } else {
+      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p> <h2 class="h4">Change Password</h2> <p class="text-body-secondary">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}.</p> <p class="small text-body-secondary mb-0">Device IP: IPv4 ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).device_ip_v4 || store_get($$store_subs ??= {}, "$auth", auth).client_ip_v4 || "—")} · IPv6 ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).device_ip_v6 || store_get($$store_subs ??= {}, "$auth", auth).client_ip_v6 || "—")}</p> <form class="vstack gap-3"><div><label class="form-label" for="current-password">Current Password</label> <input id="current-password" class="form-control" type="password"${attr("value", currentPassword)}/></div> <div><label class="form-label" for="new-own-password">New Password</label> <input id="new-own-password" class="form-control" type="password"${attr("value", newOwnPassword)}/></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !currentPassword, true)}>${escape_html("Update Password")}</button></form></div></div>`);
+    }
+    $$renderer2.push(`<!--]--> `);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin && activeSection === "communications") ;
+    else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></tbody></table></div></div></div> `);
-    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p> <h2 class="h4">SMTP test</h2> <p class="text-body-secondary mb-3">Send a quick test email through the current SMTP settings to confirm delivery is working.</p> <form class="vstack gap-3"><div><label class="form-label" for="smtp-test-recipient">Recipient email</label> <input id="smtp-test-recipient" class="form-control" type="email"${attr("value", smtpTestRecipient)} placeholder="recipient@example.com"/></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", sendingSmtpTest, true)}>${escape_html("Send Test Email")}</button></form></div></div> <div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p> <h2 class="h4 mb-1">Live Logs</h2> <p class="text-body-secondary mb-0">Open a live terminal-style feed of the backend logs from this page.</p></div> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html("Show Logs")}</button></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm mt-4"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p> <h2 class="h4 mb-1">Customer-Facing Devices</h2> <p class="text-body-secondary mb-0">A deduped view of recent browser telemetry from the public site, grouped by unique device fingerprint.</p></div> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html("Show Devices")}</button></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm mt-4"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p> <h2 class="h4 mb-1">Internal-Facing Devices</h2> <p class="text-body-secondary mb-0">A deduped view of recent \`public-access\` logs from the internal app, grouped by unique device fingerprint.</p></div> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html("Show Devices")}</button></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div>`);
-    } else {
+    $$renderer2.push(`<!--]--> `);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin && activeSection === "users") ;
+    else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div> <div${attr_class(`col-12 d-flex flex-column gap-4 ${""}`, "svelte-g40i6i")}>`);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin && activeSection === "users") ;
+    else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> `);
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin && activeSection === "diagnostics") ;
+    else {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--></div></div> `);
-    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+    if (store_get($$store_subs ??= {}, "$auth", auth).is_admin && ["maintenance", "backups", "file-managers", "presets"].includes(activeSection)) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="mt-4"><div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Administration</p> <h2 class="h3 mb-0">Operational Tools</h2></div> <p class="text-body-secondary mb-0">Backup, restore, regeneration, file management, and preset editing live here.</p></div> <div class="row g-4 mt-0"><div class="col-12"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p> <h2 class="h4">Operational Tools</h2> <p class="text-body-secondary">Run special admin-only tasks that are otherwise only exposed through the API.</p> `);
+      $$renderer2.push(`<div class="mt-4"><div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-3"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Administration</p> <h2 class="h3 mb-0">Operational Tools</h2></div> <p class="text-body-secondary mb-0">Backup, restore, regeneration, file management, and preset editing live here.</p></div> <div class="row g-4 mt-0"><div class="col-12"><div class="card shadow-sm h-100"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Administration</p> <h2 class="h4">${escape_html("Maintenance")}</h2> <p class="text-body-secondary">${escape_html("Run customer-facing refreshes and regenerate graphs and PDFs.")}</p> `);
       {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Customer-Facing Refresh</h3> <p class="mb-0 text-body-secondary">Manually ask the public catalogue site to refresh its local cache so recent product, series, and product type edits appear sooner.</p></div> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Refresh Customer-Facing Site</button></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup DB Data</h3> <p class="mb-2 text-body-secondary">Download the PostgreSQL backup ZIP. This is the plug-and-play restore package for the app database.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", backupLoading.database || backupLoading["database-restore"], true)}>Download DB Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="db-backup-restore-file">Restore DB Data ZIP</label> <input id="db-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", backupLoading.database || backupLoading["database-restore"], true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", backupLoading.database || backupLoading["database-restore"] || true, true)}>Restore DB Data ZIP</button></div></div> `);
-      if (backupJobs.database) {
-        $$renderer2.push("<!--[0-->");
-        JobProgressPanel($$renderer2, { job: backupJobs.database, label: "DB data backup" });
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> `);
-      if (backupJobs["database-restore"]) {
-        $$renderer2.push("<!--[0-->");
-        JobProgressPanel($$renderer2, {
-          job: backupJobs["database-restore"],
-          label: "DB data restore"
-        });
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><h3 class="h6 mb-1">Backup Media Data</h3> <p class="mb-3 text-body-secondary">Download the media-only backup as five smaller logical ZIP archives. Backups and temporary import files are excluded.</p> <div class="row g-3"><!--[-->`);
-      const each_array_2 = ensure_array_like(mediaBackupChunks);
-      for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
-        let chunk = each_array_2[$$index_2];
-        $$renderer2.push(`<div class="col-12 col-lg-6"><div class="card border h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-2"><div><h4 class="h6 mb-1">${escape_html(chunk.label)}</h4> <p class="small text-body-secondary mb-3">${escape_html(chunk.description)}</p></div> <button class="btn btn-primary btn-sm flex-shrink-0" type="button"${attr("disabled", backupLoading[chunk.id] || backupLoading["media-restore"], true)}>Download ZIP</button></div> `);
-        if (backupJobs[chunk.id]) {
-          $$renderer2.push("<!--[0-->");
-          JobProgressPanel($$renderer2, { job: backupJobs[chunk.id], label: `${chunk.label} backup` });
-        } else {
-          $$renderer2.push("<!--[-1-->");
-        }
-        $$renderer2.push(`<!--]--></div></div></div>`);
-      }
-      $$renderer2.push(`<!--]--></div> <div class="row g-2 align-items-end mt-4"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIPs</label> <input id="media-backup-restore-file" class="form-control form-control-sm" type="file" multiple="" accept=".zip,application/zip"${attr("disabled", backupLoading["media-restore"], true)}/> <div class="form-text">Select one or more logical media backup archives.</div></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", backupLoading["media-restore"] || !mediaBackupFiles.length, true)}>Restore Selected Media ZIPs</button></div></div> `);
-      if (backupJobs["media-restore"]) {
-        $$renderer2.push("<!--[0-->");
-        JobProgressPanel($$renderer2, {
-          job: backupJobs["media-restore"],
-          label: "Media data restore"
-        });
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="mb-3">`);
-      FileManager($$renderer2, {
-        rootName: "data",
-        title: "Media File Manager",
-        description: "Browse and manage media folders in the deployment volume. Open a folder to upload, create folders, rename, or delete items.",
-        entryLabelResolver: mediaFolderLabelResolver
-      });
-      $$renderer2.push(`<!----></div> <div class="mb-3">`);
-      FileManager($$renderer2, {
-        rootName: "templates",
-        title: "Template File Manager",
-        description: "Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
-      });
-      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="mb-3"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Generation</p> <h3 class="h5 mb-1">Graphs and PDFs</h3> <p class="mb-0 text-body-secondary">Regenerate individual output groups, or run the complete graph and PDF generation workflow in one pass.</p> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div> <div class="card border mb-3"><div class="card-body bg-primary-subtle bg-opacity-25"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h4 class="h6 mb-1">Regenerate Everything</h4> <p class="mb-0 text-body-secondary">Regenerate all product and series graph images, every PDF type, and the combined catalogue PDF in one long-running job.</p></div> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", pendingMaintenanceConfirmation, true)}>Regenerate Everything</button></div> `);
-      if (pendingMaintenanceConfirmation?.starter === startRegenerateEverythingJob) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="alert alert-warning mt-3 mb-0 py-2"><div class="small mb-2">Regenerate all graph images and PDFs? This may take a long time.</div> <div class="d-flex gap-2"><button class="btn btn-warning btn-sm" type="button">Confirm regeneration</button> <button class="btn btn-outline-secondary btn-sm" type="button">Cancel</button></div></div>`);
-      } else {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--> `);
@@ -657,17 +364,7 @@ function _page($$renderer, $$props) {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--> `);
-      if (lastSuccessfulLabel("regenerate_everything")) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_everything"))}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", pendingMaintenanceConfirmation, true)}>Clear Graph Images</button></div></div> `);
-      if (pendingMaintenanceConfirmation?.starter === startDeleteAllGraphImagesJob) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="alert alert-warning mt-3 mb-0 py-2"><div class="small mb-2">Delete all generated graph images and clear their saved paths?</div> <div class="d-flex gap-2"><button class="btn btn-warning btn-sm" type="button">Confirm clearing</button> <button class="btn btn-outline-secondary btn-sm" type="button">Cancel</button></div></div>`);
-      } else {
+      {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--> `);
@@ -675,276 +372,18 @@ function _page($$renderer, $$props) {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--> `);
-      if (lastSuccessfulLabel("regenerate_all_graph_images")) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_graph_images"))}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product PDFs in one pass using the current product templates and graph data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product PDFs</button></div></div> `);
       {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--> `);
-      if (lastSuccessfulLabel("regenerate_all_product_pdfs")) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_product_pdfs"))}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Series PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all series PDFs in one pass using the current series templates and linked product data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Series PDFs</button></div></div> `);
       {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--> `);
-      if (lastSuccessfulLabel("regenerate_all_series_pdfs")) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_series_pdfs"))}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Type PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product type PDFs in one pass using the current product type templates and series data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Type PDFs</button></div></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> `);
-      if (lastSuccessfulLabel("regenerate_all_product_type_pdfs")) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_product_type_pdfs"))}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">All Product Types PDF</h3> <p class="mb-0 text-body-secondary">Build one combined catalogue with shared front matter and a contents page for each product type.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Combined PDF</button> <a class="btn btn-outline-secondary btn-sm" href="/api/public/media/all-product-types-pdf" target="_blank" rel="noreferrer">Open PDF</a></div></div> `);
-      {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> `);
-      if (lastSuccessfulLabel("refresh_all_product_types_pdf")) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("refresh_all_product_types_pdf"))}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
-                    flow into the product editor.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingProductTypes, true)}>${escape_html(loadingProductTypes ? "Refreshing..." : "Reload types")}</button></div> `);
-      if (typePresetError) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="alert alert-danger py-2">${escape_html(typePresetError)}</div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-      }
-      $$renderer2.push(`<!--]--> <div class="row g-3 align-items-end"><div class="col-12 col-md-6 col-lg-4"><label class="form-label" for="type-preset-select">Product type</label> `);
-      $$renderer2.select(
-        {
-          class: "form-select",
-          id: "type-preset-select",
-          value: selectedProductTypeId
-        },
-        ($$renderer3) => {
-          $$renderer3.option({ value: "" }, ($$renderer4) => {
-            $$renderer4.push(`-- Choose option --`);
-          });
-          $$renderer3.push(`<!--[-->`);
-          const each_array_3 = ensure_array_like(productTypes);
-          for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
-            let productType = each_array_3[$$index_3];
-            $$renderer3.option({ value: productType.id }, ($$renderer4) => {
-              $$renderer4.push(`${escape_html(productType.label)}`);
-            });
-          }
-          $$renderer3.push(`<!--]-->`);
-        }
-      );
-      $$renderer2.push(`</div> <div class="col-12 col-md-auto"><button class="btn btn-outline-primary" type="button"${attr("disabled", !selectedProductTypeId, true)}>Add Group</button></div> <div class="col-12 col-md-auto"><button class="btn btn-outline-secondary" type="button"${attr("disabled", !selectedProductTypeId, true)}>Reset from saved</button></div> <div class="col-12 col-md-auto"><button class="btn btn-primary" type="button"${attr("disabled", !selectedProductTypeId, true)}>${escape_html("Save Presets")}</button></div></div> `);
-      if (selectedProductTypeId) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="mt-3"><div class="row g-3 align-items-end mb-4"><div class="col-12 col-lg-6"><label class="form-label" for="type-preset-product-template">Default product PDF template</label> `);
-        $$renderer2.select(
-          {
-            class: "form-select",
-            id: "type-preset-product-template",
-            value: presetProductTemplateId
-          },
-          ($$renderer3) => {
-            $$renderer3.option({ value: "" }, ($$renderer4) => {
-              $$renderer4.push(`-- Choose option --`);
-            });
-            $$renderer3.push(`<!--[-->`);
-            const each_array_4 = ensure_array_like(productTemplates());
-            for (let $$index_4 = 0, $$length = each_array_4.length; $$index_4 < $$length; $$index_4++) {
-              let template = each_array_4[$$index_4];
-              $$renderer3.option({ value: template.id }, ($$renderer4) => {
-                $$renderer4.push(`${escape_html(template.label)}`);
-              });
-            }
-            $$renderer3.push(`<!--]-->`);
-          }
-        );
-        $$renderer2.push(`</div> <div class="col-12 col-lg-6"><label class="form-label" for="type-preset-series-template">Default series PDF template</label> `);
-        $$renderer2.select(
-          {
-            class: "form-select",
-            id: "type-preset-series-template",
-            value: presetSeriesTemplateId
-          },
-          ($$renderer3) => {
-            $$renderer3.option({ value: "" }, ($$renderer4) => {
-              $$renderer4.push(`-- Choose option --`);
-            });
-            $$renderer3.push(`<!--[-->`);
-            const each_array_5 = ensure_array_like(templateRegistry.series_templates ?? []);
-            for (let $$index_5 = 0, $$length = each_array_5.length; $$index_5 < $$length; $$index_5++) {
-              let template = each_array_5[$$index_5];
-              $$renderer3.option({ value: template.id }, ($$renderer4) => {
-                $$renderer4.push(`${escape_html(template.label)}`);
-              });
-            }
-            $$renderer3.push(`<!--]-->`);
-          }
-        );
-        $$renderer2.push(`</div> <div class="col-12"><p class="text-body-secondary mb-0">Band graph style defaults</p></div> <div class="col-12 col-md-4"><label class="form-label" for="type-preset-band-graph-background">Background colour</label> <div class="input-group"><input class="form-control form-control-color" id="type-preset-band-graph-background" type="color"${attr("value", presetBandGraphStyle.band_graph_background_color)}/> <input class="form-control" type="text"${attr("value", presetBandGraphStyle.band_graph_background_color)} placeholder="#ffffff"/></div></div> <div class="col-12 col-md-4"><label class="form-label" for="type-preset-band-graph-label">Label text colour</label> <div class="input-group"><input class="form-control form-control-color" id="type-preset-band-graph-label" type="color"${attr("value", presetBandGraphStyle.band_graph_label_text_color)}/> <input class="form-control" type="text"${attr("value", presetBandGraphStyle.band_graph_label_text_color)} placeholder="#000000"/></div></div> <div class="col-12 col-md-4"><label class="form-label" for="type-preset-band-graph-permissible">Permissible label colour</label> <div class="input-group"><input class="form-control form-control-color" id="type-preset-band-graph-permissible" type="color"${attr("value", presetBandGraphStyle.band_graph_permissible_label_color)}/> <input class="form-control" type="text"${attr("value", presetBandGraphStyle.band_graph_permissible_label_color)} placeholder="#000000"/></div></div> <div class="col-12 col-md-4"><label class="form-label" for="type-preset-band-graph-opacity">Faded area opacity</label> <input class="form-control" id="type-preset-band-graph-opacity" type="number" min="0" max="1" step="0.01"${attr("value", presetBandGraphStyle.band_graph_faded_opacity)}/></div></div> `);
-        if (presetGroups.length) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="vstack gap-3"><!--[-->`);
-          const each_array_6 = ensure_array_like(presetGroups);
-          for (let groupIndex = 0, $$length = each_array_6.length; groupIndex < $$length; groupIndex++) {
-            let group = each_array_6[groupIndex];
-            $$renderer2.push(`<div${attr_class(
-              `border rounded p-3 ${group._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
-              "svelte-g40i6i"
-            )}><div class="d-flex flex-wrap gap-2 align-items-center mb-3"><input class="form-control" style="max-width: 22rem;" type="text" placeholder="Group name"${attr("value", group.group_name)}/> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", groupIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", groupIndex === presetGroups.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${group._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-g40i6i")} type="button">${escape_html(group._pending_delete ? "Undo Delete" : "Delete Group")}</button> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", group._pending_delete, true)}>Add Parameter</button></div> `);
-            if (group._pending_delete) {
-              $$renderer2.push("<!--[0-->");
-              $$renderer2.push(`<p class="small text-danger-emphasis mb-2">This group is marked for deletion. Save Presets to apply the deletion.</p>`);
-            } else {
-              $$renderer2.push("<!--[-1-->");
-            }
-            $$renderer2.push(`<!--]--> <div class="vstack gap-2"><!--[-->`);
-            const each_array_7 = ensure_array_like(group.parameters);
-            for (let parameterIndex = 0, $$length2 = each_array_7.length; parameterIndex < $$length2; parameterIndex++) {
-              let parameter = each_array_7[parameterIndex];
-              $$renderer2.push(`<div${attr_class(
-                `border rounded p-3 bg-body-tertiary ${parameter._pending_delete ? "border-danger-subtle bg-danger-subtle opacity-75" : ""}`,
-                "svelte-g40i6i"
-              )}><div class="row g-3 align-items-end"><div class="col-12 col-lg-3"><label class="form-label"${attr("for", `type-preset-${groupIndex}-parameter-${parameterIndex}-name`)}>Parameter name</label> <input class="form-control"${attr("id", `type-preset-${groupIndex}-parameter-${parameterIndex}-name`)} type="text"${attr("value", parameter.parameter_name)}/></div> <div class="col-12 col-lg-2"><label class="form-label"${attr("for", `type-preset-${groupIndex}-parameter-${parameterIndex}-value-type`)}>Value type</label> `);
-              $$renderer2.select(
-                {
-                  class: "form-select",
-                  id: `type-preset-${groupIndex}-parameter-${parameterIndex}-value-type`,
-                  value: parameter.value_type
-                },
-                ($$renderer3) => {
-                  $$renderer3.option({ value: "string" }, ($$renderer4) => {
-                    $$renderer4.push(`Text`);
-                  });
-                  $$renderer3.option({ value: "number" }, ($$renderer4) => {
-                    $$renderer4.push(`Number`);
-                  });
-                }
-              );
-              $$renderer2.push(`</div> `);
-              if (parameter.value_type === "string") {
-                $$renderer2.push("<!--[0-->");
-                $$renderer2.push(`<div class="col-12 col-lg-5"><label class="form-label"${attr("for", `type-preset-${groupIndex}-parameter-${parameterIndex}-text`)}>Text value</label> <input class="form-control"${attr("id", `type-preset-${groupIndex}-parameter-${parameterIndex}-text`)} type="text"${attr("value", parameter.value_string)}/></div>`);
-              } else {
-                $$renderer2.push("<!--[-1-->");
-                $$renderer2.push(`<div class="col-12 col-lg-2"><label class="form-label"${attr("for", `type-preset-${groupIndex}-parameter-${parameterIndex}-number`)}>Numeric value</label> <input class="form-control"${attr("id", `type-preset-${groupIndex}-parameter-${parameterIndex}-number`)} type="number" step="any"${attr("value", parameter.value_number)}/></div> <div class="col-12 col-lg-3"><label class="form-label"${attr("for", `type-preset-${groupIndex}-parameter-${parameterIndex}-unit`)}>Unit</label> `);
-                $$renderer2.select(
-                  {
-                    class: "form-select",
-                    id: `type-preset-${groupIndex}-parameter-${parameterIndex}-unit`,
-                    value: parameter.preferred_unit
-                  },
-                  ($$renderer3) => {
-                    $$renderer3.option({ value: "" }, ($$renderer4) => {
-                      $$renderer4.push(`No unit`);
-                    });
-                    $$renderer3.push(`<!--[-->`);
-                    const each_array_8 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
-                    for (let $$index_6 = 0, $$length3 = each_array_8.length; $$index_6 < $$length3; $$index_6++) {
-                      let unitOption = each_array_8[$$index_6];
-                      $$renderer3.option({ value: unitOption }, ($$renderer4) => {
-                        $$renderer4.push(`${escape_html(unitOption)}`);
-                      });
-                    }
-                    $$renderer3.push(`<!--]-->`);
-                    $$renderer3.option({ value: "__custom__" }, ($$renderer4) => {
-                      $$renderer4.push(`Custom...`);
-                    });
-                  }
-                );
-                $$renderer2.push(`</div> `);
-                if (parameter.preferred_unit === "__custom__") {
-                  $$renderer2.push("<!--[0-->");
-                  $$renderer2.push(`<div class="col-12 col-lg-2"><label class="form-label"${attr("for", `type-preset-${groupIndex}-parameter-${parameterIndex}-custom-unit`)}>Custom unit</label> <input class="form-control"${attr("id", `type-preset-${groupIndex}-parameter-${parameterIndex}-custom-unit`)} type="text"${attr("value", parameter.custom_unit)}/></div>`);
-                } else {
-                  $$renderer2.push("<!--[-1-->");
-                }
-                $$renderer2.push(`<!--]-->`);
-              }
-              $$renderer2.push(`<!--]--> <div class="col-12 col-lg-2"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === group.parameters.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${parameter._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-g40i6i")} type="button"${attr("disabled", group._pending_delete, true)}>${escape_html(parameter._pending_delete ? "Undo Delete" : "Delete")}</button></div></div></div></div>`);
-            }
-            $$renderer2.push(`<!--]--></div></div>`);
-          }
-          $$renderer2.push(`<!--]--></div>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-          $$renderer2.push(`<p class="text-body-secondary mb-0">No preset groups yet. Add a group to start defining the type preset.</p>`);
-        }
-        $$renderer2.push(`<!--]--> <div class="mt-4"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h4 class="h6 mb-0">RPM line presets</h4> <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary btn-sm" type="button">Add RPM Line</button> <button class="btn btn-outline-secondary btn-sm" type="button">Reset RPM lines</button></div></div> `);
-        if (presetRpmLines.length) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="vstack gap-3"><!--[-->`);
-          const each_array_9 = ensure_array_like(presetRpmLines);
-          for (let lineIndex = 0, $$length = each_array_9.length; lineIndex < $$length; lineIndex++) {
-            let line = each_array_9[lineIndex];
-            $$renderer2.push(`<div${attr_class(
-              `border rounded p-3 ${line._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
-              "svelte-g40i6i"
-            )}><div class="row g-3 align-items-end"><div class="col-12 col-md-3"><label class="form-label"${attr("for", `type-preset-rpm-line-${lineIndex}-rpm`)}>RPM</label> <input class="form-control"${attr("id", `type-preset-rpm-line-${lineIndex}-rpm`)} type="number" step="any"${attr("value", line.rpm)}/></div> <div class="col-12 col-md-5"><label class="form-label"${attr("for", `type-preset-rpm-line-${lineIndex}-band-color`)}>Band colour</label> <div class="input-group"><input class="form-control form-control-color"${attr("id", `type-preset-rpm-line-${lineIndex}-band-color`)} type="color"${attr("value", line.band_color)}/> <input class="form-control" type="text"${attr("value", line.band_color)} placeholder="#5E86A7"/></div></div> <div class="col-12 col-md-4"><div class="d-flex flex-wrap gap-2 justify-content-md-end"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", lineIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", lineIndex === presetRpmLines.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${line._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-g40i6i")} type="button">${escape_html(line._pending_delete ? "Undo Delete" : "Delete")}</button> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", line._pending_delete, true)}>Add Point</button></div></div></div> `);
-            if (line._pending_delete) {
-              $$renderer2.push("<!--[0-->");
-              $$renderer2.push(`<p class="small text-danger-emphasis mt-3 mb-0">This RPM line is marked for deletion. Save Presets to apply the deletion.</p>`);
-            } else {
-              $$renderer2.push("<!--[-1-->");
-            }
-            $$renderer2.push(`<!--]--> <div class="table-responsive mt-3"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>Airflow</th><th>Pressure</th><th>Actions</th></tr></thead><tbody><!--[-->`);
-            const each_array_10 = ensure_array_like(line.points);
-            for (let pointIndex = 0, $$length2 = each_array_10.length; pointIndex < $$length2; pointIndex++) {
-              let point = each_array_10[pointIndex];
-              $$renderer2.push(`<tr${attr_class(clsx(point._pending_delete ? "table-danger" : ""))}><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.airflow)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.pressure)}/></td><td><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === 0 || line._pending_delete || point._pending_delete, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === line.points.length - 1 || line._pending_delete || point._pending_delete, true)}>Down</button> <button${attr_class(`btn btn-sm ${point._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-g40i6i")} type="button"${attr("disabled", line._pending_delete, true)}>${escape_html(point._pending_delete ? "Undo Delete" : "Delete")}</button></div></td></tr>`);
-            }
-            $$renderer2.push(`<!--]--></tbody></table></div></div>`);
-          }
-          $$renderer2.push(`<!--]--></div>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-          $$renderer2.push(`<p class="text-body-secondary mb-0">No RPM line presets yet. Add one to start defining the default graph.</p>`);
-        }
-        $$renderer2.push(`<!--]--></div> <div class="mt-4"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h4 class="h6 mb-0">Efficiency / permissible presets</h4> <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary btn-sm" type="button">Add Point</button> <button class="btn btn-outline-secondary btn-sm" type="button">Reset points</button></div></div> `);
-        if (presetEfficiencyPoints.length) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>Airflow</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
-          const each_array_11 = ensure_array_like(presetEfficiencyPoints);
-          for (let pointIndex = 0, $$length = each_array_11.length; pointIndex < $$length; pointIndex++) {
-            let point = each_array_11[pointIndex];
-            $$renderer2.push(`<tr${attr_class(clsx(point._pending_delete ? "table-danger" : ""))}><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.airflow)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.efficiency_centre)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.efficiency_lower_end)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.efficiency_higher_end)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.permissible_use)}/></td><td><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === 0 || point._pending_delete, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === presetEfficiencyPoints.length - 1 || point._pending_delete, true)}>Down</button> <button${attr_class(`btn btn-sm ${point._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-g40i6i")} type="button">${escape_html(point._pending_delete ? "Undo Delete" : "Delete")}</button></div></td></tr>`);
-          }
-          $$renderer2.push(`<!--]--></tbody></table></div>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-          $$renderer2.push(`<p class="text-body-secondary mb-0">No efficiency/permissible presets yet.</p>`);
-        }
-        $$renderer2.push(`<!--]--></div></div>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
-        $$renderer2.push(`<p class="text-body-secondary mt-3 mb-0">Choose a product type to edit its presets.</p>`);
-      }
-      $$renderer2.push(`<!--]--></div></div></div></div></div></div></div>`);
+      $$renderer2.push(`<!--]--></div></div></div></div></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]-->`);
+    $$renderer2.push(`<!--]--></div></div>`);
     if ($$store_subs) unsubscribe_stores($$store_subs);
   });
 }

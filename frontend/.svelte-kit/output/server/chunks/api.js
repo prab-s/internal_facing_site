@@ -17,6 +17,7 @@ async function apiFetch(path, options = {}, fetchImpl = fetch) {
     await ensureCsrfToken(fetchImpl);
   }
   const headers = new Headers(options.headers || {});
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
   if (csrfToken && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
     headers.set("X-CSRF-Token", csrfToken);
   }
@@ -46,7 +47,8 @@ async function apiFetch(path, options = {}, fetchImpl = fetch) {
   if (!response.ok) {
     const contentType = response.headers.get("content-type") || "";
     const rawText = await response.text();
-    let message = rawText;
+    const fallbackMessage = "The request could not be completed. Please try again.";
+    let message = "";
     if (contentType.includes("application/json")) {
       try {
         const payload = JSON.parse(rawText);
@@ -62,10 +64,14 @@ async function apiFetch(path, options = {}, fetchImpl = fetch) {
           message = payload.message;
         }
       } catch {
-        message = rawText;
+        message = "";
       }
+    } else if (!contentType.includes("text/html")) {
+      message = rawText;
     }
-    const error = new Error(message);
+    message = String(message || fallbackMessage).trim();
+    if (/<\/?[a-z][^>]*>/i.test(message)) message = fallbackMessage;
+    const error = new Error(message.slice(0, 500));
     error.status = response.status;
     throw error;
   }
@@ -241,18 +247,6 @@ async function deleteProductImage(productId, imageId) {
   });
   return r.json();
 }
-async function startRegenerateEverythingJob() {
-  const r = await apiFetch("/maintenance/jobs/regenerate-everything", {
-    method: "POST"
-  });
-  return r.json();
-}
-async function startDeleteAllGraphImagesJob() {
-  const r = await apiFetch("/maintenance/jobs/graph-images/clear", {
-    method: "POST"
-  });
-  return r.json();
-}
 async function getMaintenanceJob(jobId) {
   const r = await apiFetch(`/maintenance/jobs/${jobId}`);
   return r.json();
@@ -262,11 +256,9 @@ async function getUsers() {
   return r.json();
 }
 export {
-  getSeries as A,
-  getUsers as B,
-  getProductTypes as C,
-  getProductChartData as D,
-  getProductTypePdfContext as E,
+  getProductTypes as A,
+  getProductChartData as B,
+  getProductTypePdfContext as C,
   reorderProductImages as a,
   uploadProductImages as b,
   getProduct as c,
@@ -291,6 +283,6 @@ export {
   getPublicProducts as v,
   getPublicProduct as w,
   getPublicSeries as x,
-  startRegenerateEverythingJob as y,
-  startDeleteAllGraphImagesJob as z
+  getSeries as y,
+  getUsers as z
 };

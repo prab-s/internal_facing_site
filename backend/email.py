@@ -6,6 +6,7 @@ import os
 import base64
 import hashlib
 import smtplib
+import socket
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -15,6 +16,18 @@ from cryptography.fernet import Fernet
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
+SMTP_SECURITY_MODES = {"starttls", "ssl", "none"}
+
+
+class SMTPDiagnosticError(RuntimeError):
+    """A safe, staged SMTP error suitable for support diagnostics."""
+
+    def __init__(self, stage: str, code: str, message: str, detail: str = ""):
+        self.stage = stage
+        self.code = code
+        self.user_message = message
+        self.detail = detail[:240]
+        super().__init__(message)
 
 
 def _env_flag(value: str) -> bool:
@@ -29,6 +42,7 @@ class SMTPConfig:
     password: str = ""
     use_tls: bool = True
     from_address: str = ""
+    security: str = ""
 
     @classmethod
     def from_environment(cls) -> "SMTPConfig":
@@ -38,14 +52,26 @@ class SMTPConfig:
         except ValueError as exc:
             raise ValueError("SMTP_PORT must be an integer") from exc
 
+        security = os.getenv("SMTP_SECURITY", "").strip().lower()
+        use_tls = _env_flag(os.getenv("SMTP_USE_TLS", "true"))
+        if security in SMTP_SECURITY_MODES:
+            use_tls = security == "starttls"
         return cls(
             host=os.getenv("SMTP_HOST", "").strip(),
             port=port,
             username=os.getenv("SMTP_USERNAME", "").strip(),
             password=os.getenv("SMTP_PASSWORD", ""),
-            use_tls=_env_flag(os.getenv("SMTP_USE_TLS", "true")),
+            use_tls=use_tls,
             from_address=os.getenv("SMTP_FROM_ADDRESS", "").strip(),
+            security=security,
         )
+
+    @property
+    def security_mode(self) -> str:
+        mode = (self.security or "").strip().lower()
+        if mode in SMTP_SECURITY_MODES:
+            return mode
+        return "starttls" if self.use_tls else "none"
 
     @property
     def is_configured(self) -> bool:
@@ -98,13 +124,81 @@ def send_email(
         message["Reply-To"] = reply_to
     message.set_content(body)
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP(smtp.host, smtp.port, timeout=20) as server:
-        server.ehlo()
-        if smtp.use_tls:
-            server.starttls(context=context)
-            server.ehlo()
+    server = None
+    try:
+        server = _open_smtp_connection(smtp)
         if smtp.username:
-            server.login(smtp.username, smtp.password)
-        server.send_message(message)
+            try:
+                server.login(smtp.username, smtp.password)
+            except Exception as exc:
+                raise _diagnostic_error("authentication", exc) from exc
+        try:
+            server.send_message(message)
+        except Exception as exc:
+            raise _diagnostic_error("message_submission", exc) from exc
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
     return True
+
+
+def smtp_connection_test(config: SMTPConfig) -> None:
+    """Open, negotiate, and authenticate SMTP without sending a message."""
+    server = None
+    try:
+        server = _open_smtp_connection(config)
+        if config.username:
+            try:
+                server.login(config.username, config.password)
+            except Exception as exc:
+                raise _diagnostic_error("authentication", exc) from exc
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+
+def _open_smtp_connection(smtp: SMTPConfig):
+    if not smtp.is_configured:
+        raise SMTPDiagnosticError(
+            "configuration",
+            "smtp_not_configured",
+            "Complete the SMTP host, port, and From address before testing.",
+        )
+
+    try:
+        if smtp.security_mode == "ssl":
+            server = smtplib.SMTP_SSL(smtp.host, smtp.port, timeout=20)
+        else:
+            server = smtplib.SMTP(smtp.host, smtp.port, timeout=20)
+        server.ehlo()
+        if smtp.security_mode == "starttls":
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
+        return server
+    except Exception as exc:
+        raise _diagnostic_error("connection", exc) from exc
+
+
+def _diagnostic_error(stage: str, exc: Exception) -> SMTPDiagnosticError:
+    detail = str(exc).strip()
+    if isinstance(exc, (socket.gaierror,)):
+        return SMTPDiagnosticError(stage, "smtp_dns_failed", "The SMTP host could not be resolved.", detail)
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return SMTPDiagnosticError(stage, "smtp_timeout", "The SMTP server did not respond in time.", detail)
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return SMTPDiagnosticError("authentication", "smtp_auth_failed", "SMTP authentication was rejected. Check the username, password, or app password.", detail)
+    if isinstance(exc, ssl.SSLError):
+        return SMTPDiagnosticError("tls", "smtp_tls_failed", "TLS negotiation failed. Check the security mode and port.", detail)
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return SMTPDiagnosticError("message_submission", "smtp_recipient_rejected", "The recipient address was rejected by the SMTP server.", detail)
+    if isinstance(exc, smtplib.SMTPSenderRefused):
+        return SMTPDiagnosticError("message_submission", "smtp_sender_rejected", "The From address was rejected by the SMTP server.", detail)
+    if isinstance(exc, smtplib.SMTPException):
+        return SMTPDiagnosticError(stage, "smtp_protocol_failed", "The SMTP server rejected the operation.", detail)
+    return SMTPDiagnosticError(stage, "smtp_connection_failed", "The application could not complete the SMTP operation.", detail)

@@ -1,0 +1,16 @@
+{% macro render_action(action, label, classes='btn btn-primary') -%}
+  {% set configured = action or {} %}
+  {% set action_type = configured.get('type', 'none') %}
+  {% set target = configured.get('target', '') %}
+  {% if label and action_type == 'page' %}
+    <a class="{{ classes }}" href="{{ target }}">{{ label }}</a>
+  {% elif label and action_type == 'external_url' %}
+    <a class="{{ classes }}" href="{{ target }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>
+  {% elif label and action_type == 'email' %}
+    <a class="{{ classes }}" href="{{ target }}">{{ label }}</a>
+  {% elif label and action_type == 'modal' and target == 'quoteRequestModal' %}
+    <a class="{{ classes }}" href="#quoteRequestModal" data-quote-request-trigger data-bs-toggle="modal" data-bs-target="#quoteRequestModal"{% if configured.get('defaultType') %} data-quote-request-default-type="{{ configured.get('defaultType') }}"{% endif %}>{{ label }}</a>
+  {% elif label and action_type == 'event' %}
+    <button class="{{ classes }}" type="button" data-cms-event="{{ target }}">{{ label }}</button>
+  {% endif %}
+{%- endmacro %}

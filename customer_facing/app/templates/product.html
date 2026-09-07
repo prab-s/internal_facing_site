@@ -107,10 +107,18 @@
         <div class="row g-3">
           {% for image in product.product_images %}
           <div class="col-12 col-sm-6">
-            <figure class="product-image-tile h-100 mb-0">
+            <button
+              type="button"
+              class="product-image-tile product-image-tile--button h-100 w-100"
+              data-product-image-trigger
+              data-image-index="{{ loop.index0 }}"
+              data-image-src="{{ media_url(image.url) }}"
+              data-image-alt="{{ product.model }} image {{ loop.index }}"
+              aria-label="View {{ product.model }} image {{ loop.index }} larger"
+            >
               <img class="product-image-tile__img" src="{{ media_url(image.url) }}"
                 alt="{{ product.model }} image {{ loop.index }}">
-            </figure>
+            </button>
           </div>
           {% endfor %}
         </div>
@@ -118,6 +126,29 @@
     </section>
     {% endif %}
   </aside>
+</div>
+
+<div class="modal fade product-image-modal" id="productImageModal" tabindex="-1"
+  aria-labelledby="productImageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5 mb-0" id="productImageModalLabel">{{ product.model }} image</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close image"></button>
+      </div>
+      <div class="modal-body text-center">
+        <button type="button" class="product-image-modal__nav product-image-modal__nav--previous"
+          data-product-image-previous aria-label="View previous image">
+          <span aria-hidden="true">&#8249;</span>
+        </button>
+        <img class="product-image-modal__img" data-product-image-modal-image src="" alt="">
+        <button type="button" class="product-image-modal__nav product-image-modal__nav--next"
+          data-product-image-next aria-label="View next image">
+          <span aria-hidden="true">&#8250;</span>
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% endblock %}
@@ -128,4 +159,5 @@
 </script>
 <script src="/static/js/echarts.min.js?v={{ app_build_marker }}" defer></script>
 <script src="/static/js/product-graph.js?v={{ app_build_marker }}" defer></script>
+<script src="/static/js/product-image-modal.js?v={{ app_build_marker }}" defer></script>
 {% endblock %}
