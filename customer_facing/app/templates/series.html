@@ -69,7 +69,10 @@
                 <input class="form-control" id="series-pressure-filter" data-series-pressure type="number" step="any" inputmode="decimal" placeholder="Pressure range">
               </div>
             </div>
-            <div class="small text-muted mt-3" data-series-filter-status></div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+              <div class="small text-muted" data-series-filter-status></div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-series-clear-filters>Clear filters</button>
+            </div>
           </div>
           <div
             id="series-graph"

@@ -337,10 +337,16 @@
       "_state.svelte.js"
     ]
   },
-  "src/routes/cms-experimental/+page.svelte": {
-    "file": "entries/pages/cms-experimental/_page.svelte.js",
-    "name": "entries/pages/cms-experimental/_page.svelte",
-    "src": "src/routes/cms-experimental/+page.svelte",
+  "src/routes/cms-experimental/+page.js": {
+    "file": "entries/pages/cms-experimental/_page.js",
+    "name": "entries/pages/cms-experimental/_page",
+    "src": "src/routes/cms-experimental/+page.js",
+    "isEntry": true
+  },
+  "src/routes/cms/+page.svelte": {
+    "file": "entries/pages/cms/_page.svelte.js",
+    "name": "entries/pages/cms/_page.svelte",
+    "src": "src/routes/cms/+page.svelte",
     "isEntry": true,
     "imports": [
       "_index2.js",
@@ -352,25 +358,7 @@
       "_equality.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.Ct1t9ekR.css"
-    ]
-  },
-  "src/routes/cms/+page.js": {
-    "file": "entries/pages/cms/_page.js",
-    "name": "entries/pages/cms/_page",
-    "src": "src/routes/cms/+page.js",
-    "isEntry": true
-  },
-  "src/routes/cms/+page.svelte": {
-    "file": "entries/pages/cms/_page.svelte.js",
-    "name": "entries/pages/cms/_page.svelte",
-    "src": "src/routes/cms/+page.svelte",
-    "isEntry": true,
-    "imports": [
-      "_index2.js"
-    ],
-    "css": [
-      "_app/immutable/assets/_page.BRhTXjX3.css"
+      "_app/immutable/assets/_page.X3sEafSL.css"
     ]
   },
   "src/routes/editor/+page.svelte": {

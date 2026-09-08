@@ -371,6 +371,17 @@ def build_product_graph_payload(product: dict, product_type: dict | None) -> dic
 
 
 def build_series_graph_payload(series: dict, product_type: dict | None, series_products: list[dict]) -> dict:
+    # The backend already builds the series graph from the fully-loaded ORM
+    # relationships. Prefer that payload so the customer site preserves the
+    # synthetic line roles (including the low line) and point-to-line IDs.
+    existing_payload = series.get("series_graph_payload")
+    if isinstance(existing_payload, dict) and existing_payload.get("rpmLines"):
+        return {
+            **existing_payload,
+            "productModel": existing_payload.get("productModel") or series.get("name"),
+            "graphMode": existing_payload.get("graphMode") or "series",
+        }
+
     graph_config_source = product_type or {}
 
     def resolve_field(name: str, fallback=None):

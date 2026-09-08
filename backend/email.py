@@ -104,6 +104,7 @@ def send_email(
     body: str,
     *,
     reply_to: str | None = None,
+    attachments: Sequence[dict] | None = None,
     config: SMTPConfig | None = None,
 ) -> bool:
     """Send a plain-text email, or return False without connecting if unconfigured."""
@@ -123,6 +124,16 @@ def send_email(
     if reply_to:
         message["Reply-To"] = reply_to
     message.set_content(body)
+    for attachment in attachments or []:
+        content = attachment.get("content", b"")
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        message.add_attachment(
+            content,
+            maintype=attachment.get("maintype", "application"),
+            subtype=attachment.get("subtype", "octet-stream"),
+            filename=attachment.get("filename", "attachment"),
+        )
 
     server = None
     try:

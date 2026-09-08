@@ -178,11 +178,24 @@ function rememberQuery(params) {
   } catch (_error) {}
 }
 
+function syncPerformanceTargetState() {
+  const targetState = window.CustomerFacingPerformanceTarget;
+  if (!targetState) return;
+  const filters = selectedFilters();
+  const target = {
+    airflow: filters.find((item) => item.group_name === "__graph__" && String(item.parameter_name).toLowerCase() === "airflow")?.min_number ?? null,
+    pressure: filters.find((item) => item.group_name === "__graph__" && String(item.parameter_name).toLowerCase() === "pressure")?.min_number ?? null
+  };
+  const current = targetState.read();
+  if (target.airflow !== current.airflow || target.pressure !== current.pressure) targetState.write(target);
+}
+
 async function updateResults() {
   if (!form || !results) return;
   const current = ++requestId;
   const params = queryParams();
   rememberQuery(params);
+  syncPerformanceTargetState();
   setLoading(true);
   try {
     const response = await fetch(`/finder/results?${params}`);

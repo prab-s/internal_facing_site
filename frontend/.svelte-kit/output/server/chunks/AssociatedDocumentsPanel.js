@@ -1,5 +1,5 @@
 import { e as escape_html, b as attr, d as ensure_array_like, i as bind_props } from "./index2.js";
-import { m as getAssociatedDocuments } from "./api.js";
+import { q as getAssociatedDocuments } from "./api.js";
 import { f as fallback } from "./equality.js";
 function AssociatedDocumentsPanel($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {

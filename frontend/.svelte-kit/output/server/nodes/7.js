@@ -1,8 +1,8 @@
-
+import * as universal from '../entries/pages/cms-experimental/_page.js';
 
 export const index = 7;
-let component_cache;
-export const component = async () => component_cache ??= (await import('../entries/pages/cms-experimental/_page.svelte.js')).default;
-export const imports = ["_app/immutable/nodes/7.CP6e1bx-.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/Xfvm0wh3.js","_app/immutable/chunks/CswXccuY.js","_app/immutable/chunks/CZhBM-_2.js","_app/immutable/chunks/BxZVdMgG.js","_app/immutable/chunks/B3YFOBiC.js","_app/immutable/chunks/BNU4c8Ja.js","_app/immutable/chunks/BXYezlMe.js","_app/immutable/chunks/DbgJIGMH.js","_app/immutable/chunks/3otpX3pZ.js","_app/immutable/chunks/RXFdabFz.js","_app/immutable/chunks/C7YJlRmi.js","_app/immutable/chunks/CZXKnwXu.js","_app/immutable/chunks/BxoftTQQ.js","_app/immutable/chunks/Bfc47y5P.js","_app/immutable/chunks/B0JxcrLz.js","_app/immutable/chunks/CEAfkvBP.js","_app/immutable/chunks/D65Jt0uE.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/chunks/5gOwN0Fv.js","_app/immutable/chunks/BGmSysew.js","_app/immutable/chunks/CjSuLwnf.js","_app/immutable/chunks/CnIboxDj.js","_app/immutable/chunks/CjQCcfaa.js","_app/immutable/chunks/CLF68cq-.js"];
-export const stylesheets = ["_app/immutable/assets/RichTextEditor.WXTMFd2b.css","_app/immutable/assets/7.BesWN_Ga.css"];
+export { universal };
+export const universal_id = "src/routes/cms-experimental/+page.js";
+export const imports = ["_app/immutable/nodes/7.DQRiKPDN.js","_app/immutable/chunks/pfMRWl6z.js","_app/immutable/chunks/BUApaBEI.js"];
+export const stylesheets = [];
 export const fonts = [];

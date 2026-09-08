@@ -1,0 +1,1 @@
+import{r as o}from"../chunks/pfMRWl6z.js";function t({url:r}){const e=r.searchParams.toString();throw o(307,`/cms${e?`?${e}`:""}`)}const n=Object.freeze(Object.defineProperty({__proto__:null,load:t},Symbol.toStringTag,{value:"Module"}));export{n as universal};

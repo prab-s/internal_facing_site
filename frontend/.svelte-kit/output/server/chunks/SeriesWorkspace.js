@@ -1,7 +1,7 @@
 import { b as attr, d as ensure_array_like, e as escape_html, i as bind_props, h as head } from "./index2.js";
 import { f as fallback } from "./equality.js";
 import { g as goto } from "./client.js";
-import { n as getSeriesById, o as deleteSeriesImage, p as reorderSeriesImages, q as uploadSeriesImages } from "./api.js";
+import { i as getSeriesById, j as deleteSeriesImage, k as reorderSeriesImages, l as uploadSeriesImages } from "./api.js";
 import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount, M as MAX_DESCRIPTION_SECTIONS } from "./descriptionSections.js";
 import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 import { R as RichTextEditor } from "./RichTextEditor.js";

@@ -912,6 +912,36 @@ function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1
   };
 }
 
+function buildTargetPointSeries(targetPoint) {
+  const airflow = Number(targetPoint?.airflow);
+  const pressure = Number(targetPoint?.pressure);
+  if (!Number.isFinite(airflow) || !Number.isFinite(pressure)) return [];
+  return [{
+    name: 'Selected performance target',
+    type: 'custom',
+    coordinateSystem: 'cartesian2d',
+    silent: true,
+    tooltip: { show: false },
+    showInLegend: false,
+    data: [{ value: [airflow, pressure] }],
+    renderItem(_params, api) {
+      const point = api.coord([api.value(0), api.value(1)]);
+      const size = 9;
+      return {
+        type: 'group',
+        x: point[0],
+        y: point[1],
+        children: [
+          { type: 'circle', shape: { cx: 0, cy: 0, r: size }, style: { fill: '#ffffff', stroke: '#dc2626', lineWidth: 3 } },
+          { type: 'line', shape: { x1: -size - 5, y1: 0, x2: size + 5, y2: 0 }, style: { stroke: '#dc2626', lineWidth: 2 } },
+          { type: 'line', shape: { x1: 0, y1: -size - 5, x2: 0, y2: size + 5 }, style: { stroke: '#dc2626', lineWidth: 2 } }
+        ]
+      };
+    },
+    z: 10000
+  }];
+}
+
 // ---------------------------------------------------------------------------
 // Geometry helpers
 //
@@ -1817,36 +1847,45 @@ function buildRpmSeries(
   }
 
   const chartFontFamily = chartTheme.fontFamily ?? 'sans-serif';
-  const byRpm = {};
-  const rpmByLineId = Object.fromEntries(rpmLines.map((line) => [line.id, line.rpm]));
-  const lineByRpm = new Map(
-    rpmLines
-      .map((line) => [Number(line.rpm), line])
-      .filter(([rpm]) => !Number.isNaN(rpm))
-  );
+  const byLine = new Map();
+  const rpmByLineId = Object.fromEntries(rpmLines.map((line) => [String(line.id), line.rpm]));
   for (const point of rpmPoints) {
-    const key = String(point.rpm ?? rpmByLineId[point.rpm_line_id] ?? '');
-    if (!byRpm[key]) byRpm[key] = [];
-    byRpm[key].push({
+    // Series payloads use synthetic line IDs so a low/high pair must remain
+    // separate even when two products share the same RPM. Product payloads
+    // may not include line IDs, so retain RPM as the fallback grouping key.
+    const lineId = point.rpm_line_id ?? '';
+    const key = lineId !== ''
+      ? `line:${String(lineId)}`
+      : `rpm:${String(point.rpm ?? '')}`;
+    if (!byLine.has(key)) byLine.set(key, []);
+    byLine.get(key).push({
       value: [point.airflow ?? 0, point.pressure ?? 0],
       id: point.id,
-      rpm: point.rpm ?? rpmByLineId[point.rpm_line_id],
+      rpm: point.rpm ?? rpmByLineId[String(point.rpm_line_id)] ?? point.rpm,
       rpm_line_id: point.rpm_line_id
     });
   }
 
-  const rpms = Object.keys(byRpm)
-    .filter((key) => key !== '')
-    .map((rpm) => Number(rpm))
-    .filter((rpm) => !Number.isNaN(rpm))
-    .sort((a, b) => a - b);
+  const lineById = new Map(rpmLines.map((line) => [`line:${String(line.id)}`, line]));
+  const lineByRpm = new Map(
+    rpmLines
+      .map((line) => [`rpm:${String(line.rpm)}`, line])
+  );
+  const lineEntries = [...byLine.entries()]
+    .map(([key, points]) => ({
+      line: lineById.get(key) ?? lineByRpm.get(key) ?? null,
+      points
+    }))
+    .filter(({ line, points }) => line?.rpm != null || points.some((point) => point.rpm != null))
+    .sort((a, b) => Number(a.line?.rpm ?? a.points[0]?.rpm) - Number(b.line?.rpm ?? b.points[0]?.rpm));
 
   const series = [];
   const rpmCurveEntries = [];
   const useBandLineColors = colorRpmLinesByBand || (normalizedGraphMode === 'product' && showRpmBandShading);
-  for (const [idx, rpm] of rpms.entries()) {
-    const rpmLine = lineByRpm.get(Number(rpm)) ?? null;
-    const pointsAtRpm = byRpm[String(rpm)] ?? [];
+  for (const [idx, entry] of lineEntries.entries()) {
+    const rpmLine = entry.line;
+    const rpm = Number(rpmLine?.rpm ?? entry.points[0]?.rpm);
+    const pointsAtRpm = entry.points;
     const hasMultiplePoints = pointsAtRpm.length > 1;
     const bandColor = resolveBandColor(rpmLine, idx);
     const isSeriesGraphLine = Boolean(rpmLine?.line_role);
@@ -1895,7 +1934,7 @@ function buildRpmSeries(
         showSymbol: true,
         symbolSize: 16
       },
-      z: includeDragHandles ? idx * 2 : rpms.length - idx
+      z: includeDragHandles ? idx * 2 : lineEntries.length - idx
     });
 
     if (!includeDragHandles && displayLineData.length) {
@@ -2077,7 +2116,7 @@ function buildRpmSeries(
         areaStyle: { color: bandColor },
         emphasis: { disabled: true },
         tooltip: { show: false },
-        z: Math.max(0, rpms.length - idx - 1)
+        z: Math.max(0, lineEntries.length - idx - 1)
       });
     }
 
@@ -2383,7 +2422,8 @@ export function buildFullChartOption({
   showSeriesGraphLegend = false,
   seriesGraphLegendX = 1300,
   seriesGraphGridRight = '20%',
-  textSizeOffset = 0
+  textSizeOffset = 0,
+  targetPoint = null
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
     ? Number(labelTextScale)
@@ -2606,6 +2646,7 @@ export function buildFullChartOption({
       splitLine: { lineStyle: { color: chartTheme.grid } }
     },
     series: [
+      ...buildTargetPointSeries(targetPoint),
       ...rpmSeriesBundle.series,
       ...buildEfficiencyAndPermissibleSeries(
         efficiencyPoints,

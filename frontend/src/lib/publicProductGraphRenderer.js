@@ -69,6 +69,7 @@ export function buildPublicProductGraphOption(payload, themeName) {
     graphStyle: payload?.graphStyle ?? payload?.graphConfig ?? null,
     adaptGraphBackgroundToTheme: true,
     colorRpmLinesByBand: true,
+    targetPoint: payload?.targetPoint || null,
     ...PUBLIC_BROWSER_GRAPH_RENDER_OPTIONS
   });
 }
@@ -176,31 +177,43 @@ export function renderPublicProductGraph({ host, payload, echarts, themeName }) 
 
   const chart = echarts.init(host, null, { renderer: 'canvas' });
   chart.setOption(normalizeOption(chart, option), { notMerge: true, lazyUpdate: false });
+  window.__CUSTOMER_FACING_GRAPH_CHART__ = chart;
   attachPublicHoverTracking(chart, option);
   return chart;
 }
 
-function mountSeriesGraph({ host, payload, echarts, themeName }) {
+function mountGraphWithControls({ host, payload, echarts, themeName }) {
   const controls = document.querySelector('[data-series-graph-controls]');
   if (!controls) return renderPublicProductGraph({ host, payload, echarts, themeName });
 
   const modeSelect = controls.querySelector('[data-series-line-mode]');
   const airflowSelect = controls.querySelector('[data-series-airflow]');
   const pressureSelect = controls.querySelector('[data-series-pressure]');
+  const clearButton = controls.querySelector('[data-series-clear-filters]');
   const status = controls.querySelector('[data-series-filter-status]');
   const ranges = seriesGraphFilterRanges(payload);
+  const storedTarget = window.CustomerFacingPerformanceTarget?.read?.() || {};
+  if (airflowSelect && storedTarget.airflow != null) airflowSelect.value = storedTarget.airflow;
+  if (pressureSelect && storedTarget.pressure != null) pressureSelect.value = storedTarget.pressure;
   if (airflowSelect) airflowSelect.placeholder = `${ranges.airflow.min ?? ''}–${ranges.airflow.max ?? ''}`;
   if (pressureSelect) pressureSelect.placeholder = `${ranges.pressure.min ?? ''}–${ranges.pressure.max ?? ''}`;
 
   let chart = null;
   const update = () => {
-    const filteredPayload = filterSeriesGraphPayload(
-      payload,
-      modeSelect?.value || 'both',
-      airflowSelect?.value || '',
-      pressureSelect?.value || ''
-    );
+    const airflow = airflowSelect?.value || '';
+    const pressure = pressureSelect?.value || '';
+    const filteredPayload = String(payload.graphMode || '').toLowerCase() === 'series'
+      ? filterSeriesGraphPayload(payload, modeSelect?.value || 'both', airflow, pressure)
+      : { ...payload };
+    filteredPayload.targetPoint = airflow !== '' && pressure !== ''
+      ? { airflow: Number(airflow), pressure: Number(pressure) }
+      : null;
+    window.CustomerFacingPerformanceTarget?.write?.({
+      airflow: airflow === '' ? null : Number(airflow),
+      pressure: pressure === '' ? null : Number(pressure)
+    });
     if (chart) chart.dispose();
+    window.__CUSTOMER_FACING_GRAPH_CHART__ = null;
     host.replaceChildren();
     chart = filteredPayload?.rpmLines?.length
       ? renderPublicProductGraph({ host, payload: filteredPayload, echarts, themeName })
@@ -215,6 +228,21 @@ function mountSeriesGraph({ host, payload, echarts, themeName }) {
   modeSelect?.addEventListener('change', update);
   airflowSelect?.addEventListener('input', update);
   pressureSelect?.addEventListener('input', update);
+  clearButton?.addEventListener('click', () => {
+    if (airflowSelect) airflowSelect.value = '';
+    if (pressureSelect) pressureSelect.value = '';
+    window.CustomerFacingPerformanceTarget?.write?.({ airflow: null, pressure: null });
+    update();
+  });
+  window.addEventListener(window.CustomerFacingPerformanceTarget?.eventName || 'customer-facing-performance-target-change', (event) => {
+    const target = event.detail || {};
+    const nextAirflow = target.airflow ?? '';
+    const nextPressure = target.pressure ?? '';
+    const changed = airflowSelect?.value !== String(nextAirflow) || pressureSelect?.value !== String(nextPressure);
+    if (airflowSelect && document.activeElement !== airflowSelect) airflowSelect.value = nextAirflow;
+    if (pressureSelect && document.activeElement !== pressureSelect) pressureSelect.value = nextPressure;
+    if (changed) update();
+  });
   update();
 }
 
@@ -224,10 +252,16 @@ function bootstrapPublicProductGraph() {
   if (!host || !payload || !window.echarts) return;
 
   const themeName = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light';
-  if (String(payload.graphMode || '').toLowerCase() === 'series') {
-    mountSeriesGraph({ host, payload, echarts: window.echarts, themeName });
+  if (document.querySelector('[data-series-graph-controls]')) {
+    mountGraphWithControls({ host, payload, echarts: window.echarts, themeName });
   } else {
-    renderPublicProductGraph({ host, payload, echarts: window.echarts, themeName });
+    const target = window.CustomerFacingPerformanceTarget?.read?.() || {};
+    renderPublicProductGraph({
+      host,
+      payload: { ...payload, targetPoint: target.airflow != null && target.pressure != null ? target : null },
+      echarts: window.echarts,
+      themeName
+    });
   }
 }
 

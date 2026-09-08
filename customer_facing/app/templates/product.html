@@ -58,6 +58,22 @@
     <div class="card my-4 product-graph-card">
       <div class="card-header fw-semibold">Performance graph</div>
       <div class="card-body">
+        <div class="series-graph-controls border rounded p-3 mb-3" data-series-graph-controls>
+          <div class="row g-3 align-items-end">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold" for="product-airflow-filter">Airflow</label>
+              <input class="form-control" id="product-airflow-filter" data-series-airflow type="number" step="any" inputmode="decimal" placeholder="Airflow target">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold" for="product-pressure-filter">Pressure</label>
+              <input class="form-control" id="product-pressure-filter" data-series-pressure type="number" step="any" inputmode="decimal" placeholder="Pressure target">
+            </div>
+          </div>
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+            <div class="small text-muted" data-series-filter-status></div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-series-clear-filters>Clear filters</button>
+          </div>
+        </div>
         <div id="product-graph" class="product-graph-host" data-product-graph-host
           aria-label="{{ product.model }} performance graph"></div>
         {% if product.graph_image_url %}

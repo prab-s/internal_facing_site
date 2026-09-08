@@ -1,1 +1,2 @@
-export { default as component } from "../../../../src/routes/cms-experimental/+page.svelte";
+import * as universal from "../../../../src/routes/cms-experimental/+page.js";
+export { universal };

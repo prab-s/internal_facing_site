@@ -74,6 +74,29 @@ function getFieldValue(name) {
   return text(field.value);
 }
 
+function getPerformanceTarget() {
+  return window.CustomerFacingPerformanceTarget?.read?.() || { airflow: null, pressure: null };
+}
+
+function hydratePerformanceTargetFields() {
+  if (!quoteRequestForm) return;
+  const target = getPerformanceTarget();
+  for (const [name, value] of [["airflow_min", target.airflow], ["airflow_max", target.airflow], ["pressure_min", target.pressure], ["pressure_max", target.pressure]]) {
+    const field = quoteRequestForm.elements.namedItem(name);
+    if (field && value != null) field.value = value;
+  }
+}
+
+function getGraphImageDataUrl() {
+  const chart = window.__CUSTOMER_FACING_GRAPH_CHART__;
+  if (!chart || typeof chart.getDataURL !== "function") return "";
+  try {
+    return chart.getDataURL({ type: "png", pixelRatio: 2, excludeComponents: ["toolbox"] }) || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
 function setStatus(kind, message) {
   if (!quoteRequestStatus) return;
   const normalizedKind = kind === "success" ? "success" : kind === "warning" ? "warning" : kind === "info" ? "info" : "danger";
@@ -304,6 +327,7 @@ function buildPayload() {
     product_type: quoteRequestContext.productType || null,
     series: quoteRequestContext.series || null,
     product: quoteRequestContext.product || null,
+    graph_image_data_url: getGraphImageDataUrl(),
   };
   payload.request_type_label = buildRequestPathMessage(requestType);
   return payload;
@@ -375,6 +399,7 @@ function wireQuoteRequestModal() {
       setRequestType(activeDefaultRequestType);
     }
     populateContext();
+    hydratePerformanceTargetFields();
     applySuggestedAttributes();
     syncRequestPathDetails();
   });

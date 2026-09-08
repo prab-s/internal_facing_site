@@ -7656,11 +7656,26 @@ def _quote_request_body(record: QuoteRequest) -> str:
 
 
 def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str], smtp_config: SMTPConfig) -> bool:
+    attachments = []
+    graph_image_data_url = getattr(record, "_graph_image_data_url", "")
+    if graph_image_data_url:
+        try:
+            header, encoded = graph_image_data_url.split(",", 1)
+            if header == "data:image/png;base64" and len(encoded) <= 8_000_000:
+                attachments.append({
+                    "filename": "performance-graph.png",
+                    "content": base64.b64decode(encoded, validate=True),
+                    "maintype": "image",
+                    "subtype": "png",
+                })
+        except (ValueError, TypeError, base64.binascii.Error):
+            pass
     return send_email(
         recipient_emails,
         _quote_request_subject(record),
         _quote_request_body(record),
         reply_to=record.email,
+        attachments=attachments,
         config=smtp_config,
     )
 
@@ -9965,6 +9980,9 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
         verification_error=None,
         **record_data,
     )
+    # The browser-rendered graph is an email-only attachment and is deliberately
+    # not persisted in the enquiry database record.
+    record._graph_image_data_url = body.graph_image_data_url
     db.add(record)
     db.flush()
 

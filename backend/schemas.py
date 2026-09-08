@@ -889,6 +889,7 @@ class QuoteRequestCreate(BaseModel):
     product: Optional[dict] = None
     website: Optional[str] = None
     page_context: Optional[dict] = None
+    graph_image_data_url: Optional[str] = None
 
 
 class QuoteRequestResponse(BaseModel):
