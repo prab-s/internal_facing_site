@@ -36,6 +36,9 @@
   </script>
   <script>
     window.__QUOTE_REQUEST_CONTEXT__ = {{ quote_request_context | default({}) | tojson }};
+    window.__QUOTE_REQUEST_WORKFLOW__ = {{ {
+      "contextFields": (enquiry_cms.context_fields | default({}) if enquiry_cms is defined else {})
+    } | tojson }};
   </script>
   <script>
     (function () {

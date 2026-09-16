@@ -63,7 +63,8 @@
           record.verification_status,
           record.page_url,
           record.short_notes,
-          record.details
+          record.details,
+          JSON.stringify(record.context_json?.enquiry_workflow || {})
         ]
           .filter(Boolean)
           .join(' ')
@@ -234,6 +235,12 @@
                     {/if}
                     {#if record.context_json?.product_type?.label}
                       <div class="small">Type: {record.context_json.product_type.label}</div>
+                    {/if}
+                    {#if record.context_json?.enquiry_workflow?.performance_target?.airflow != null}
+                      <div class="small">Airflow target: {record.context_json.enquiry_workflow.performance_target.airflow}</div>
+                    {/if}
+                    {#if record.context_json?.enquiry_workflow?.performance_target?.pressure != null}
+                      <div class="small">Pressure target: {record.context_json.enquiry_workflow.performance_target.pressure}</div>
                     {/if}
                   </td>
                   <td>

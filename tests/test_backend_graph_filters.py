@@ -125,7 +125,7 @@ class GraphFilterRangeTests(unittest.TestCase):
 
 
 class BulkImportNormalizationTests(unittest.TestCase):
-    def test_zero_airflow_missing_value_is_filled_from_first_numeric_value_below_it(self):
+    def test_missing_first_row_values_are_not_invented(self):
         rows = [
             {
                 "airflow_l_s": "0",
@@ -151,8 +151,8 @@ class BulkImportNormalizationTests(unittest.TestCase):
 
         normalized = normalize_bulk_import_rows(rows)
 
-        self.assertEqual(normalized[0]["pressure_650rpm"], "88")
-        self.assertEqual(normalized[0]["pressure_800rpm"], "120")
+        self.assertNotIn("pressure_650rpm", normalized[0])
+        self.assertNotIn("pressure_800rpm", normalized[0])
         self.assertNotIn("pressure_650rpm", normalized[1])
         self.assertNotIn("pressure_800rpm", normalized[1])
         self.assertNotIn("pressure_650rpm", normalized[2])
@@ -329,7 +329,7 @@ class BulkImportNormalizationTests(unittest.TestCase):
             rpm_points,
         )
 
-        self.assertEqual(scaled[0]["efficiency_centre"], 9)
+        self.assertAlmostEqual(scaled[0]["efficiency_centre"], 7 * 20 / 15)
         self.assertEqual(scaled[1]["efficiency_centre"], 20)
         self.assertEqual(scaled[2]["efficiency_centre"], 16)
 
@@ -381,7 +381,7 @@ class BulkImportNormalizationTests(unittest.TestCase):
         self.assertEqual(scaled[2]["efficiency_lower_end"], 36)
         self.assertEqual(scaled[2]["efficiency_higher_end"], 36)
 
-    def test_overlay_scaling_rounds_efficiency_values_to_whole_numbers(self):
+    def test_overlay_scaling_preserves_decimal_precision(self):
         rpm_lines = [
             {"id": 1, "rpm": 1800},
             {"id": 2, "rpm": 2400},
@@ -420,8 +420,8 @@ class BulkImportNormalizationTests(unittest.TestCase):
 
         self.assertEqual(scaled[0]["airflow"], 5)
         self.assertEqual(scaled[1]["airflow"], 10)
-        self.assertEqual(scaled[0]["efficiency_centre"], 9)
-        self.assertEqual(scaled[1]["efficiency_centre"], 19)
+        self.assertAlmostEqual(scaled[0]["efficiency_centre"], 7 * 1.23456)
+        self.assertAlmostEqual(scaled[1]["efficiency_centre"], 15 * 1.23456)
 
 if __name__ == "__main__":
     unittest.main()

@@ -118,6 +118,7 @@ function ActionEditor($$renderer, $$props) {
           });
         }
       );
+      $$renderer2.push(` <div class="action-context-fields mt-2 svelte-40nju0"><span class="small text-body-secondary">Pass through to enquiry</span><label class="svelte-40nju0"><input type="checkbox"${attr("checked", action.contextFields?.airflow !== false, true)}/> Airflow</label><label class="svelte-40nju0"><input type="checkbox"${attr("checked", action.contextFields?.pressure !== false, true)}/> Pressure</label></div>`);
     } else if (action.type === "external_url" || action.type === "email" || action.type === "event") {
       $$renderer2.push("<!--[2-->");
       $$renderer2.push(`<input class="form-control form-control-sm mt-2"${attr("value", action.target || "")}${attr("placeholder", action.type === "event" ? "event-name" : action.type === "email" ? "mailto:team@example.com" : "https://example.com")}${attr("aria-label", `${label} target`)}/>`);
@@ -130,7 +131,7 @@ function ActionEditor($$renderer, $$props) {
 }
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
-    let protectedPage;
+    let protectedPage, activePageSlug, activeContent;
     let pageNames = [
       "About Us",
       "Contact",
@@ -405,6 +406,8 @@ function _page($$renderer, $$props) {
     let sectionDropTarget = null;
     let selectedSectionId = sections[0].id;
     let cmsPages = [];
+    let cmsPageData = {};
+    let pageContentDrafts = {};
     let navigation = [];
     let eventLog = [];
     let savingPage = false;
@@ -422,7 +425,16 @@ function _page($$renderer, $$props) {
     function sectionLabel(type) {
       return sectionTypes.find((item) => item.value === type)?.label || "Section";
     }
+    const slugForPage = (name) => cmsPages.find((page) => page.label === name)?.slug || {
+      "About Us": "about-us",
+      Contact: "contact",
+      "Engineering Services": "engineering-services",
+      "Past Projects": "past-projects",
+      "Enquiries modal": "enquiries-modal"
+    }[name];
     protectedPage = activePage === "Enquiries modal";
+    activePageSlug = slugForPage(activePage);
+    activeContent = pageContentDrafts[activePageSlug] || cmsPageData[activePageSlug]?.draft_content || {};
     head("17dfpeu", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>CMS — Internal Facing</title>`);
@@ -432,7 +444,14 @@ function _page($$renderer, $$props) {
     {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <div class="alert alert-info small"><strong>CMS editor.</strong> Drafts are saved per page. Publishing makes the page available publicly.</div> <div class="builder-toolbar card svelte-17dfpeu"><div class="toolbar-page-picker svelte-17dfpeu"><label class="form-label mb-1" for="builder-page">Editing page</label>`);
+    $$renderer2.push(`<!--]--> <div class="alert alert-info small"><strong>CMS editor.</strong> Drafts are saved per page. Publishing makes the page available publicly.</div> `);
+    if (protectedPage && true) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="card mb-3 p-3"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h2 class="h6 mb-1">Enquiry context</h2> <p class="small text-body-secondary mb-0">Choose which live performance values the enquiry workflow should capture when this modal is submitted.</p></div> <span class="badge text-bg-light">Workflow settings</span></div> <div class="row g-3 mt-1"><div class="col-md-6"><label class="context-toggle svelte-17dfpeu"><input type="checkbox"${attr("checked", activeContent.context_fields?.airflow !== false, true)} class="svelte-17dfpeu"/> <span><strong class="svelte-17dfpeu">Airflow</strong><small class="svelte-17dfpeu">Capture the current airflow target or filter value.</small></span></label></div> <div class="col-md-6"><label class="context-toggle svelte-17dfpeu"><input type="checkbox"${attr("checked", activeContent.context_fields?.pressure !== false, true)} class="svelte-17dfpeu"/> <span><strong class="svelte-17dfpeu">Pressure</strong><small class="svelte-17dfpeu">Capture the current pressure target or filter value.</small></span></label></div></div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="builder-toolbar card svelte-17dfpeu"><div class="toolbar-page-picker svelte-17dfpeu"><label class="form-label mb-1" for="builder-page">Editing page</label>`);
     $$renderer2.select({ id: "builder-page", class: "form-select", value: activePage }, ($$renderer3) => {
       $$renderer3.push(`<!--[-->`);
       const each_array = ensure_array_like(pageNames);
@@ -535,7 +554,7 @@ function _page($$renderer, $$props) {
           },
           "svelte-17dfpeu"
         );
-        $$renderer2.push(`<button class="btn btn-sm btn-outline-danger svelte-17dfpeu" type="button"${attr("disabled", protectedPage, true)}>Remove</button></div></div> <div class="section-fields svelte-17dfpeu"><div class="row g-2 mb-3"><div class="col-md-8"><label class="form-label svelte-17dfpeu"${attr("for", `title-${section.id}`)}>Section title</label><input${attr("id", `title-${section.id}`)} class="form-control"${attr("value", section.title)}/></div>`);
+        $$renderer2.push(`<button class="btn btn-sm btn-outline-danger svelte-17dfpeu" type="button"${attr("disabled", protectedPage, true)}>Remove</button></div></div> <div class="section-fields svelte-17dfpeu"><div class="row g-2 mb-3"><div class="col-md-8"><label class="form-label svelte-17dfpeu"${attr("for", `title-${section.id}`)}>Section title</label><input${attr("id", `title-${section.id}`)} class="form-control svelte-17dfpeu"${attr("value", section.title)}/></div>`);
         if (section.type === "cards") {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="col-md-4"><label class="form-label svelte-17dfpeu"${attr("for", `columns-${section.id}`)}>Card grid</label>`);
@@ -571,7 +590,7 @@ function _page($$renderer, $$props) {
           $$renderer2.push(`<!---->`);
           if (section.type === "carousel") {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<label class="form-check small mb-3"><input class="form-check-input" type="checkbox"${attr("checked", section.autoplay !== false, true)}/> Auto-advance slides</label>`);
+            $$renderer2.push(`<label class="form-check small mb-3"><input class="form-check-input svelte-17dfpeu" type="checkbox"${attr("checked", section.autoplay !== false, true)}/> Auto-advance slides</label>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }
@@ -579,14 +598,14 @@ function _page($$renderer, $$props) {
           const each_array_7 = ensure_array_like(section.cards || []);
           for (let cardIndex = 0, $$length2 = each_array_7.length; cardIndex < $$length2; cardIndex++) {
             let card = each_array_7[cardIndex];
-            $$renderer2.push(`<div class="sub-card svelte-17dfpeu"${attr_style(paintStyle(card))} role="listitem" draggable="true"><div class="sub-card-toolbar svelte-17dfpeu"><span class="drag-handle svelte-17dfpeu">⠿</span><strong class="svelte-17dfpeu">${escape_html(section.type === "carousel" ? `Slide ${cardIndex + 1}` : `Card ${cardIndex + 1}`)}</strong><button class="btn btn-sm btn-link text-danger svelte-17dfpeu" type="button"${attr("disabled", protectedPage || (section.cards || []).length <= 1, true)}>Remove</button></div><input class="form-control mb-2" aria-label="Card title"${attr("value", card.title)}/>`);
+            $$renderer2.push(`<div class="sub-card svelte-17dfpeu"${attr_style(paintStyle(card))} role="listitem" draggable="true"><div class="sub-card-toolbar svelte-17dfpeu"><span class="drag-handle svelte-17dfpeu">⠿</span><strong class="svelte-17dfpeu">${escape_html(section.type === "carousel" ? `Slide ${cardIndex + 1}` : `Card ${cardIndex + 1}`)}</strong><button class="btn btn-sm btn-link text-danger svelte-17dfpeu" type="button"${attr("disabled", protectedPage || (section.cards || []).length <= 1, true)}>Remove</button></div><input class="form-control mb-2 svelte-17dfpeu" aria-label="Card title"${attr("value", card.title)}/>`);
             if (card.image) {
               $$renderer2.push("<!--[0-->");
               $$renderer2.push(`<img class="card-image-preview svelte-17dfpeu"${attr("src", card.image)} alt=""/>`);
             } else {
               $$renderer2.push("<!--[-1-->");
             }
-            $$renderer2.push(`<!--]--><input class="form-control form-control-sm mb-2" aria-label="Card image URL" placeholder="Optional image URL"${attr("value", card.image || "")}/>`);
+            $$renderer2.push(`<!--]--><input class="form-control form-control-sm mb-2 svelte-17dfpeu" aria-label="Card image URL" placeholder="Optional image URL"${attr("value", card.image || "")}/>`);
             RichTextEditor($$renderer2, {
               id: `card-${card.id}`,
               rows: 3,
@@ -632,7 +651,7 @@ function _page($$renderer, $$props) {
           $$renderer2.push(`<!---->`);
           if (section.type === "image-text") {
             $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div class="mt-3"><label class="form-label svelte-17dfpeu"${attr("for", `image-${section.id}`)}>Section image URL</label><input${attr("id", `image-${section.id}`)} class="form-control"${attr("value", section.image || "")}/></div>`);
+            $$renderer2.push(`<div class="mt-3"><label class="form-label svelte-17dfpeu"${attr("for", `image-${section.id}`)}>Section image URL</label><input${attr("id", `image-${section.id}`)} class="form-control svelte-17dfpeu"${attr("value", section.image || "")}/></div>`);
           } else {
             $$renderer2.push("<!--[-1-->");
           }

@@ -1032,13 +1032,15 @@ export async function runBulkImport(
   files,
   {
     dryRun = false,
-    downsampleImportedCurves = true,
+    downsampleImportedCurves = false,
+    autoScaleOverlays = false,
     downsamplePointCount = 5
   } = {}
 ) {
   const sp = new URLSearchParams();
   if (dryRun) sp.set('dry_run', 'true');
-  if (downsampleImportedCurves) sp.set('downsample_imported_curves', 'true');
+  sp.set('downsample_imported_curves', String(downsampleImportedCurves));
+  sp.set('auto_scale_overlays', String(autoScaleOverlays));
   if (downsamplePointCount != null) sp.set('downsample_point_count', String(downsamplePointCount));
   const formData = new FormData();
   for (const file of files) {
@@ -1056,14 +1058,16 @@ export async function runBulkWorkbookImport(
   files,
   {
     dryRun = false,
-    downsampleImportedCurves = true,
+    downsampleImportedCurves = false,
+    autoScaleOverlays = false,
     downsamplePointCount = 5,
     manifestJson = null
   } = {}
 ) {
   const sp = new URLSearchParams();
   if (dryRun) sp.set('dry_run', 'true');
-  if (downsampleImportedCurves) sp.set('downsample_imported_curves', 'true');
+  sp.set('downsample_imported_curves', String(downsampleImportedCurves));
+  sp.set('auto_scale_overlays', String(autoScaleOverlays));
   if (downsamplePointCount != null) sp.set('downsample_point_count', String(downsamplePointCount));
   const formData = new FormData();
   if (manifestJson) {

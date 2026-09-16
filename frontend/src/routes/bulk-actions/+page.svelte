@@ -26,7 +26,8 @@
   let workbookError = '';
   let workbookReport = null;
   let workbookMappings = [];
-  let downsampleImportedCurves = true;
+  let downsampleImportedCurves = false;
+  let autoScaleOverlays = false;
   let downsamplePointCount = 5;
   let permissibleUseMode = 'both';
   let generateMissingPermissibleUseFromLower = false;
@@ -376,6 +377,7 @@
     const defaultSeries = getWorkbookDefaultSeries();
     const defaults = {
       downsample_imported_curves: downsampleImportedCurves,
+      auto_scale_overlays: autoScaleOverlays,
       downsample_point_count: Number(downsamplePointCount) || 5,
       product_type_key: DEFAULT_PRODUCT_TYPE_KEY,
       permissible_use_mode: permissibleUseMode,
@@ -817,6 +819,10 @@
                     <input class="form-check-input" id="bulk-downsample" type="checkbox" bind:checked={downsampleImportedCurves} />
                     <label class="form-check-label" for="bulk-downsample">Downsample imported curves</label>
                   </div>
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" id="bulk-auto-scale" type="checkbox" bind:checked={autoScaleOverlays} />
+                    <label class="form-check-label" for="bulk-auto-scale">Align efficiency and permissible-use lines to highest RPM curve</label>
+                  </div>
                 </div>
                 <div class="col-12 col-lg-6">
                   <label class="form-label form-label-sm" for="bulk-permissible-use-mode">Permissible-use shading mode</label>
@@ -846,7 +852,7 @@
                     id="bulk-downsample-count"
                     class="form-control"
                     type="number"
-                    min="1"
+                    min="2"
                     step="1"
                     bind:value={downsamplePointCount}
                     disabled={!downsampleImportedCurves}

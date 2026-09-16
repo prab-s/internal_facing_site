@@ -268,20 +268,15 @@ function interpolateYAtX(lineData, x) {
   if (!lineData.length) return null;
   if (x < lineData[0][0] || x > lineData[lineData.length - 1][0]) return null;
 
-  for (let index = 0; index < lineData.length; index += 1) {
-    const [currentX, currentY] = lineData[index];
-    if (currentX === x) return currentY;
-    if (index === lineData.length - 1) return currentY;
-
-    const [nextX, nextY] = lineData[index + 1];
-    if (x > currentX && x < nextX) {
-      if (nextX === currentX) return currentY;
-      const ratio = (x - currentX) / (nextX - currentX);
-      return currentY + (nextY - currentY) * ratio;
-    }
+  let low = 0, high = lineData.length - 1;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (lineData[mid][0] < x) low = mid + 1;
+    else high = mid;
   }
-
-  return null;
+  if (lineData[low][0] === x || low === 0) return lineData[low][1];
+  const [x0, y0] = lineData[low - 1], [x1, y1] = lineData[low];
+  return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
 }
 
 function findSegmentAroundX(lineData, x) {
@@ -747,7 +742,7 @@ function buildSeriesGraphLegendGraphics(rpmLines, graphConfig, chartTheme, legen
 // Builds a denser smoothed curve from the original RPM points.
 // We sample a monotone cubic interpolation so the displayed RPM lines and the
 // filled band polygons can share the same contour.
-function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
+export function buildSmoothedCurveSamples(lineData, samplesPerSegment = Math.max(1, Math.min(14, Math.ceil(600 / Math.max(1, lineData.length - 1))))) {
   if (lineData.length <= 2) return lineData.slice();
 
   const xs = lineData.map(([x]) => x);
@@ -1859,7 +1854,7 @@ function buildRpmSeries(
       : `rpm:${String(point.rpm ?? '')}`;
     if (!byLine.has(key)) byLine.set(key, []);
     byLine.get(key).push({
-      value: [point.airflow ?? 0, point.pressure ?? 0],
+      value: [Number(point.airflow ?? 0), Number(point.pressure ?? 0)],
       id: point.id,
       rpm: point.rpm ?? rpmByLineId[String(point.rpm_line_id)] ?? point.rpm,
       rpm_line_id: point.rpm_line_id
@@ -1899,7 +1894,7 @@ function buildRpmSeries(
       .map((point) => [point.value[0], point.value[1]])
       .sort((a, b) => a[0] - b[0]);
     const displayLineData =
-      !includeDragHandles && hasMultiplePoints
+      hasMultiplePoints
         ? buildSmoothedCurveSamples(rawLineData)
         : rawLineData;
     rpmCurveEntries.push([rpm, displayLineData]);
@@ -1934,7 +1929,7 @@ function buildRpmSeries(
         showSymbol: true,
         symbolSize: 16
       },
-      z: includeDragHandles ? idx * 2 : lineEntries.length - idx
+      z: includeDragHandles ? 100 + idx * 2 : lineEntries.length - idx
     });
 
     if (!includeDragHandles && displayLineData.length) {
@@ -2143,11 +2138,11 @@ function buildRpmSeries(
         scaleSize: 1.6,
         itemStyle: { borderColor: '#000000', borderWidth: 2 }
       },
-      z: idx * 2 + 1
+      z: 10000 + idx * 2 + 1
     });
   }
 
-  if (!includeDragHandles && showRpmBandShading) {
+  if (showRpmBandShading) {
     series.unshift(
       ...buildRpmBandPolygonSeries(
         rpmCurveEntries,
@@ -2282,18 +2277,19 @@ function buildEfficiencyAndPermissibleSeries(
   for (const definition of lineDefinitions) {
     const lineData = points
       .filter((point) => point[definition.key] != null)
-      .map((point) => [point.airflow ?? 0, point[definition.key] ?? 0])
+      .map((point) => [Number(point.airflow ?? 0), Number(point[definition.key] ?? 0)])
       .sort((a, b) => a[0] - b[0]);
 
     if (!lineData.length) continue;
 
     const color = chartTheme[definition.colorKey];
-    const smooth = lineData.length > 1 ? 0.18 : false;
+    const smooth = false;
+    const displayLineData = buildSmoothedCurveSamples(lineData);
 
     series.push(
       ...buildDecoratedOverlayLineSeries({
         name: definition.label,
-        data: lineData,
+        data: displayLineData,
         color,
         lineWidth: definition.lineWidth,
         smooth,
@@ -2465,21 +2461,21 @@ export function buildFullChartOption({
     pressureAxisMaxOverride ?? (rawPressureMax > 0 ? rawPressureMax * 1.05 : 100);
   const flowAxisTickInterval = getNiceAxisTickInterval(flowAxisMax);
   const pressureAxisTickInterval = getNiceAxisTickInterval(pressureAxisMax);
-  const dedicatedPermissibleBoundaryData = efficiencyPoints
+  const dedicatedPermissibleBoundaryData = buildSmoothedCurveSamples(efficiencyPoints
     .filter((point) => point.permissible_use != null)
-    .map((point) => [point.airflow ?? 0, Number(point.permissible_use)])
+    .map((point) => [Number(point.airflow ?? 0), Number(point.permissible_use)])
     .filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1]))
-    .sort((a, b) => a[0] - b[0]);
-  const upperEfficiencyBoundaryData = efficiencyPoints
+    .sort((a, b) => a[0] - b[0]));
+  const upperEfficiencyBoundaryData = buildSmoothedCurveSamples(efficiencyPoints
     .filter((point) => point.efficiency_higher_end != null)
-    .map((point) => [point.airflow ?? 0, Number(point.efficiency_higher_end)])
+    .map((point) => [Number(point.airflow ?? 0), Number(point.efficiency_higher_end)])
     .filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1]))
-    .sort((a, b) => a[0] - b[0]);
-  const lowerEfficiencyBoundaryData = efficiencyPoints
+    .sort((a, b) => a[0] - b[0]));
+  const lowerEfficiencyBoundaryData = buildSmoothedCurveSamples(efficiencyPoints
     .filter((point) => point.efficiency_lower_end != null)
-    .map((point) => [point.airflow ?? 0, Number(point.efficiency_lower_end)])
+    .map((point) => [Number(point.airflow ?? 0), Number(point.efficiency_lower_end)])
     .filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1]))
-    .sort((a, b) => a[0] - b[0]);
+    .sort((a, b) => a[0] - b[0]));
   let permissibleBoundaryData = [];
   let lowerPermissibleBoundaryData = [];
   if (normalizedPermissibleUseMode === 'dedicated') {
@@ -2542,6 +2538,7 @@ export function buildFullChartOption({
   const chartTitleFontSize = CHART_STYLE.titleFontSize - 6 + resolvedTextSizeOffset;
 
   return {
+    animation: false,
     backgroundColor: resolvedBandGraphBackgroundColor ?? chartTheme.background,
     textStyle: {
       color: chartTheme.text,

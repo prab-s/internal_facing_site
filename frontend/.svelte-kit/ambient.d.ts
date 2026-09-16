@@ -62,7 +62,6 @@ declare module '$env/static/private' {
 	export const npm_config_local_prefix: string;
 	export const BOOTSTRAP_ADMIN_PASSWORD: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
-	export const COLORTERM: string;
 	export const COLOR: string;
 	export const INTERNAL_FRAME_ANCESTORS: string;
 	export const DEBUGINFOD_URLS: string;
@@ -224,7 +223,6 @@ declare module '$env/dynamic/private' {
 		npm_config_local_prefix: string;
 		BOOTSTRAP_ADMIN_PASSWORD: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
-		COLORTERM: string;
 		COLOR: string;
 		INTERNAL_FRAME_ANCESTORS: string;
 		DEBUGINFOD_URLS: string;

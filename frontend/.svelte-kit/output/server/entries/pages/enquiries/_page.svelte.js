@@ -57,7 +57,8 @@ function _page($$renderer, $$props) {
             record.verification_status,
             record.page_url,
             record.short_notes,
-            record.details
+            record.details,
+            JSON.stringify(record.context_json?.enquiry_workflow || {})
           ].filter(Boolean).join(" ").toLowerCase();
           if (!haystack.includes(needle)) return false;
         }
@@ -162,6 +163,20 @@ function _page($$renderer, $$props) {
             if (record.context_json?.product_type?.label) {
               $$renderer3.push("<!--[0-->");
               $$renderer3.push(`<div class="small">Type: ${escape_html(record.context_json.product_type.label)}</div>`);
+            } else {
+              $$renderer3.push("<!--[-1-->");
+            }
+            $$renderer3.push(`<!--]--> `);
+            if (record.context_json?.enquiry_workflow?.performance_target?.airflow != null) {
+              $$renderer3.push("<!--[0-->");
+              $$renderer3.push(`<div class="small">Airflow target: ${escape_html(record.context_json.enquiry_workflow.performance_target.airflow)}</div>`);
+            } else {
+              $$renderer3.push("<!--[-1-->");
+            }
+            $$renderer3.push(`<!--]--> `);
+            if (record.context_json?.enquiry_workflow?.performance_target?.pressure != null) {
+              $$renderer3.push("<!--[0-->");
+              $$renderer3.push(`<div class="small">Pressure target: ${escape_html(record.context_json.enquiry_workflow.performance_target.pressure)}</div>`);
             } else {
               $$renderer3.push("<!--[-1-->");
             }

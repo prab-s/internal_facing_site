@@ -97,6 +97,7 @@
   let selectedSectionId = sections[0].id;
   let cmsPages = [];
   let cmsPageData = {};
+  let pageContentDrafts = {};
   let navigation = [];
   let eventLog = [];
   let notification = '';
@@ -112,11 +113,14 @@
   let copySource = '';
   let previewMode = false;
   $: protectedPage = activePage === 'Enquiries modal';
+  $: activePageSlug = slugForPage(activePage);
+  $: activeContent = pageContentDrafts[activePageSlug] || cmsPageData[activePageSlug]?.draft_content || {};
 
   onMount(async () => {
     try {
       const response = await getCmsPages();
       cmsPageData = Object.fromEntries(response.map((page) => [page.slug, page]));
+      pageContentDrafts = Object.fromEntries(response.map((page) => [page.slug, clone(page.draft_content || {})]));
       cmsPages = response.map((page) => ({ slug: page.slug, label: page.label, status: page.status }));
       const pageNameBySlug = { 'about-us': 'About Us', contact: 'Contact', 'engineering-services': 'Engineering Services', 'past-projects': 'Past Projects', 'enquiries-modal': 'Enquiries modal' };
       for (const page of response) if (!pageNameBySlug[page.slug]) pageNameBySlug[page.slug] = page.label;
@@ -156,10 +160,12 @@
   function cardDrop(sectionIndex, index, event) { event.preventDefault(); if (draggedCard?.sectionIndex === sectionIndex) moveCard(sectionIndex, draggedCard.cardIndex, index); draggedCard = null; }
   function sectionLabel(type) { return sectionTypes.find((item) => item.value === type)?.label || 'Section'; }
   function updateSectionAction(index, event) { updateSection(index, 'action', event.detail); }
+  function updateContentField(field, value) { pageContentDrafts = { ...pageContentDrafts, [activePageSlug]: { ...activeContent, [field]: value } }; }
+  function updateContextField(field, value) { updateContentField('context_fields', { ...(activeContent.context_fields || {}), [field]: value }); }
   async function saveNavigation() { try { const response = await updateCmsNavigation(navigation); navigation = response.items || navigation; recordEvent('Saved CMS navigation order and actions.'); notify('CMS navigation saved.'); } catch (error) { recordEvent(`Navigation save failed: ${error?.message || 'request failed'}`); notify(error?.message || 'Unable to save navigation order.', 'error'); } }
   function addEnquiriesNavigationItem() { if (navigation.some((item) => item.id === 'custom-enquiries')) return; navigation = [...navigation, { id: 'custom-enquiries', slug: '', label: 'Enquiries', status: 'custom', href: '', action: { type: 'modal', target: 'quoteRequestModal' } }]; recordEvent('Added the Enquiries modal to navigation.'); }
   const slugForPage = (name) => cmsPages.find((page) => page.label === name)?.slug || ({ 'About Us': 'about-us', Contact: 'contact', 'Engineering Services': 'engineering-services', 'Past Projects': 'past-projects', 'Enquiries modal': 'enquiries-modal' }[name]);
-  async function savePageLayout(publish = false) { if (protectedPage && publish) return; savingPage = true; try { const slug = slugForPage(activePage); const source = cmsPageData[slug] || {}; const updated = await updateCmsPage(slug, { content: source.draft_content || {}, seo: source.draft_seo || {}, layout: sections }); cmsPageData = { ...cmsPageData, [slug]: updated }; cmsPages = cmsPages.map((page) => page.slug === slug ? { ...page, status: updated.status } : page); if (publish) { const published = await publishCmsPage(slug); cmsPageData = { ...cmsPageData, [slug]: published }; cmsPages = cmsPages.map((page) => page.slug === slug ? { ...page, status: published.status } : page); notify(`${activePage} published.`); recordEvent(`Published ${activePage}.`); } else { notify(`${activePage} saved as draft.`); recordEvent(`Saved ${activePage} as a draft.`); } } catch (error) { notify(error?.message || 'Unable to save page layout.', 'error'); recordEvent(`Page save failed: ${error?.message || 'request failed'}`); } finally { savingPage = false; } }
+  async function savePageLayout(publish = false) { savingPage = true; try { const slug = slugForPage(activePage); const source = cmsPageData[slug] || {}; const updated = await updateCmsPage(slug, { content: activeContent, seo: source.draft_seo || {}, layout: sections }); cmsPageData = { ...cmsPageData, [slug]: updated }; pageContentDrafts = { ...pageContentDrafts, [slug]: clone(updated.draft_content || {}) }; cmsPages = cmsPages.map((page) => page.slug === slug ? { ...page, status: updated.status } : page); if (publish) { const published = await publishCmsPage(slug); cmsPageData = { ...cmsPageData, [slug]: published }; pageContentDrafts = { ...pageContentDrafts, [slug]: clone(published.draft_content || {}) }; cmsPages = cmsPages.map((page) => page.slug === slug ? { ...page, status: published.status } : page); notify(`${activePage} published.`); recordEvent(`Published ${activePage}.`); } else { notify(`${activePage} saved as draft.`); recordEvent(`Saved ${activePage} as a draft.`); } } catch (error) { notify(error?.message || 'Unable to save page layout.', 'error'); recordEvent(`Page save failed: ${error?.message || 'request failed'}`); } finally { savingPage = false; } }
   function moveNavigation(index, direction) { const next = [...navigation]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; navigation = next; }
   function slugify(value) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
   function updateNewLabel(value) { newLabel = value; if (!slugEdited) newSlug = slugify(value); }
@@ -173,6 +179,32 @@
   <div class="experiment-heading"><div><p class="eyebrow mb-2">Content management</p><h1>CMS page builder</h1><p class="text-body-secondary mb-0">Edit page sections, save drafts, publish content, and manage CMS navigation.</p></div><div class="d-flex gap-2 align-items-center"><button class="btn btn-outline-secondary" type="button" on:click={() => (previewMode = !previewMode)}>{previewMode ? 'Edit layout' : 'Preview page'}</button><button class="btn btn-outline-danger" type="button" on:click={undo} disabled={!undoStack.length}>Undo</button><button class="btn btn-outline-primary" type="button" on:click={() => savePageLayout(false)} disabled={savingPage}>{savingPage ? 'Saving…' : 'Save as draft'}</button><button class="btn btn-primary" type="button" on:click={() => savePageLayout(true)} disabled={savingPage}>Publish</button></div></div>
   {#if notification}<div class={`alert ${notificationType === 'error' ? 'alert-danger' : 'alert-success'} success-toast`} role={notificationType === 'error' ? 'alert' : 'status'} aria-live="polite">{notification}</div>{/if}
   <div class="alert alert-info small"><strong>CMS editor.</strong> Drafts are saved per page. Publishing makes the page available publicly.</div>
+
+  {#if protectedPage && !previewMode}
+    <div class="card mb-3 p-3">
+      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <h2 class="h6 mb-1">Enquiry context</h2>
+          <p class="small text-body-secondary mb-0">Choose which live performance values the enquiry workflow should capture when this modal is submitted.</p>
+        </div>
+        <span class="badge text-bg-light">Workflow settings</span>
+      </div>
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="context-toggle">
+            <input type="checkbox" checked={activeContent.context_fields?.airflow !== false} on:change={(event) => updateContextField('airflow', event.currentTarget.checked)} />
+            <span><strong>Airflow</strong><small>Capture the current airflow target or filter value.</small></span>
+          </label>
+        </div>
+        <div class="col-md-6">
+          <label class="context-toggle">
+            <input type="checkbox" checked={activeContent.context_fields?.pressure !== false} on:change={(event) => updateContextField('pressure', event.currentTarget.checked)} />
+            <span><strong>Pressure</strong><small>Capture the current pressure target or filter value.</small></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <div class="builder-toolbar card"><div class="toolbar-page-picker"><label class="form-label mb-1" for="builder-page">Editing page</label><select id="builder-page" class="form-select" value={activePage} on:change={selectPage}>{#each pageNames as name}<option value={name}>{name}</option>{/each}</select><button class="btn btn-sm btn-outline-primary mt-2" type="button" on:click={() => (createOpen = true)}>+ New page</button>{#if !protectedPage}<button class="btn btn-sm btn-outline-danger mt-2 ms-2" type="button" on:click={deleteCurrentPage}>Delete page</button>{/if}</div><div class="toolbar-statuses"><strong>CMS page status</strong><div class="status-list">{#each cmsPages as page}<span class:status-live={page.status === 'published'} class="status-item"><span>{page.label}</span><b>{page.status === 'published' ? 'Published' : 'Draft'}</b></span>{/each}</div></div><div class="toolbar-navigation"><strong>CMS navigation order</strong>{#if navigation.length}<div class="nav-order-list">{#each navigation as item, index}<span class="nav-order-item"><span>{index + 1}. {item.label}{#if item.slug}<small class="text-body-secondary d-block">/{item.slug}</small>{:else}<small class="text-primary d-block">custom action</small>{/if}</span><span><button class="btn btn-sm btn-link" type="button" on:click={() => moveNavigation(index, -1)} disabled={index === 0} aria-label={`Move ${item.label} up`}>↑</button><button class="btn btn-sm btn-link" type="button" on:click={() => moveNavigation(index, 1)} disabled={index === navigation.length - 1} aria-label={`Move ${item.label} down`}>↓</button></span></span>{/each}</div><button class="btn btn-sm btn-outline-primary mt-2" type="button" on:click={addEnquiriesNavigationItem}>+ Add Enquiries item</button><button class="btn btn-sm btn-outline-primary mt-2 ms-2" type="button" on:click={saveNavigation}>Save navigation</button>{/if}</div><div class="toolbar-help"><strong>Auto layout</strong><span>Auto sections pack two-across where possible while preserving their order.</span></div></div>
 
@@ -212,4 +244,5 @@
   @media (max-width:900px) { .builder-layout { grid-template-columns:1fr; }.template-panel { position:static; }.template-panel .card-body { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.55rem; }.template-panel h2,.template-panel p,.template-panel hr,.template-panel > .card-body > p:last-child { grid-column:1/-1; }.template-button { margin:0; }.builder-section,.builder-section.section-half,.builder-section.section-third { grid-column:span 12; } }
   @media (max-width:600px) { .experiment-heading,.builder-toolbar { align-items:stretch; flex-direction:column; }.builder-toolbar > div:first-child { min-width:0; }.template-panel .card-body,.card-list { grid-template-columns:1fr; }.section-controls { align-items:flex-start; flex-direction:column; }.section-controls > div:last-child { width:100%; }.width-select { flex:1; }.preview-form-grid { grid-template-columns:1fr 1fr; } }
   .page-preview { background: #f8f9fa; border: 1px solid var(--app-border); border-radius: .7rem; padding: 1.25rem; }.preview-section { background: var(--app-surface); border-radius: .5rem; margin-bottom: 1rem; padding: 1.5rem; }.preview-section:last-child { margin-bottom: 0; }.preview-section h2 { margin-bottom: 1rem; }.preview-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }.preview-card { border: 1px solid var(--app-border); border-radius: .5rem; padding: 1rem; }.preview-card img { display: block; height: 120px; margin: 0 auto 1rem; max-width: 100%; object-fit: contain; }.sub-card input[aria-label="Card enquiry button label"], .sub-card > .btn.btn-primary { display: none; } @media (max-width:700px) { .preview-card-grid { grid-template-columns:1fr; } }
+  .context-toggle { align-items:flex-start; border:1px solid var(--app-border); border-radius:.5rem; display:flex; gap:.65rem; padding:.75rem; }.context-toggle input { margin-top:.2rem; }.context-toggle strong,.context-toggle small { display:block; }.context-toggle strong { font-size:.8rem; }.context-toggle small { color:var(--app-muted); font-size:.72rem; margin-top:.15rem; }
 </style>

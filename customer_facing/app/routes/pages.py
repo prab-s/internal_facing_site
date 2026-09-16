@@ -89,6 +89,32 @@ async def common_context():
     return {"product_types": product_types, "enquiry_cms": enquiry_page.get("content", {}), "site_navigation": site_navigation}
 
 
+def quote_request_context(
+    request: Request,
+    *,
+    page_type: str,
+    page_title: str = "",
+    page_summary: str = "",
+    page_card_title: str = "",
+    page_card_summary: str = "",
+    product_type: dict | None = None,
+    series: dict | None = None,
+    product: dict | None = None,
+) -> dict:
+    """Build the stable public context consumed by the enquiry workflow."""
+    return {
+        "pageType": page_type,
+        "pageTitle": page_title,
+        "pageSummary": page_summary,
+        "pageCardTitle": page_card_title,
+        "pageCardSummary": page_card_summary,
+        "pageUrl": str(request.url),
+        "productType": product_type or {},
+        "series": series or {},
+        "product": product or {},
+    }
+
+
 async def site_page_context(slug):
     """Return published CMS content while keeping the public site resilient."""
     try:
@@ -468,6 +494,12 @@ async def homepage(request: Request):
         "series": series,
         "home_product_types": home_product_types,
         "featured_product_type": featured_product_type,
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="home",
+            page_title="Product Finder",
+            page_summary="Find suitable industrial products by product type and specification range.",
+        ),
     })
 
     return templates.TemplateResponse(request, "index.html", context)
@@ -486,6 +518,12 @@ async def contact_page(request: Request):
             "/contact",
         ),
         "cms": cms.get("content", {}),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="contact",
+            page_title=cms.get("seo", {}).get("title") or "Contact",
+            page_summary=cms.get("seo", {}).get("description") or "Contact Vent-Tech for product selection, pricing, engineering support, and project enquiries.",
+        ),
     })
     return templates.TemplateResponse(request, "contact.html", context)
 
@@ -499,6 +537,12 @@ async def engineering_services_page(request: Request):
         "request_quote_url": "#quoteRequestModal",
         "services": cms.get("content", {}).get("services") or ENGINEERING_SERVICES,
         "cms": cms.get("content", {}),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="engineering-services",
+            page_title=cms.get("seo", {}).get("title") or "Engineering Services",
+            page_summary=cms.get("seo", {}).get("description") or "Explore Vent-Tech engineering services.",
+        ),
         "seo": seo_meta(
             cms.get("seo", {}).get("title") or "Engineering Services",
             cms.get("seo", {}).get("description") or "Explore Vent-Tech engineering services including laser cutting, brake pressing, rolling, and flanging.",
@@ -520,6 +564,12 @@ async def past_projects_page(request: Request):
             "/past-projects",
         ),
         "cms": cms.get("content", {}),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="past-projects",
+            page_title=cms.get("seo", {}).get("title") or "Past Projects",
+            page_summary=cms.get("seo", {}).get("description") or "Explore Vent-Tech project highlights.",
+        ),
     })
     return templates.TemplateResponse(request, "past_projects.html", context)
 
@@ -536,6 +586,12 @@ async def about_us_page(request: Request):
             "/about-us",
         ),
         "cms": cms.get("content", {}),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="about-us",
+            page_title=cms.get("seo", {}).get("title") or "About Us",
+            page_summary=cms.get("seo", {}).get("description") or "Learn more about Vent-Tech.",
+        ),
     })
     return templates.TemplateResponse(request, "about_us.html", context)
 
@@ -567,6 +623,12 @@ async def products_page(request: Request):
         "products": products,
         "search": search,
         "all_product_types_pdf": all_product_types_pdf,
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="products",
+            page_title="Product Finder",
+            page_summary="Find suitable industrial products by product type and specification range.",
+        ),
     })
 
     return templates.TemplateResponse(request, "products.html", context)
@@ -608,6 +670,13 @@ async def product_type_page(request: Request, product_type_key: str):
             selected_type,
             ("product_type_printed_pdf_url", "product_type_pdf_url"),
             f"{selected_type['label']} catalogue",
+        ),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="product-type",
+            page_title=selected_type["label"],
+            page_summary=f"Browse {selected_type['label']} series and products.",
+            product_type=selected_type,
         ),
     })
 
@@ -656,6 +725,14 @@ async def series_page(request: Request, series_slug: str):
         ),
         "series_downloads": build_downloads(
             series, ("series_printed_pdf_url", "series_pdf_url"), "PDF spec sheet"
+        ),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="series",
+            page_title=series["name"],
+            page_summary=f"View products, specifications, graphs, and documents for {series['name']}.",
+            product_type=product_type,
+            series=series,
         ),
     })
 
@@ -709,6 +786,15 @@ async def product_page(request: Request, product_slug: str):
         "product_downloads": build_downloads(
             product, ("product_printed_pdf_url", "product_pdf_url"), "PDF spec sheet"
         ),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="product",
+            page_title=product["model"],
+            page_summary=f"View specifications, images, graphs, and documents for {product['model']}.",
+            product_type=product_type,
+            series=product_series,
+            product=product,
+        ),
     })
 
     return templates.TemplateResponse(request, "product.html", context)
@@ -727,5 +813,11 @@ async def cms_page(request: Request, page_slug: str):
         "page": {"label": cms.get("label") or page_slug.replace("-", " ").title(), "layout": cms.get("layout") or []},
         "content": cms.get("content", {}),
         "seo": seo_meta(cms.get("seo", {}).get("title") or page_slug.replace("-", " ").title(), cms.get("seo", {}).get("description") or "", f"/{page_slug}"),
+        "quote_request_context": quote_request_context(
+            request,
+            page_type="cms-page",
+            page_title=cms.get("label") or page_slug.replace("-", " ").title(),
+            page_summary=cms.get("seo", {}).get("description") or "",
+        ),
     })
     return templates.TemplateResponse(request, "cms_page.html", context)

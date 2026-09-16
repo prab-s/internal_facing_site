@@ -34,7 +34,10 @@
     reorderProductImages,
     deleteProductImage,
   } from "$lib/api.js";
+  import { simplifyCurve, createGraphReference, moveOverlayPoint } from "$lib/graphImport.js";
   import ECharts from "$lib/ECharts.svelte";
+  import { buildSmoothedCurveSamples } from "$lib/fullChart.js";
+  import GraphPointPagination from "$lib/editor/GraphPointPagination.svelte";
   import AccordionCard from "$lib/editor/AccordionCard.svelte";
   import ProductMediaPanel from "$lib/editor/ProductMediaPanel.svelte";
   import RichTextEditor from "$lib/editor/RichTextEditor.svelte";
@@ -78,6 +81,10 @@
   let currentProduct = null;
   let rpmLines = [];
   let rpmPoints = [];
+  let rpmPointPage = 0;
+  let efficiencyPointPage = 0;
+  let graphDragFrame = null;
+  let pendingGraphDrag = null;
   let efficiencyPoints = [];
   let efficiencyLineDataLoaded = false;
   let hasBothEfficiencyLines = true;
@@ -228,7 +235,9 @@
   let graphCsvError = "";
   let graphCsvFileName = "";
   let graphCsvInput = null;
-  let graphCsvDownsampleImportedCurves = true;
+  let graphCsvDownsampleImportedCurves = false;
+  let graphCsvAutoScaleOverlays = false;
+  let graphReference = createGraphReference();
   let graphCsvDownsamplePointCount = 5;
   let graphCsvUseLowerEfficiencyLine = false;
   let editorUseLowerEfficiencyLine = false;
@@ -262,20 +271,10 @@
     specificationGroupOpenState,
   );
   $: productTemplateOptions = templateRegistry.product_templates ?? [];
-  $: if (
-    graphCsvImportSource.rows.length &&
-    graphCsvImportSource.productId === selectedProductId &&
-    `${selectedProductId ?? ""}|${graphCsvDownsampleImportedCurves ? "1" : "0"}|${String(
-      graphCsvDownsamplePointCount ?? "",
-    )}|${graphCsvUseLowerEfficiencyLine ? "lower" : "upper"}|${productForm.permissible_use_mode || "both"}` !== graphCsvImportSignature
-  ) {
-    applyImportedGraphCsvSource({
-      rows: graphCsvImportSource.rows,
-      fileName: graphCsvImportSource.fileName || "graph-data.csv",
-      showSuccess: false,
-      rememberSource: false,
-    });
-  }
+  $: graphOptionsKey = JSON.stringify([selectedProductId, graphCsvDownsampleImportedCurves,
+    graphCsvDownsamplePointCount, graphCsvAutoScaleOverlays, graphCsvUseLowerEfficiencyLine,
+    productForm.permissible_use_mode || "both"]);
+  $: if (graphOptionsKey !== graphCsvImportSignature) applyGraphOptions(graphOptionsKey);
   $: graphCsvPreview = buildGraphCsvPreview(
     graphCsvImportSource.rows,
     graphCsvImportSource.fileName || "graph-data.csv",
@@ -656,8 +655,8 @@
     return {
       ...point,
       rpm: parseOptionalInteger(point.rpm),
-      airflow: parseOptionalInteger(point.airflow),
-      pressure: parseOptionalInteger(point.pressure),
+      airflow: parseOptionalNumber(point.airflow),
+      pressure: parseOptionalNumber(point.pressure),
     };
   }
 
@@ -683,11 +682,11 @@
   function normalizeGraphEfficiencyPointDraft(point = {}) {
     return {
       ...point,
-      airflow: parseOptionalInteger(point.airflow),
-      efficiency_centre: parseOptionalInteger(point.efficiency_centre),
-      efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
-      efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
-      permissible_use: parseOptionalInteger(point.permissible_use),
+      airflow: parseOptionalNumber(point.airflow),
+      efficiency_centre: parseOptionalNumber(point.efficiency_centre),
+      efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
+      efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
+      permissible_use: parseOptionalNumber(point.permissible_use),
     };
   }
 
@@ -1469,8 +1468,8 @@
         points: rpmPoints
           .filter((point) => Number(point.rpm_line_id) === Number(line.id))
           .map((point) => ({
-            airflow: parseOptionalInteger(point.airflow),
-            pressure: parseOptionalInteger(point.pressure),
+            airflow: parseOptionalNumber(point.airflow),
+            pressure: parseOptionalNumber(point.pressure),
           })),
       }));
   }
@@ -1488,8 +1487,8 @@
               !point._pending_delete,
           )
           .map((point) => ({
-            airflow: parseOptionalInteger(point.airflow),
-            pressure: parseOptionalInteger(point.pressure),
+            airflow: parseOptionalNumber(point.airflow),
+            pressure: parseOptionalNumber(point.pressure),
           })),
       }));
   }
@@ -1498,11 +1497,11 @@
     return efficiencyPoints
       .filter((point) => !point._pending_delete)
       .map((point) => ({
-        airflow: parseOptionalInteger(point.airflow),
-        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
-        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
-        permissible_use: parseOptionalInteger(point.permissible_use),
+        airflow: parseOptionalNumber(point.airflow),
+        efficiency_centre: parseOptionalNumber(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
+        permissible_use: parseOptionalNumber(point.permissible_use),
       }));
   }
 
@@ -1510,11 +1509,11 @@
     return efficiencyPoints
       .filter((point) => !point._pending_delete)
       .map((point) => ({
-        airflow: parseOptionalInteger(point.airflow),
-        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
-        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
-        permissible_use: parseOptionalInteger(point.permissible_use),
+        airflow: parseOptionalNumber(point.airflow),
+        efficiency_centre: parseOptionalNumber(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
+        permissible_use: parseOptionalNumber(point.permissible_use),
       }));
   }
 
@@ -1943,39 +1942,6 @@
     return String(value ?? "").trim() === "#N/A" ? "" : value;
   }
 
-  function isGraphCsvMissingValue(value) {
-    return String(value ?? "").trim() === "#N/A";
-  }
-
-  function parseGraphCsvNumericCandidate(value) {
-    if (value === "" || value == null) return null;
-    const parsed = parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function carryForwardGraphCsvZeroAirflowValues(rows) {
-    if (!Array.isArray(rows) || rows.length < 2) return rows;
-
-    const nextRows = rows.map((row) => [...row]);
-    const zeroAirflowRow = nextRows[1];
-    const headerRow = nextRows[0] || [];
-
-    // If the zero-airflow value is missing, seed it with the first valid value
-    // found further down the same column.
-    for (let columnIndex = 1; columnIndex < headerRow.length; columnIndex += 1) {
-      if (!isGraphCsvMissingValue(zeroAirflowRow[columnIndex])) continue;
-
-      for (let rowIndex = 1; rowIndex < nextRows.length; rowIndex += 1) {
-        const candidate = nextRows[rowIndex][columnIndex];
-        if (parseGraphCsvNumericCandidate(candidate) == null) continue;
-        zeroAirflowRow[columnIndex] = candidate;
-        break;
-      }
-    }
-
-    return nextRows;
-  }
-
   function normalizeGraphCsvHeader(header) {
     const trimmedHeader = String(header ?? "").trim();
     if (!trimmedHeader) return trimmedHeader;
@@ -2021,9 +1987,7 @@
   }
 
   function normalizeGraphCsvRows(rows) {
-    const rowsWithZeroAirflowFallback = carryForwardGraphCsvZeroAirflowValues(rows);
-
-    return rowsWithZeroAirflowFallback.map((row, rowIndex) =>
+    return rows.map((row, rowIndex) =>
       row.map((cell, cellIndex) =>
         rowIndex === 0
           ? normalizeGraphCsvHeader(cell)
@@ -2091,8 +2055,8 @@
   }
 
   function parseGraphCsvNumber(value, columnName) {
-    if (value === "" || value == null) return null;
-    const parsed = parseFloat(value);
+    if (value == null || String(value).trim() === "") return null;
+    const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
       throw new Error(
         `Column "${columnName}" contains a non-numeric value: "${value}".`,
@@ -2111,9 +2075,9 @@
     if (!Number.isFinite(parsed)) {
       throw new Error("The downsample count must be a whole number.");
     }
-    const count = Math.floor(parsed);
-    if (count < 1) {
-      throw new Error("The downsample count must be at least 1.");
+    const count = parsed;
+    if (!Number.isInteger(count) || count < 2) {
+      throw new Error("The downsample count must be a whole number of at least 2.");
     }
     return count;
   }
@@ -2261,7 +2225,9 @@
       .sort((a, b) => a.axis - b.axis);
 
     if (!chartPoints.length) return null;
-    return interpolateGraphCsvValue(chartPoints, numericAirflow);
+    return interpolateGraphCsvValue(
+      buildSmoothedCurveSamples(chartPoints.map(p => [p.axis, p.value]))
+        .map(([axis, value]) => ({ axis, value })), numericAirflow);
   }
 
   function solveOverlayScaleFactorForPolyline(terminalPoint, linePoints) {
@@ -2515,57 +2481,8 @@
     return bestDistance;
   }
 
-  function downsampleGraphCsvSeries(
-    points,
-    axisKey = "airflow",
-    valueKey = "pressure",
-    targetCount = 5,
-    precision = 0,
-  ) {
-    const numericPoints = (points ?? [])
-      .map((point) => ({
-        point,
-        axis: Number(point?.[axisKey]),
-        value: Number(point?.[valueKey]),
-      }))
-      .filter(
-        ({ axis, value }) => Number.isFinite(axis) && Number.isFinite(value),
-      )
-      .sort((a, b) => a.axis - b.axis);
-
-    if (numericPoints.length <= targetCount) {
-      return numericPoints.map(({ point }) => point);
-    }
-
-    const sampleAxes = Array.from({ length: targetCount }, (_, index) => {
-      const t = targetCount === 1 ? 0 : index / (targetCount - 1);
-      return Math.round(
-        numericPoints[0].axis +
-          (numericPoints[numericPoints.length - 1].axis -
-            numericPoints[0].axis) *
-            t,
-      );
-    });
-
-    const templatePoint = numericPoints[0].point;
-    const sampledPoints = [];
-    for (const axis of sampleAxes) {
-      const interpolatedValue = interpolateGraphCsvValue(numericPoints, axis);
-      if (!Number.isFinite(interpolatedValue)) continue;
-      sampledPoints.push({
-        ...templatePoint,
-        id: createTempPointId(),
-        [axisKey]: Math.round(axis * 10 ** precision) / 10 ** precision,
-        [valueKey]: Math.round(interpolatedValue * 10 ** precision) / 10 ** precision,
-      });
-    }
-    const seenAxes = new Set();
-    return sampledPoints.filter((point) => {
-      const axisValue = point?.[axisKey];
-      if (seenAxes.has(axisValue)) return false;
-      seenAxes.add(axisValue);
-      return true;
-    });
+  function downsampleGraphCsvSeries(points, axisKey = "airflow", valueKey = "pressure", targetCount = 5) {
+    return simplifyCurve(points, axisKey, valueKey, targetCount);
   }
 
   function downsampleGraphCsvOverlayPoints(points, valueKeys, targetCount = 5) {
@@ -2625,7 +2542,7 @@
           });
         }
 
-        mergedPoints.get(mergeKey)[valueKey] = Math.round(value);
+        mergedPoints.get(mergeKey)[valueKey] = value;
       }
     }
 
@@ -2909,7 +2826,7 @@
         if (rawValue === "" || rawValue == null) continue;
         const value = Number(rawValue);
         if (!Number.isFinite(value)) continue;
-        point[overlayKey] = Math.round(value * scaleFactor);
+        point[overlayKey] = value * scaleFactor;
       }
     }
 
@@ -2955,10 +2872,9 @@
       const airflow = Number(point?.airflow);
       if (!Number.isFinite(airflow)) continue;
       const row = ensureRow(airflow);
-      row.efficiency_centre = point?.efficiency_centre ?? "";
-      row.efficiency_lower_end = point?.efficiency_lower_end ?? "";
-      row.efficiency_higher_end = point?.efficiency_higher_end ?? "";
-      row.permissible_use = point?.permissible_use ?? "";
+      for (const key of ["efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"]) {
+        if (point[key] != null && point[key] !== "") row[key] = point[key];
+      }
     }
 
     const header = [
@@ -3174,6 +3090,7 @@
 
   onDestroy(() => {
     destroyed = true;
+    if (graphDragFrame != null) cancelAnimationFrame(graphDragFrame);
     if (successDismissTimeout) {
       clearTimeout(successDismissTimeout);
     }
@@ -3201,7 +3118,7 @@
   function buildImportedGraphState(
     rows,
     {
-      downsampleImportedCurves = true,
+      downsampleImportedCurves = false,
       downsamplePointCount = 5,
       permissibleUseSourceKey = "efficiency_higher_end",
       permissibleUseMode = productForm.permissible_use_mode || "both",
@@ -3281,7 +3198,7 @@
     const nextEfficiencyPoints = [];
 
     for (const [rowIndex, row] of dataRows.entries()) {
-      const roundedAirflow = parseGraphCsvInteger(row[0], normalizedHeaders[0]);
+      const roundedAirflow = parseGraphCsvNumber(row[0], normalizedHeaders[0]);
       if (roundedAirflow == null) {
         throw new Error(`Row ${rowIndex + 2} is missing an airflow_l_s value.`);
       }
@@ -3302,7 +3219,7 @@
       for (const column of pressureColumns) {
         const pressure = parseGraphCsvNumber(row[column.index], column.header);
         if (pressure == null) continue;
-        const roundedPressure = parseGraphCsvInteger(
+        const roundedPressure = parseGraphCsvNumber(
           row[column.index],
           column.header,
         );
@@ -3335,7 +3252,7 @@
         for (let index = 1; index < normalizedHeaders.length; index += 1) {
           const normalizedHeader = normalizedHeaders[index]?.toLowerCase();
           if (!overlayColumns.has(normalizedHeader)) continue;
-          const value = parseGraphCsvInteger(
+          const value = parseGraphCsvNumber(
             row[index],
             normalizedHeaders[index],
           );
@@ -3362,11 +3279,7 @@
       }
     }
 
-    const scaledEfficiencyPoints = applyLineByLineOverlayScaling(
-      nextEfficiencyPoints,
-      nextRpmLines,
-      nextRpmPoints,
-    );
+    const scaledEfficiencyPoints = nextEfficiencyPoints;
 
     const nextRpmPointsByLineId = new Map();
     for (const point of nextRpmPoints) {
@@ -3402,11 +3315,11 @@
       : scaledEfficiencyPoints;
     const importedOverlayPoints = adjustedEfficiencyPoints.map((point) => ({
       ...point,
-      airflow: parseOptionalInteger(point.airflow),
-      efficiency_centre: parseOptionalInteger(point.efficiency_centre),
-      efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
-      efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
-      permissible_use: parseOptionalInteger(point.permissible_use),
+      airflow: parseOptionalNumber(point.airflow),
+      efficiency_centre: parseOptionalNumber(point.efficiency_centre),
+      efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
+      efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
+      permissible_use: parseOptionalNumber(point.permissible_use),
     }));
     const finalEfficiencyPoints = importedOverlayPoints;
 
@@ -3415,6 +3328,45 @@
       rpmPoints: applyRpmPointSort(adjustedRpmPoints),
       efficiencyPoints: finalEfficiencyPoints,
     };
+  }
+
+  function currentGraphState() {
+    return { rpmLines, rpmPoints, efficiencyPoints };
+  }
+
+  function applyGraphOptions(signature) {
+    graphCsvImportSignature = signature;
+    try {
+      const count = graphCsvDownsampleImportedCurves
+        ? normalizeGraphCsvDownsampleCount(graphCsvDownsamplePointCount) : 5;
+      const source = graphReference.source(currentGraphState());
+      let overlays = source.efficiencyPoints;
+      if (productForm.permissible_use_mode === "dedicated") {
+        const key = graphCsvUseLowerEfficiencyLine ? "efficiency_lower_end" : "efficiency_higher_end";
+        overlays = overlays.map(p => ({ ...p, permissible_use: p.permissible_use ?? p[key] }));
+      }
+      let points = source.rpmPoints;
+      if (graphCsvDownsampleImportedCurves) {
+        const groups = new Map();
+        for (const point of points) {
+          const key = point.rpm_line_id;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(point);
+        }
+        points = [...groups.values()].flatMap(group => simplifyCurve(group, "airflow", "pressure", count));
+      }
+      if (graphCsvAutoScaleOverlays) {
+        overlays = applyLineByLineOverlayScaling(overlays, source.rpmLines, points);
+      }
+      if (graphCsvDownsampleImportedCurves) {
+        overlays = downsampleGraphCsvOverlayPoints(overlays,
+          ["efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"], count);
+      }
+      rpmPoints = applyRpmPointSort(points);
+      efficiencyPoints = overlays;
+      graphReference.displayed(currentGraphState());
+      graphCsvError = "";
+    } catch (e) { graphCsvError = e.message; }
   }
 
   function setGraphCsvImportSource(rows, fileName) {
@@ -3464,20 +3416,16 @@
         ? normalizeGraphCsvDownsampleCount(graphCsvDownsamplePointCount)
         : null;
       const imported = buildImportedGraphState(cleanedRows, {
-        downsampleImportedCurves,
-        downsamplePointCount: downsamplePointCount ?? 5,
-        permissibleUseSourceKey: graphCsvUseLowerEfficiencyLine
-          ? "efficiency_lower_end"
-          : "efficiency_higher_end",
+        downsampleImportedCurves: false,
+        permissibleUseMode: "both",
       });
       rpmLines = imported.rpmLines;
       rpmPoints = imported.rpmPoints;
       efficiencyPoints = imported.efficiencyPoints;
+      graphReference.reset(currentGraphState());
+      applyGraphOptions(graphOptionsKey);
       syncFanAcousticTableWithRpmLines(rpmLines);
       graphCsvFileName = fileName;
-      graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${
-        downsampleImportedCurves ? downsamplePointCount : "full"
-      }|${graphCsvUseLowerEfficiencyLine ? "lower" : "upper"}`;
       const validTargets = new Set([
         ...rpmLines.map((line) => `rpm:${line.id}`),
         ...currentOverlayLineDefinitions().map(
@@ -3785,6 +3733,7 @@
       efficiencyPoints = nextEfficiencyPoints.map((point) =>
         normalizeGraphEfficiencyPointDraft(point),
       );
+      graphReference.reset(currentGraphState());
       hasBothEfficiencyLines =
         nextEfficiencyPoints.some((point) => point?.efficiency_higher_end !== "" && point?.efficiency_higher_end != null) &&
         nextEfficiencyPoints.some((point) => point?.efficiency_lower_end !== "" && point?.efficiency_lower_end != null);
@@ -4552,14 +4501,8 @@
         (definition) => definition.label === params.seriesName,
       );
       const lineKey = overlayDefinition?.key ?? null;
-      const updated = {
-        ...target,
-        airflow,
-        ...(lineKey ? { [lineKey]: Math.round(y) } : {}),
-      };
-      efficiencyPoints = efficiencyPoints.map((p) =>
-        p.id === id ? updated : p,
-      );
+      efficiencyPoints = moveOverlayPoint(efficiencyPoints, id, lineKey,
+        airflow, Math.round(y), createTempPointId);
       return;
     }
 
@@ -4655,14 +4598,8 @@
         [pixel.x, pixel.y],
       );
       if (point.pointType === "efficiency") {
-        const updated = {
-          ...efficiencyPoints.find((p) => p.id === point.id),
-          airflow: Math.round(airflow),
-          ...(point.lineKey ? { [point.lineKey]: Math.round(value) } : {}),
-        };
-        efficiencyPoints = efficiencyPoints.map((p) =>
-          p.id === point.id ? updated : p,
-        );
+        efficiencyPoints = moveOverlayPoint(efficiencyPoints, point.id, point.lineKey,
+          Math.round(airflow), Math.round(value), createTempPointId);
         return;
       }
       const updated = {
@@ -4777,10 +4714,19 @@
       if (!draggingPoint) return;
       dragMoved = true;
       const mouse = getEventXY(evt);
-      updateDraggedPoint(draggingPoint, mouse);
+      pendingGraphDrag = { point: draggingPoint, mouse };
+      if (graphDragFrame == null) graphDragFrame = requestAnimationFrame(() => {
+        graphDragFrame = null;
+        if (pendingGraphDrag && !destroyed) updateDraggedPoint(pendingGraphDrag.point, pendingGraphDrag.mouse);
+        pendingGraphDrag = null;
+      });
     });
 
     zr.on("mouseup", () => {
+      if (graphDragFrame != null) cancelAnimationFrame(graphDragFrame);
+      graphDragFrame = null;
+      if (pendingGraphDrag) updateDraggedPoint(pendingGraphDrag.point, pendingGraphDrag.mouse);
+      pendingGraphDrag = null;
       if (draggingPoint) {
         draggingPoint = null;
         dragAxisLock = null;
@@ -4804,8 +4750,8 @@
     try {
       await updateRpmPoint(selectedProductId, point.id, {
         rpm_line_id: resolveRpmLineIdForPoint(point),
-        airflow: parseOptionalInteger(point.airflow),
-        pressure: parseOptionalInteger(point.pressure),
+        airflow: parseOptionalNumber(point.airflow),
+        pressure: parseOptionalNumber(point.pressure),
       });
       await loadProductData();
       addSuccess("Graph point updated.");
@@ -4817,11 +4763,11 @@
   async function updateEfficiencyPointLocal(point) {
     try {
       await updateEfficiencyPoint(selectedProductId, point.id, {
-        airflow: parseOptionalInteger(point.airflow),
-        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
-        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
-        permissible_use: parseOptionalInteger(point.permissible_use),
+        airflow: parseOptionalNumber(point.airflow),
+        efficiency_centre: parseOptionalNumber(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
+        permissible_use: parseOptionalNumber(point.permissible_use),
       });
       await loadProductData();
       addSuccess("Efficiency/permissible point updated.");
@@ -5676,9 +5622,11 @@
                         >
                         <td>
                           {#if editorFanAcousticVariant === "1ph"}
-                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number" step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number"
+                                      step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
                           {:else}
-                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number"
+                                      step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
                           {/if}
                         </td>
                         <td
@@ -5761,6 +5709,7 @@
                     <h6 class="card-title mb-3">
                       {graphLineValueLabel()} points
                     </h6>
+                    <GraphPointPagination total={rpmPoints.length} bind:page={rpmPointPage} />
                     <div class="table-responsive">
                       <table
                         class="table table-sm align-middle editable-table mb-0"
@@ -5773,7 +5722,7 @@
                           </tr>
                         </thead>
                         <tbody>
-                          {#each rpmPoints as p}
+                          {#each rpmPoints.slice(rpmPointPage * 100, (rpmPointPage + 1) * 100) as p}
                             <tr>
                               <td>{formatGraphLineValue(p.rpm)}</td>
                               <td>{p.airflow}</td>
@@ -5793,6 +5742,7 @@
                     <h6 class="card-title mb-3">
                       Efficiency / permissible points
                     </h6>
+                    <GraphPointPagination total={efficiencyPoints.length} bind:page={efficiencyPointPage} />
                     <div class="table-responsive">
                       <table
                         class="table table-sm align-middle editable-table mb-0"
@@ -5807,7 +5757,7 @@
                           </tr>
                         </thead>
                         <tbody>
-                          {#each efficiencyPoints as p}
+                          {#each efficiencyPoints.slice(efficiencyPointPage * 100, (efficiencyPointPage + 1) * 100) as p}
                             <tr>
                               <td>{p.airflow}</td>
                               <td>{p.efficiency_centre ?? ""}</td>
@@ -6656,6 +6606,12 @@
                             Downsample imported curves
                           </label>
                         </div>
+                        {#if productSupportsGraphOverlays()}
+                          <div class="form-check form-switch">
+                            <input id="graph-auto-scale" class="form-check-input" type="checkbox" bind:checked={graphCsvAutoScaleOverlays} />
+                            <label for="graph-auto-scale" class="form-check-label">Align efficiency and permissible-use lines to highest RPM curve</label>
+                          </div>
+                        {/if}
                         {#if productSupportsGraphOverlays() && productForm.permissible_use_mode === "dedicated"}
                           <div class="form-check form-switch mb-0">
                             <input
@@ -6681,10 +6637,10 @@
                           <input
                             class="form-control form-control-sm"
                             id="graph-csv-downsample-count"
-                            type="text"
+                            type="number"
                             inputmode="numeric"
                             pattern="[0-9]*"
-                            min="1"
+                            min="2"
                             step="1"
                             bind:value={graphCsvDownsamplePointCount}
                             disabled={!graphCsvDownsampleImportedCurves}
@@ -6700,11 +6656,9 @@
                       </div>
                       <p class="text-body-secondary small mb-2">
                         {#if graphCsvDownsampleImportedCurves}
-                          Each imported curve is resampled across its valid axis
-                          range before the points are injected into the product
-                          draft.
+                          Simplification keeps endpoints and prioritises bends. Changes appear immediately; manual edits become the reference for later option changes.
                         {:else}
-                          Imported curves are injected at full resolution.
+                          Reference points are shown without simplification. Changes appear immediately; save when the preview is ready.
                         {/if}
                       </p>
                       {#if productSupportsGraphOverlays() && productForm.permissible_use_mode === "dedicated"}
@@ -6716,8 +6670,7 @@
                       {/if}
                       {#if productSupportsGraphOverlays()}
                         <p class="text-body-secondary small mb-2">
-                          Imported efficiency and permissible overlay points
-                          stay in their uploaded pressure units.
+                          Automatic alignment changes efficiency and permissible-use pressure values. Leave it off to preserve supplied values.
                         </p>
                       {/if}
                       <input
@@ -6807,7 +6760,8 @@
                       <h6 class="card-title mb-3">
                         {graphLineValueLabel()} points
                       </h6>
-                      <div class="table-responsive">
+                      <GraphPointPagination total={rpmPoints.length} bind:page={rpmPointPage} />
+                    <div class="table-responsive">
                         <table
                           class="table table-sm align-middle editable-table mb-0"
                         >
@@ -6841,22 +6795,21 @@
                             </tr>
                           </thead>
                           <tbody>
-                            {#each rpmPoints as p}
+                            {#each rpmPoints.slice(rpmPointPage * 100, (rpmPointPage + 1) * 100) as p}
                               <tr>
                                 <td>{formatGraphLineValue(p.rpm)}</td>
                                 <td
                                   ><input
                                     class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`}
                                     style="min-width: 90px;"
-                                    type="text"
-                                    inputmode="numeric"
-                                    pattern="[0-9]*"
+                                    type="number"
+                                      step="any"
+                                    inputmode="decimal"
+
                                     bind:value={p.airflow}
-                                    on:keydown={handleIntegerInputKeydown}
+
                                     on:input={(event) => {
-                                      p.airflow = sanitizeIntegerInputValue(
-                                        event.currentTarget.value,
-                                      );
+                                      p.airflow = event.currentTarget.value;
                                       rpmPoints = [...rpmPoints];
                                     }}
                                   /></td
@@ -6865,15 +6818,14 @@
                                   ><input
                                     class={`form-control form-control-sm ${editorNumericInputClass(p.pressure)}`}
                                     style="min-width: 90px;"
-                                    type="text"
-                                    inputmode="numeric"
-                                    pattern="[0-9]*"
+                                    type="number"
+                                      step="any"
+                                    inputmode="decimal"
+
                                     bind:value={p.pressure}
-                                    on:keydown={handleIntegerInputKeydown}
+
                                     on:input={(event) => {
-                                      p.pressure = sanitizeIntegerInputValue(
-                                        event.currentTarget.value,
-                                      );
+                                      p.pressure = event.currentTarget.value;
                                       rpmPoints = [...rpmPoints];
                                     }}
                                   /></td
@@ -7085,7 +7037,8 @@
                               )}
                           >Lower End ↔ Higher End</button>
                         </div>
-                        <div class="table-responsive">
+                        <GraphPointPagination total={efficiencyPoints.length} bind:page={efficiencyPointPage} />
+                    <div class="table-responsive">
                           <table
                             class="table table-sm align-middle editable-table mb-0"
                           >
@@ -7100,21 +7053,20 @@
                               </tr>
                             </thead>
                             <tbody>
-                              {#each efficiencyPoints as p}
+                              {#each efficiencyPoints.slice(efficiencyPointPage * 100, (efficiencyPointPage + 1) * 100) as p}
                                 <tr>
                                   <td
                                     ><input
                                       class={`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`}
                                       style="min-width: 90px;"
-                                      type="text"
-                                      inputmode="numeric"
-                                      pattern="[0-9]*"
+                                      type="number"
+                                      step="any"
+                                      inputmode="decimal"
+
                                       bind:value={p.airflow}
-                                      on:keydown={handleIntegerInputKeydown}
+
                                       on:input={(event) => {
-                                        p.airflow = sanitizeIntegerInputValue(
-                                          event.currentTarget.value,
-                                        );
+                                        p.airflow = event.currentTarget.value;
                                         efficiencyPoints = [
                                           ...efficiencyPoints,
                                         ];
@@ -7125,16 +7077,14 @@
                                     ><input
                                       class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_centre)}`}
                                       style="min-width: 90px;"
-                                      type="text"
-                                      inputmode="numeric"
-                                      pattern="[0-9]*"
+                                      type="number"
+                                      step="any"
+                                      inputmode="decimal"
+
                                       bind:value={p.efficiency_centre}
-                                      on:keydown={handleIntegerInputKeydown}
+
                                       on:input={(event) => {
-                                        p.efficiency_centre =
-                                          sanitizeIntegerInputValue(
-                                            event.currentTarget.value,
-                                          );
+                                        p.efficiency_centre = event.currentTarget.value;
                                         efficiencyPoints = [
                                           ...efficiencyPoints,
                                         ];
@@ -7145,16 +7095,14 @@
                                     ><input
                                       class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_lower_end)}`}
                                       style="min-width: 90px;"
-                                      type="text"
-                                      inputmode="numeric"
-                                      pattern="[0-9]*"
+                                      type="number"
+                                      step="any"
+                                      inputmode="decimal"
+
                                       bind:value={p.efficiency_lower_end}
-                                      on:keydown={handleIntegerInputKeydown}
+
                                       on:input={(event) => {
-                                        p.efficiency_lower_end =
-                                          sanitizeIntegerInputValue(
-                                            event.currentTarget.value,
-                                          );
+                                        p.efficiency_lower_end = event.currentTarget.value;
                                         efficiencyPoints = [
                                           ...efficiencyPoints,
                                         ];
@@ -7165,16 +7113,14 @@
                                     ><input
                                       class={`form-control form-control-sm ${editorNumericInputClass(p.efficiency_higher_end)}`}
                                       style="min-width: 90px;"
-                                      type="text"
-                                      inputmode="numeric"
-                                      pattern="[0-9]*"
+                                      type="number"
+                                      step="any"
+                                      inputmode="decimal"
+
                                       bind:value={p.efficiency_higher_end}
-                                      on:keydown={handleIntegerInputKeydown}
+
                                       on:input={(event) => {
-                                        p.efficiency_higher_end =
-                                          sanitizeIntegerInputValue(
-                                            event.currentTarget.value,
-                                          );
+                                        p.efficiency_higher_end = event.currentTarget.value;
                                         efficiencyPoints = [
                                           ...efficiencyPoints,
                                         ];
@@ -7185,16 +7131,14 @@
                                     ><input
                                       class={`form-control form-control-sm ${editorNumericInputClass(p.permissible_use)}`}
                                       style="min-width: 90px;"
-                                      type="text"
-                                      inputmode="numeric"
-                                      pattern="[0-9]*"
+                                      type="number"
+                                      step="any"
+                                      inputmode="decimal"
+
                                       bind:value={p.permissible_use}
-                                      on:keydown={handleIntegerInputKeydown}
+
                                       on:input={(event) => {
-                                        p.permissible_use =
-                                          sanitizeIntegerInputValue(
-                                            event.currentTarget.value,
-                                          );
+                                        p.permissible_use = event.currentTarget.value;
                                         efficiencyPoints = [
                                           ...efficiencyPoints,
                                         ];
@@ -7413,9 +7357,11 @@
                           >
                         <td>
                           {#if editorFanAcousticVariant === "1ph"}
-                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number" step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number"
+                                      step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
                           {:else}
-                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number"
+                                      step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
                           {/if}
                         </td>
                           <td

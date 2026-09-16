@@ -15,7 +15,8 @@ function _page($$renderer, $$props) {
     const NEW_SERIES_SELECTION = "new";
     let workbookFiles = [];
     let workbookReport = null;
-    let downsampleImportedCurves = true;
+    let downsampleImportedCurves = false;
+    let autoScaleOverlays = false;
     let downsamplePointCount = 5;
     let permissibleUseMode = "both";
     let productTypes = [];
@@ -262,7 +263,7 @@ function _page($$renderer, $$props) {
     {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></div></div></div> <div class="row g-4"><div class="col-12 col-xl-7"><div class="card shadow-sm mb-4 svelte-j70d9j"><div class="card-body p-2 p-lg-2"><div${attr_class(`dropzone rounded-4 p-4 p-lg-5 ${""}`, "svelte-j70d9j")} role="button" tabindex="0" aria-label="Workbook import file drop zone"><div class="dropzone-inner text-center"><p class="section-label mb-2 svelte-j70d9j">Graph Data Import</p> <h2 class="h4 mb-2">Drop workbook or CSV files here</h2> <p class="text-body-secondary mb-4">Upload \`.xlsx\`, \`.xlsm\`, or \`.csv\` files. Click Analyse to build an inline sheet-to-product mapping panel before you import.</p> <div class="d-flex justify-content-center flex-wrap gap-2"><label class="btn btn-primary" for="bulk-workbook-files">Choose Files</label> <button class="btn btn-outline-secondary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>Clear Selection</button></div> <input id="bulk-workbook-files" class="visually-hidden" type="file" multiple="" accept=".xlsx,.xlsm,.csv"/> <div class="row g-3 mt-3 text-start"><div class="col-12 col-lg-6"><div class="form-check form-switch"><input class="form-check-input" id="bulk-downsample" type="checkbox"${attr("checked", downsampleImportedCurves, true)}/> <label class="form-check-label" for="bulk-downsample">Downsample imported curves</label></div></div> <div class="col-12 col-lg-6"><label class="form-label form-label-sm" for="bulk-permissible-use-mode">Permissible-use shading mode</label> `);
+    $$renderer2.push(`<!--]--></div></div></div> <div class="row g-4"><div class="col-12 col-xl-7"><div class="card shadow-sm mb-4 svelte-j70d9j"><div class="card-body p-2 p-lg-2"><div${attr_class(`dropzone rounded-4 p-4 p-lg-5 ${""}`, "svelte-j70d9j")} role="button" tabindex="0" aria-label="Workbook import file drop zone"><div class="dropzone-inner text-center"><p class="section-label mb-2 svelte-j70d9j">Graph Data Import</p> <h2 class="h4 mb-2">Drop workbook or CSV files here</h2> <p class="text-body-secondary mb-4">Upload \`.xlsx\`, \`.xlsm\`, or \`.csv\` files. Click Analyse to build an inline sheet-to-product mapping panel before you import.</p> <div class="d-flex justify-content-center flex-wrap gap-2"><label class="btn btn-primary" for="bulk-workbook-files">Choose Files</label> <button class="btn btn-outline-secondary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>Clear Selection</button></div> <input id="bulk-workbook-files" class="visually-hidden" type="file" multiple="" accept=".xlsx,.xlsm,.csv"/> <div class="row g-3 mt-3 text-start"><div class="col-12 col-lg-6"><div class="form-check form-switch"><input class="form-check-input" id="bulk-downsample" type="checkbox"${attr("checked", downsampleImportedCurves, true)}/> <label class="form-check-label" for="bulk-downsample">Downsample imported curves</label></div> <div class="form-check form-switch"><input class="form-check-input" id="bulk-auto-scale" type="checkbox"${attr("checked", autoScaleOverlays, true)}/> <label class="form-check-label" for="bulk-auto-scale">Align efficiency and permissible-use lines to highest RPM curve</label></div></div> <div class="col-12 col-lg-6"><label class="form-label form-label-sm" for="bulk-permissible-use-mode">Permissible-use shading mode</label> `);
     $$renderer2.select(
       {
         id: "bulk-permissible-use-mode",
@@ -298,7 +299,7 @@ function _page($$renderer, $$props) {
     {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-2 text-start"><div class="col-12 col-lg-4"><label class="form-label form-label-sm" for="bulk-downsample-count">Points per curve</label> <input id="bulk-downsample-count" class="form-control" type="number" min="1" step="1"${attr("value", downsamplePointCount)}${attr("disabled", !downsampleImportedCurves, true)}/></div> <div class="col-12 col-lg-8"><label class="form-label form-label-sm" for="bulk-series-default">Default series for new products</label> `);
+    $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-2 text-start"><div class="col-12 col-lg-4"><label class="form-label form-label-sm" for="bulk-downsample-count">Points per curve</label> <input id="bulk-downsample-count" class="form-control" type="number" min="2" step="1"${attr("value", downsamplePointCount)}${attr("disabled", !downsampleImportedCurves, true)}/></div> <div class="col-12 col-lg-8"><label class="form-label form-label-sm" for="bulk-series-default">Default series for new products</label> `);
     $$renderer2.select(
       {
         id: "bulk-series-default",

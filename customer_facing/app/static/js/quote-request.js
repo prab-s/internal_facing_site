@@ -1,5 +1,6 @@
 const quoteRequestContext = window.__QUOTE_REQUEST_CONTEXT__ || {};
 const quoteRequestConfig = window.__QUOTE_REQUEST_CONFIG__ || { endpointUrl: "/api/quote-requests" };
+const quoteRequestWorkflow = window.__QUOTE_REQUEST_WORKFLOW__ || {};
 const quoteRequestModal = document.getElementById("quoteRequestModal");
 const quoteRequestForm = quoteRequestModal?.querySelector("[data-quote-request-form]") || null;
 const quoteRequestStatus = quoteRequestModal?.querySelector("[data-quote-request-status]") || null;
@@ -37,6 +38,7 @@ const suggestedAttributeLabels = {
 let submitInFlight = false;
 let successCloseTimer = null;
 let activeDefaultRequestType = "";
+let activeContextFields = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -76,6 +78,44 @@ function getFieldValue(name) {
 
 function getPerformanceTarget() {
   return window.CustomerFacingPerformanceTarget?.read?.() || { airflow: null, pressure: null };
+}
+
+function getConfiguredContextFields() {
+  const configured = activeContextFields || quoteRequestWorkflow.contextFields || {};
+  return {
+    airflow: configured.airflow !== false,
+    pressure: configured.pressure !== false,
+  };
+}
+
+function getFinderPerformanceValues() {
+  const values = { airflow: null, pressure: null };
+  try {
+    const raw = new URLSearchParams(window.location.search).get("parameter_filters");
+    const filters = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(filters)) return values;
+    for (const filter of filters) {
+      if (filter?.group_name !== "__graph__") continue;
+      const name = String(filter.parameter_name || "").toLowerCase();
+      if (name === "airflow" || name === "pressure") {
+        values[name] = filter.min_number ?? filter.max_number ?? filter.value_string ?? null;
+      }
+    }
+  } catch (_error) {}
+  return values;
+}
+
+function buildWorkflowContext() {
+  const fields = getConfiguredContextFields();
+  const liveTarget = getPerformanceTarget();
+  const finderTarget = getFinderPerformanceValues();
+  const performanceTarget = {};
+  for (const field of ["airflow", "pressure"]) {
+    if (!fields[field]) continue;
+    const value = liveTarget[field] ?? finderTarget[field];
+    if (value !== null && value !== undefined && String(value).trim() !== "") performanceTarget[field] = value;
+  }
+  return { context_fields: fields, performance_target: performanceTarget };
 }
 
 function hydratePerformanceTargetFields() {
@@ -327,6 +367,7 @@ function buildPayload() {
     product_type: quoteRequestContext.productType || null,
     series: quoteRequestContext.series || null,
     product: quoteRequestContext.product || null,
+    page_context: { enquiry_workflow: buildWorkflowContext() },
     graph_image_data_url: getGraphImageDataUrl(),
   };
   payload.request_type_label = buildRequestPathMessage(requestType);
@@ -392,9 +433,15 @@ function wireQuoteRequestModal() {
 
   quoteRequestModal.addEventListener("show.bs.modal", (event) => {
     clearStatus();
-    activeDefaultRequestType = event?.relatedTarget instanceof HTMLElement
-      ? event.relatedTarget.dataset.quoteRequestDefaultType || ""
-      : "";
+    const trigger = event?.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
+    activeDefaultRequestType = trigger?.dataset.quoteRequestDefaultType || "";
+    activeContextFields = null;
+    if (trigger?.dataset.quoteRequestContextFields) {
+      try {
+        const parsed = JSON.parse(trigger.dataset.quoteRequestContextFields);
+        if (parsed && typeof parsed === "object") activeContextFields = parsed;
+      } catch (_error) {}
+    }
     if (activeDefaultRequestType) {
       setRequestType(activeDefaultRequestType);
     }
@@ -422,6 +469,7 @@ function wireQuoteRequestModal() {
       successCloseTimer = null;
     }
     activeDefaultRequestType = "";
+    activeContextFields = null;
     quoteRequestForm.reset();
     clearStatus();
     populateContext();

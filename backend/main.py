@@ -1243,28 +1243,6 @@ def bulk_import_parse_numeric_candidate(value):
     return parsed
 
 
-def bulk_import_copy_zero_airflow_values(rows: list[dict]) -> list[dict]:
-    if not rows:
-        return rows
-
-    next_rows = [dict(row) for row in rows]
-    first_row = next_rows[0]
-    keys = list(first_row.keys())
-
-    for key in keys[1:]:
-        if not bulk_import_is_missing_value(first_row.get(key)):
-            continue
-
-        for row in next_rows[1:]:
-            candidate = row.get(key)
-            if bulk_import_parse_numeric_candidate(candidate) is None:
-                continue
-            first_row[key] = candidate
-            break
-
-    return next_rows
-
-
 def bulk_import_find_highest_efficiency_overlay_key(rows: list[dict]) -> str | None:
     overlay_keys = ["efficiency_centre", "efficiency_higher_end", "efficiency_lower_end"]
     best_key = None
@@ -1323,7 +1301,7 @@ def normalize_bulk_import_row(row: dict) -> dict:
 
 
 def normalize_bulk_import_rows(rows: list[dict], copy_permissible_use: bool = True) -> list[dict]:
-    copied_rows = bulk_import_copy_zero_airflow_values(rows)
+    copied_rows = [dict(row) for row in rows]
     if copy_permissible_use:
         copied_rows = bulk_import_copy_permissible_use_from_highest_efficiency_line(copied_rows)
     return [normalize_bulk_import_row(row) for row in copied_rows]
@@ -1676,55 +1654,32 @@ def bulk_import_downsample_series(
     target_count: int = 5,
     precision: int = 0,
 ):
-    numeric_points = (
-        [
-            {
-                "point": point,
-                "axis": bulk_import_parse_number(point.get(axis_key)),
-                "value": bulk_import_parse_number(point.get(value_key)),
-            }
-            for point in points or []
-        ]
+    if not isinstance(target_count, int) or target_count < 2:
+        raise HTTPException(status_code=400, detail="Points per curve must be a whole number of at least 2.")
+    numeric_points = sorted(
+        [point for point in points or [] if bulk_import_parse_number(point.get(axis_key)) is not None
+         and bulk_import_parse_number(point.get(value_key)) is not None],
+        key=lambda point: float(point[axis_key]),
     )
-    numeric_points = [item for item in numeric_points if item["axis"] is not None and item["value"] is not None]
-    numeric_points.sort(key=lambda item: item["axis"])
-
     if len(numeric_points) <= target_count:
-        return [item["point"] for item in numeric_points]
-
-    sample_axes = []
-    for index in range(target_count):
-        t = 0 if target_count == 1 else index / (target_count - 1)
-        sample_axes.append(
-            round(
-                numeric_points[0]["axis"]
-                + (numeric_points[-1]["axis"] - numeric_points[0]["axis"]) * t
-            )
-        )
-
-    template = numeric_points[0]["point"]
-    sampled = []
-    for axis in sample_axes:
-        interpolated_value = bulk_import_interpolate_value(numeric_points, axis)
-        if interpolated_value is None:
-            continue
-        sampled.append(
-            {
-                **template,
-                axis_key: round(axis, precision),
-                value_key: round(interpolated_value, precision),
-            }
-        )
-
-    seen = set()
-    result = []
-    for point in sampled:
-        axis_value = point.get(axis_key)
-        if axis_value in seen:
-            continue
-        seen.add(axis_value)
-        result.append(point)
-    return result
+        return numeric_points
+    selected = [0, len(numeric_points) - 1]
+    while len(selected) < target_count:
+        best, error = None, -1
+        for left, right in zip(selected, selected[1:]):
+            x0, x1 = float(numeric_points[left][axis_key]), float(numeric_points[right][axis_key])
+            y0, y1 = float(numeric_points[left][value_key]), float(numeric_points[right][value_key])
+            for index in range(left + 1, right):
+                point = numeric_points[index]
+                ratio = 0 if x1 == x0 else (float(point[axis_key]) - x0) / (x1 - x0)
+                deviation = abs(float(point[value_key]) - (y0 + ratio * (y1 - y0)))
+                if deviation > error:
+                    best, error = index, deviation
+        if best is None:
+            break
+        selected.append(best)
+        selected.sort()
+    return [numeric_points[index] for index in selected]
 
 
 def bulk_import_downsample_overlay_points(points: list[dict], value_keys: list[str], target_count: int = 5):
@@ -1769,7 +1724,7 @@ def bulk_import_downsample_overlay_points(points: list[dict], value_keys: list[s
                     "efficiency_higher_end": None,
                     "permissible_use": None,
                 }
-            merged_points[merge_key][value_key] = round(value)
+            merged_points[merge_key][value_key] = value
 
     return sorted(merged_points.values(), key=lambda point: point["airflow"])
 
@@ -1855,7 +1810,7 @@ def bulk_import_scale_overlay_points_to_highest_rpm_line(
             value = bulk_import_parse_number(scaled_point.get(key))
             if value is None:
                 continue
-            scaled_point[key] = round(value * scale_factor)
+            scaled_point[key] = value * scale_factor
 
     return scaled_points
 
@@ -1973,10 +1928,49 @@ def bulk_import_chart_space_axis_extents(line_points: list[dict]):
     }
 
 
+def bulk_import_smoothed_curve(points: list[dict]):
+    """Match fullChart.js: shape-preserving Hermite samples, bounded extra density."""
+    if len(points) <= 2:
+        return points
+    xs = [point["axis"] for point in points]
+    ys = [point["value"] for point in points]
+    if any(right <= left for left, right in zip(xs, xs[1:])):
+        return points
+    deltas = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(len(xs) - 1)]
+    tangents = [deltas[0]] + [
+        0 if previous * following <= 0 else (previous + following) / 2
+        for previous, following in zip(deltas, deltas[1:])
+    ] + [deltas[-1]]
+    for i, delta in enumerate(deltas):
+        if delta == 0:
+            tangents[i] = tangents[i + 1] = 0
+            continue
+        alpha, beta = tangents[i] / delta, tangents[i + 1] / delta
+        distance = alpha * alpha + beta * beta
+        if distance > 9:
+            scale = 3 / math.sqrt(distance)
+            tangents[i], tangents[i + 1] = scale * alpha * delta, scale * beta * delta
+    samples = max(1, min(14, math.ceil(600 / (len(points) - 1))))
+    result = [points[0]]
+    for i in range(len(points) - 1):
+        dx = xs[i + 1] - xs[i]
+        for step in range(1, samples):
+            t = step / samples
+            t2, t3 = t * t, t * t * t
+            y = ((2 * t3 - 3 * t2 + 1) * ys[i]
+                 + (t3 - 2 * t2 + t) * dx * tangents[i]
+                 + (-2 * t3 + 3 * t2) * ys[i + 1]
+                 + (t3 - t2) * dx * tangents[i + 1])
+            result.append({"axis": xs[i] + dx * t,
+                           "value": max(min(ys[i], ys[i + 1]), min(max(ys[i], ys[i + 1]), y))})
+        result.append(points[i + 1])
+    return result
+
+
 def bulk_import_build_highest_rpm_profile(rpm_line_points: list[dict]):
     numeric_points = bulk_import_normalised_graph_series(rpm_line_points, "airflow", "pressure")
     return {
-        "points": numeric_points,
+        "points": bulk_import_smoothed_curve(numeric_points),
         "axis_extents": bulk_import_chart_space_axis_extents(rpm_line_points),
     }
 
@@ -2098,16 +2092,28 @@ def bulk_import_manifest_sheet_config(manifest: dict | None, sheet_name: str) ->
 
 def bulk_import_build_graph_state(
     rows: list[dict],
-    downsample_imported_curves: bool = True,
+    downsample_imported_curves: bool = False,
     downsample_point_count: int = 5,
     permissible_use_mode: str = "both",
     permissible_use_source_key: str = "efficiency_higher_end",
+    auto_scale_overlays: bool = False,
 ):
+    if downsample_imported_curves and (not isinstance(downsample_point_count, int) or downsample_point_count < 2):
+        raise HTTPException(status_code=400, detail="Points per curve must be a whole number of at least 2.")
     if not rows:
         return {"rpmLines": [], "rpmPoints": [], "efficiencyPoints": []}
 
-    headers = [bulk_import_sheet_key(header) for header in rows[0].keys()]
-    ordered_headers = list(rows[0].keys())
+    # A missing first-row value must not hide an entire curve column.
+    ordered_headers = list(dict.fromkeys(key for row in rows for key in row))
+    headers = [bulk_import_sheet_key(header) for header in ordered_headers]
+
+    def graph_number(value):
+        if value is None or (isinstance(value, str) and value.strip() in {"", "#N/A"}):
+            return None
+        number = bulk_import_parse_number(value)
+        if number is None:
+            raise HTTPException(status_code=400, detail=f"Graph contains a non-numeric value: {value!r}.")
+        return number
     airflow_header = headers[0]
     if airflow_header not in {"airflow_l_s", "airflow"}:
         raise HTTPException(status_code=400, detail='The first column must be "airflow_l_s".')
@@ -2137,7 +2143,7 @@ def bulk_import_build_graph_state(
     previous_airflow = None
 
     for row_index, row in enumerate(rows):
-        rounded_airflow = bulk_import_parse_integer(row.get(ordered_headers[0]))
+        rounded_airflow = graph_number(row.get(ordered_headers[0]))
         if rounded_airflow is None:
             raise HTTPException(status_code=400, detail=f"Row {row_index + 2} is missing an airflow value.")
         if rounded_airflow in seen_airflows:
@@ -2148,10 +2154,10 @@ def bulk_import_build_graph_state(
         previous_airflow = rounded_airflow
 
         for column in pressure_columns:
-            pressure = bulk_import_parse_number(row.get(column["header"]))
+            pressure = graph_number(row.get(column["header"]))
             if pressure is None:
                 continue
-            rounded_pressure = bulk_import_parse_integer(row.get(column["header"]))
+            rounded_pressure = graph_number(row.get(column["header"]))
             line = rpm_line_by_rpm.get(str(column["rpm"]))
             if not line:
                 continue
@@ -2179,7 +2185,7 @@ def bulk_import_build_graph_state(
         for overlay_key in overlay_columns:
             if overlay_key not in headers:
                 continue
-            value = bulk_import_parse_integer(row.get(overlay_key))
+            value = graph_number(row.get(overlay_key))
             if value is not None:
                 efficiency_point[overlay_key] = value
                 has_overlay = True
@@ -2200,12 +2206,6 @@ def bulk_import_build_graph_state(
                 continue
             point["permissible_use"] = source_value
 
-    next_efficiency_points = bulk_import_scale_overlay_points_to_highest_rpm_line(
-        next_efficiency_points,
-        rpm_lines,
-        next_rpm_points,
-    )
-
     if downsample_imported_curves:
         next_rpm_points_by_line = {}
         for point in next_rpm_points:
@@ -2218,6 +2218,11 @@ def bulk_import_build_graph_state(
             )
     else:
         adjusted_rpm_points = next_rpm_points
+
+    if auto_scale_overlays:
+        next_efficiency_points = bulk_import_scale_overlay_points_to_highest_rpm_line(
+            next_efficiency_points, rpm_lines, adjusted_rpm_points,
+        )
 
     adjusted_efficiency_points = (
         bulk_import_downsample_overlay_points(next_efficiency_points, list(overlay_columns), downsample_point_count)
@@ -2354,14 +2359,16 @@ def bulk_import_process_payloads(
     image_sources: dict[str, bytes],
     sheet_meta: dict[str, dict],
     dry_run: bool,
-    default_downsample_imported_curves: bool = True,
+    default_downsample_imported_curves: bool = False,
     default_downsample_point_count: int = 5,
+    default_auto_scale_overlays: bool = False,
 ) -> BulkImportResponse:
     report = BulkImportResponse(dry_run=dry_run)
     manifest = tables.get("__manifest__") if isinstance(tables.get("__manifest__"), dict) else {}
     defaults = dict(manifest.get("defaults") or {}) if isinstance(manifest, dict) else {}
     defaults.setdefault("downsample_imported_curves", default_downsample_imported_curves)
     defaults.setdefault("downsample_point_count", default_downsample_point_count)
+    defaults.setdefault("auto_scale_overlays", default_auto_scale_overlays)
     default_series_id = parse_int_or_none(defaults.get("series_id")) if "series_id" in defaults else None
     default_series_name = str(defaults.get("series_name") or "").strip() or None
     report.tables = [
@@ -2432,12 +2439,13 @@ def bulk_import_process_payloads(
         downsample_imported_curves = bool(
             sheet_config.get(
                 "downsample_imported_curves",
-                defaults.get("downsample_imported_curves", True),
+                defaults.get("downsample_imported_curves", False),
             )
         )
-        downsample_point_count = parse_int_or_none(
+        requested_count = bulk_import_parse_number(
             sheet_config.get("downsample_point_count", defaults.get("downsample_point_count", 5))
-        ) or 5
+        )
+        downsample_point_count = int(requested_count) if requested_count is not None and requested_count == int(requested_count) else 0
         permissible_use_mode = normalize_permissible_use_mode(
             sheet_config.get("permissible_use_mode", defaults.get("permissible_use_mode", "both"))
         )
@@ -2451,6 +2459,7 @@ def bulk_import_process_payloads(
                 rows,
                 downsample_imported_curves=downsample_imported_curves,
                 downsample_point_count=downsample_point_count,
+                auto_scale_overlays=bool(sheet_config.get("auto_scale_overlays", defaults.get("auto_scale_overlays", False))),
                 permissible_use_mode=permissible_use_mode,
                 permissible_use_source_key=permissible_use_source_key,
             )
@@ -2778,8 +2787,9 @@ def bulk_import_sources_from_uploads(
 
 async def bulk_import_assets(
     dry_run: bool = False,
-    downsample_imported_curves: bool = True,
+    downsample_imported_curves: bool = False,
     downsample_point_count: int = 5,
+    auto_scale_overlays: bool = False,
     manifest_json: str | None = Form(None),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -2804,6 +2814,7 @@ async def bulk_import_assets(
             dry_run,
             default_downsample_imported_curves=downsample_imported_curves,
             default_downsample_point_count=downsample_point_count,
+            default_auto_scale_overlays=auto_scale_overlays,
         )
     except HTTPException:
         raise
@@ -7440,6 +7451,17 @@ def _validate_action(action: object) -> dict | None:
     result = {"type": action_type, "target": target}
     if action_type == "modal" and action.get("defaultType") in ENQUIRY_MODAL_OPTION_VALUES:
         result["defaultType"] = action["defaultType"]
+    if action_type == "modal" and "contextFields" in action:
+        context_fields = action.get("contextFields")
+        if not isinstance(context_fields, dict):
+            raise HTTPException(status_code=400, detail="CMS modal context fields must be an object.")
+        unknown_fields = set(context_fields) - set(ENQUIRY_MODAL_CONTEXT_FIELD_KEYS)
+        if unknown_fields:
+            raise HTTPException(status_code=400, detail="CMS modal context fields contain an unsupported field.")
+        result["contextFields"] = {
+            key: bool(context_fields.get(key, True))
+            for key in ENQUIRY_MODAL_CONTEXT_FIELD_KEYS
+        }
     return result
 
 
@@ -7490,6 +7512,7 @@ ENQUIRY_MODAL_REQUIRED_KEYS = {
     "email_label", "phone_label", "request_heading", "request_help",
     "request_options", "submit_label", "footer_text",
 }
+ENQUIRY_MODAL_CONTEXT_FIELD_KEYS = ("airflow", "pressure")
 
 
 def _validate_site_page_content(page: SitePage, content: dict) -> dict:
@@ -7511,6 +7534,14 @@ def _validate_site_page_content(page: SitePage, content: dict) -> dict:
             raise HTTPException(status_code=400, detail="Each Enquiries modal option needs a title.")
         if not isinstance(option.get("text"), str):
             raise HTTPException(status_code=400, detail="Each Enquiries modal option needs descriptive text.")
+    context_fields = merged.get("context_fields")
+    if context_fields is not None and not isinstance(context_fields, dict):
+        raise HTTPException(status_code=400, detail="The Enquiries modal context fields must be an object.")
+    context_fields = context_fields or {}
+    merged["context_fields"] = {
+        key: bool(context_fields.get(key, True))
+        for key in ENQUIRY_MODAL_CONTEXT_FIELD_KEYS
+    }
     return merged
 
 
@@ -7646,6 +7677,15 @@ def _quote_request_body(record: QuoteRequest) -> str:
         f"Verification: {record.verification_provider} / {record.verification_status}",
         f"Email status: {record.email_status}",
     ]
+    workflow_context = (record.context_json or {}).get("enquiry_workflow") if isinstance(record.context_json, dict) else {}
+    performance_target = workflow_context.get("performance_target") if isinstance(workflow_context, dict) else {}
+    if isinstance(performance_target, dict) and performance_target:
+        lines.extend([
+            "",
+            "Captured performance targets:",
+            f"Airflow target: {performance_target.get('airflow') or 'Not captured'}",
+            f"Pressure target: {performance_target.get('pressure') or 'Not captured'}",
+        ])
     if record.short_notes:
         lines.extend(["", f"Additional notes: {_quote_request_clean_multiline(record.short_notes, 300)}"])
     if record.details:
@@ -7699,6 +7739,21 @@ def _normalise_quote_request_payload(payload: QuoteRequestCreate) -> dict:
     }
     if isinstance(payload.page_context, dict):
         context_json.update({key: value for key, value in payload.page_context.items() if value not in (None, "")})
+        workflow = payload.page_context.get("enquiry_workflow")
+        if isinstance(workflow, dict):
+            configured_fields = workflow.get("context_fields") if isinstance(workflow.get("context_fields"), dict) else {}
+            performance_target = workflow.get("performance_target") if isinstance(workflow.get("performance_target"), dict) else {}
+            context_json["enquiry_workflow"] = {
+                "context_fields": {
+                    "airflow": configured_fields.get("airflow") is not False,
+                    "pressure": configured_fields.get("pressure") is not False,
+                },
+                "performance_target": {
+                    key: _quote_request_clean(performance_target.get(key), 60)
+                    for key in ("airflow", "pressure")
+                    if performance_target.get(key) not in (None, "")
+                },
+            }
 
     return {
         "name": _quote_request_clean(payload.name, 120),
