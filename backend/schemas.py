@@ -899,6 +899,8 @@ class QuoteRequestResponse(BaseModel):
     status: str
     email_status: str
     email_error: Optional[str] = None
+    acknowledgement_email_status: str = "pending"
+    acknowledgement_email_error: Optional[str] = None
     verification_provider: str
     verification_status: str
     verification_error: Optional[str] = None

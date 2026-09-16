@@ -1,1 +1,1 @@
-export const env={"PUBLIC_CATALOGUE_BACKEND_API_BASE_URL":"http://127.0.0.1:8002","PUBLIC_CATALOGUE_SITE_URL":"http://127.0.0.1:8005","PUBLIC_CATALOGUE_SITE_NAME":"Vent-tech catalogue (SIT)"}
+export const env={}

@@ -54,6 +54,7 @@ function _page($$renderer, $$props) {
             record.request_type,
             record.status,
             record.email_status,
+            record.acknowledgement_email_status,
             record.verification_status,
             record.page_url,
             record.short_notes,
@@ -218,6 +219,13 @@ function _page($$renderer, $$props) {
             if (record.email_error) {
               $$renderer3.push("<!--[0-->");
               $$renderer3.push(`<div class="small text-danger mt-1">${escape_html(record.email_error)}</div>`);
+            } else {
+              $$renderer3.push("<!--[-1-->");
+            }
+            $$renderer3.push(`<!--]--> <div class="small text-body-secondary mt-2">Customer acknowledgement</div> <div${attr_class(`badge ${record.acknowledgement_email_status === "sent" ? "text-bg-success" : record.acknowledgement_email_status === "failed" ? "text-bg-danger" : "text-bg-secondary"}`)}>${escape_html(record.acknowledgement_email_status || "not sent")}</div> `);
+            if (record.acknowledgement_email_error) {
+              $$renderer3.push("<!--[0-->");
+              $$renderer3.push(`<div class="small text-danger mt-1">${escape_html(record.acknowledgement_email_error)}</div>`);
             } else {
               $$renderer3.push("<!--[-1-->");
             }

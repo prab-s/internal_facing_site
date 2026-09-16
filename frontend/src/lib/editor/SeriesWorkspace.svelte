@@ -4,6 +4,7 @@
   import {
     createSeries,
     deleteSeries,
+    duplicateSeries,
     deleteSeriesImage,
     getProductTypes,
     getSeries,
@@ -346,6 +347,26 @@
     }
   }
 
+  async function duplicateCurrentSeries() {
+    if (!seriesDraft.id) return;
+    error = '';
+    success = '';
+    saving = true;
+    try {
+      const copied = await duplicateSeries(seriesDraft.id);
+      await loadData();
+      selectedSeriesId = copied.id;
+      mode = 'edit';
+      syncSeriesEditorUrl(copied.id);
+      hydrateSelectedSeries(copied.id);
+      success = 'Series duplicated. Rename the copy and save your changes.';
+    } catch (e) {
+      error = e.message;
+    } finally {
+      saving = false;
+    }
+  }
+
   onMount(async () => {
     await loadData();
     if (selectedSeriesId) {
@@ -528,6 +549,7 @@
             </a>
           {/if}
           {#if mode === 'edit' && seriesDraft.id}
+            <button class="btn btn-outline-primary" on:click={duplicateCurrentSeries} disabled={saving}>Duplicate Series</button>
             <button class="btn btn-outline-danger" on:click={deleteCurrentSeries} disabled={saving}>Delete Series</button>
           {/if}
           <button class="btn btn-outline-secondary" on:click={cancelEditing}>Cancel</button>

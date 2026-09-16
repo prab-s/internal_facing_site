@@ -1468,7 +1468,7 @@ function ProductWorkspace($$renderer, $$props) {
           $$renderer3.push(`<button class="btn btn-primary"${attr("disabled", loading, true)}>${escape_html("Save Product")}</button> <button class="btn btn-outline-secondary">Cancel</button>`);
         } else if (editingProductId !== null) {
           $$renderer3.push("<!--[1-->");
-          $$renderer3.push(`<button class="btn btn-primary"${attr("disabled", savingMapPoints, true)}>${escape_html("Save Changes")}</button> <a class="btn btn-outline-primary"${attr("href", productViewerUrl(editingProductId))} target="_self">View in Viewer</a> <button class="btn btn-outline-danger"${attr("disabled", savingProductDetails, true)}>Delete Product</button> <button class="btn btn-outline-secondary"${attr("disabled", savingProductDetails, true)}>Done</button>`);
+          $$renderer3.push(`<button class="btn btn-primary"${attr("disabled", savingMapPoints, true)}>${escape_html("Save Changes")}</button> <a class="btn btn-outline-primary"${attr("href", productViewerUrl(editingProductId))} target="_self">View in Viewer</a> <button class="btn btn-outline-primary"${attr("disabled", savingProductDetails, true)}>Duplicate Product</button> <button class="btn btn-outline-danger"${attr("disabled", savingProductDetails, true)}>Delete Product</button> <button class="btn btn-outline-secondary"${attr("disabled", savingProductDetails, true)}>Done</button>`);
         } else {
           $$renderer3.push("<!--[-1-->");
         }

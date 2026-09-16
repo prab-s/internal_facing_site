@@ -7695,6 +7695,36 @@ def _quote_request_body(record: QuoteRequest) -> str:
     return "\n".join(lines)
 
 
+def _quote_request_acknowledgement_subject(record: QuoteRequest) -> str:
+    return "We received your Vent-Tech enquiry"
+
+
+def _quote_request_acknowledgement_body(record: QuoteRequest) -> str:
+    """Give the customer a useful receipt without exposing internal metadata."""
+    attributes = record.attributes if isinstance(record.attributes, list) else []
+    attribute_labels = [QUOTE_REQUEST_ATTRIBUTE_LABELS.get(str(item), str(item)) for item in attributes if str(item).strip()]
+    lines = [
+        f"Hi {record.name},",
+        "",
+        "Thanks for your enquiry. A member of the Vent-Tech team will be in touch.",
+        "",
+        "Here is a copy of what you sent:",
+        f"Request type: {QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(record.request_type or '', 'Enquiry')}",
+        f"Company: {record.company or 'Not provided'}",
+        f"Phone: {record.phone or 'Not provided'}",
+        f"Desired attributes: {', '.join(attribute_labels) if attribute_labels else 'Not specified'}",
+        f"Airflow range: {record.airflow_min or 'Not specified'} - {record.airflow_max or 'Not specified'}",
+        f"Pressure range: {record.pressure_min or 'Not specified'} - {record.pressure_max or 'Not specified'}",
+        f"Power limit: {record.power_limit or 'Not specified'}",
+    ]
+    if record.short_notes:
+        lines.extend(["", f"Additional notes: {_quote_request_clean_multiline(record.short_notes, 300)}"])
+    if record.details:
+        lines.extend(["", "Details:", _quote_request_clean_multiline(record.details, 4000)])
+    lines.extend(["", "Vent-Tech team"])
+    return "\n".join(lines)
+
+
 def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str], smtp_config: SMTPConfig) -> bool:
     attachments = []
     graph_image_data_url = getattr(record, "_graph_image_data_url", "")
@@ -7716,6 +7746,15 @@ def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str],
         _quote_request_body(record),
         reply_to=record.email,
         attachments=attachments,
+        config=smtp_config,
+    )
+
+
+def _send_quote_request_acknowledgement(record: QuoteRequest, smtp_config: SMTPConfig) -> bool:
+    return send_email(
+        record.email,
+        _quote_request_acknowledgement_subject(record),
+        _quote_request_acknowledgement_body(record),
         config=smtp_config,
     )
 
@@ -8676,7 +8715,7 @@ def get_public_site_page(slug: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Site page not found.")
     if not page.published_content:
         raise HTTPException(status_code=404, detail="Site page not found.")
-    return {"slug": page.slug, "label": page.label, "content_type": page.content_type, "content": page.published_content or {}, "seo": page.published_seo or {}, "layout": _validate_site_page_layout(page.published_layout or [])}
+    return {"slug": page.slug, "label": page.label, "content_type": page.content_type, "content": page.published_content or {}, "seo": page.published_seo or {}, "layout": _validate_site_page_layout(page.published_layout) if page.published_layout is not None else None}
 
 
 @app.get("/api/cms/assets", response_model=list[SiteAssetResponse], dependencies=[Depends(require_admin_user)], tags=["CMS"])
@@ -9046,6 +9085,100 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
     db.refresh(product_type)
     notify_public_catalogue_cache_refresh()
     return product_type
+
+
+def duplicate_name(db: Session, model, field, source_name: str, filters=()):
+    """Return a readable copy name that does not collide within its scope."""
+    base = f"{(source_name or '').strip() or 'Untitled'} Copy"
+    candidate = base
+    suffix = 2
+    while db.query(model).filter(*filters, field.ilike(candidate)).first():
+        candidate = f"{base} {suffix}"
+        suffix += 1
+    return candidate
+
+
+def copy_associated_documents(db: Session, source, target, owner_type: str):
+    owner_field = f"{owner_type}_id"
+    for source_document in sorted(source.associated_documents or [], key=lambda item: (item.sort_order, item.id)):
+        suffix = Path(source_document.file_name).suffix
+        copied_document = AssociatedDocument(
+            owner_type=owner_type,
+            original_file_name=source_document.original_file_name,
+            file_name=f"{uuid4().hex}{suffix}",
+            mime_type=source_document.mime_type,
+            sort_order=source_document.sort_order,
+        )
+        setattr(copied_document, owner_field, target.id)
+        db.add(copied_document)
+        source_path = associated_document_path(owner_type, source.id, source_document.file_name)
+        target_path = associated_document_directory(owner_type, target.id) / copied_document.file_name
+        if source_path.is_file():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+
+
+@app.post("/api/product-types/{product_type_id}/duplicate", response_model=ProductTypeResponse, dependencies=[Depends(get_current_user)], tags=["Product Types"], summary="Duplicate a product type")
+def duplicate_product_type(product_type_id: int, db: Session = Depends(get_db)):
+    source = (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.parameter_group_presets).selectinload(ProductTypeParameterGroupPreset.parameter_presets),
+            selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
+            selectinload(ProductType.efficiency_point_presets),
+            selectinload(ProductType.associated_documents),
+        )
+        .filter(ProductType.id == product_type_id)
+        .first()
+    )
+    if not source:
+        raise HTTPException(status_code=404, detail="Product type not found.")
+
+    label = duplicate_name(db, ProductType, ProductType.label, source.label)
+    key = sanitize_name(label)
+    key_suffix = 2
+    while db.query(ProductType).filter(ProductType.key == key).first():
+        key = sanitize_name(f"{label} {key_suffix}")
+        key_suffix += 1
+    copied = ProductType(
+        key=key, label=label,
+        supports_graph=source.supports_graph, graph_kind=source.graph_kind,
+        supports_graph_overlays=source.supports_graph_overlays,
+        supports_band_graph_style=source.supports_band_graph_style,
+        graph_line_value_label=source.graph_line_value_label, graph_line_value_unit=source.graph_line_value_unit,
+        graph_x_axis_label=source.graph_x_axis_label, graph_x_axis_unit=source.graph_x_axis_unit,
+        graph_y_axis_label=source.graph_y_axis_label, graph_y_axis_unit=source.graph_y_axis_unit,
+        product_type_template_id=source.product_type_template_id,
+        product_type_pdf_series_order=[], product_template_id=source.product_template_id,
+        series_template_id=source.series_template_id, printed_product_template_id=source.printed_product_template_id,
+        online_product_template_id=source.online_product_template_id, contents_icon_url=source.contents_icon_url,
+        band_graph_background_color=source.band_graph_background_color,
+        band_graph_label_text_color=source.band_graph_label_text_color,
+        band_graph_faded_opacity=source.band_graph_faded_opacity,
+        band_graph_permissible_label_color=source.band_graph_permissible_label_color,
+        sort_order=int(db.query(func.coalesce(func.max(ProductType.sort_order), -1)).scalar()) + 1,
+    )
+    db.add(copied)
+    db.flush()
+    for group in source.parameter_group_presets:
+        copied_group = ProductTypeParameterGroupPreset(product_type_id=copied.id, group_name=group.group_name, sort_order=group.sort_order)
+        db.add(copied_group)
+        db.flush()
+        for parameter in group.parameter_presets:
+            db.add(ProductTypeParameterPreset(group_preset_id=copied_group.id, parameter_name=parameter.parameter_name, sort_order=parameter.sort_order, preferred_unit=parameter.preferred_unit, value_type=parameter.value_type, value_string=parameter.value_string, value_number=parameter.value_number))
+    for line in source.rpm_line_presets:
+        copied_line = ProductTypeRpmLinePreset(product_type_id=copied.id, rpm=line.rpm, band_color=line.band_color, sort_order=line.sort_order)
+        db.add(copied_line)
+        db.flush()
+        for point in line.point_presets:
+            db.add(ProductTypeRpmPointPreset(line_preset_id=copied_line.id, airflow=point.airflow, pressure=point.pressure, sort_order=point.sort_order))
+    for point in source.efficiency_point_presets:
+        db.add(ProductTypeEfficiencyPointPreset(product_type_id=copied.id, airflow=point.airflow, efficiency_centre=point.efficiency_centre, efficiency_lower_end=point.efficiency_lower_end, efficiency_higher_end=point.efficiency_higher_end, permissible_use=point.permissible_use, sort_order=point.sort_order))
+    copy_associated_documents(db, source, copied, "product_type")
+    db.commit()
+    db.refresh(copied)
+    notify_public_catalogue_cache_refresh()
+    return copied
 
 
 @app.put("/api/product-types/{product_type_id}", response_model=ProductTypeResponse, dependencies=[Depends(get_current_user)], tags=["Product Types"])
@@ -9819,6 +9952,49 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
     return series
 
 
+@app.post("/api/series/{series_id}/duplicate", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Duplicate a series")
+def duplicate_series(series_id: int, db: Session = Depends(get_db)):
+    source = (
+        db.query(Series)
+        .options(joinedload(Series.product_type), selectinload(Series.series_images), selectinload(Series.associated_documents))
+        .filter(Series.id == series_id)
+        .first()
+    )
+    if not source:
+        raise HTTPException(status_code=404, detail="Series not found.")
+    name = duplicate_name(db, Series, Series.name, source.name, (Series.product_type_id == source.product_type_id,))
+    copied = Series(
+        product_type_id=source.product_type_id, name=name,
+        description1_html=source.description1_html, description2_html=source.description2_html,
+        description3_html=source.description3_html, description4_html=source.description4_html,
+        description5_html=source.description5_html, description6_html=source.description6_html,
+        description7_html=source.description7_html, description8_html=source.description8_html,
+        description9_html=source.description9_html, description10_html=source.description10_html,
+        description_field_count=source.description_field_count, contents_description=source.contents_description,
+        template_id=source.template_id, printed_template_id=source.printed_template_id,
+        online_template_id=source.online_template_id,
+    )
+    db.add(copied)
+    db.flush()
+    ensure_series_tab_color(db, copied)
+    for source_image in source.series_images:
+        suffix = Path(source_image.file_name).suffix or ".jpg"
+        copied_image = SeriesImage(series_id=copied.id, file_name=f"copy_{uuid4().hex}{suffix}", sort_order=source_image.sort_order)
+        db.add(copied_image)
+        source_path = series_image_path(source.id, source_image.file_name)
+        target_path = series_image_target_path(copied.id, copied_image.file_name)
+        if source_path.is_file():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+            ensure_public_series_image_derivative(copied.id, copied_image.file_name)
+    copy_associated_documents(db, source, copied, "series")
+    db.commit()
+    db.refresh(copied)
+    assign_series_product_counts([copied], {copied.id: 0})
+    notify_public_catalogue_cache_refresh()
+    return copied
+
+
 @app.put("/api/series/{series_id}", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Update a series")
 def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_db)):
     series = db.get(Series, series_id)
@@ -9984,6 +10160,8 @@ def _serialize_quote_request(record: QuoteRequest) -> QuoteRequestResponse:
         status=record.status,
         email_status=record.email_status,
         email_error=record.email_error,
+        acknowledgement_email_status=record.acknowledgement_email_status,
+        acknowledgement_email_error=record.acknowledgement_email_error,
         verification_provider=record.verification_provider,
         verification_status=record.verification_status,
         verification_error=record.verification_error,
@@ -10030,6 +10208,8 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
         status="new",
         email_status="pending",
         email_error=None,
+        acknowledgement_email_status="pending",
+        acknowledgement_email_error=None,
         verification_provider="honeypot",
         verification_status="passed",
         verification_error=None,
@@ -10045,6 +10225,8 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
     if not smtp_config.is_configured:
         record.email_status = "not_configured"
         record.email_error = "SMTP is not configured."
+        record.acknowledgement_email_status = "not_configured"
+        record.acknowledgement_email_error = "Internal notification was not sent because SMTP is not configured."
         logger.info("Quote request email skipped because SMTP is not configured")
     else:
         try:
@@ -10052,12 +10234,28 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
             if not sent:
                 record.email_status = "not_configured"
                 record.email_error = "SMTP is not configured."
+                record.acknowledgement_email_status = "not_configured"
+                record.acknowledgement_email_error = "Internal notification was not sent."
             else:
                 record.email_status = "sent"
                 record.email_error = None
+                try:
+                    acknowledgement_sent = await asyncio.to_thread(_send_quote_request_acknowledgement, record, smtp_config)
+                    if acknowledgement_sent:
+                        record.acknowledgement_email_status = "sent"
+                        record.acknowledgement_email_error = None
+                    else:
+                        record.acknowledgement_email_status = "not_configured"
+                        record.acknowledgement_email_error = "SMTP is not configured."
+                except Exception as exc:
+                    record.acknowledgement_email_status = "failed"
+                    record.acknowledgement_email_error = str(exc)
+                    logger.exception("Quote request acknowledgement delivery failed")
         except Exception as exc:
             record.email_status = "failed"
             record.email_error = str(exc)
+            record.acknowledgement_email_status = "skipped"
+            record.acknowledgement_email_error = "Internal notification failed, so no acknowledgement was sent."
             logger.exception("Quote request email delivery failed")
 
     db.commit()
@@ -10938,6 +11136,77 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     db.refresh(product)
     notify_public_catalogue_cache_refresh()
     return product
+
+
+@app.post("/api/products/{product_id}/duplicate", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Duplicate a product")
+def duplicate_product(product_id: int, db: Session = Depends(get_db)):
+    source = (
+        db.query(Product)
+        .options(
+            joinedload(Product.product_type), joinedload(Product.series),
+            selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
+            selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+            selectinload(Product.efficiency_points), selectinload(Product.product_images),
+            selectinload(Product.associated_documents),
+        )
+        .filter(Product.id == product_id)
+        .first()
+    )
+    if not source:
+        raise HTTPException(status_code=404, detail="Product not found.")
+    model = duplicate_name(db, Product, Product.model, source.model)
+    copied = Product(
+        product_type_id=source.product_type_id, series_id=source.series_id,
+        series_name=source.series.name if source.series else source.series_name,
+        model=model, template_id=source.template_id, printed_template_id=source.printed_template_id,
+        online_template_id=source.online_template_id,
+        description1_html=source.description1_html, description2_html=source.description2_html,
+        description3_html=source.description3_html, description4_html=source.description4_html,
+        description5_html=source.description5_html, description6_html=source.description6_html,
+        description7_html=source.description7_html, description8_html=source.description8_html,
+        description9_html=source.description9_html, description10_html=source.description10_html,
+        description_field_count=source.description_field_count,
+        show_rpm_band_shading=source.show_rpm_band_shading,
+        permissible_use_mode=source.permissible_use_mode,
+        band_graph_background_color=source.band_graph_background_color,
+        band_graph_label_text_color=source.band_graph_label_text_color,
+        band_graph_faded_opacity=source.band_graph_faded_opacity,
+        band_graph_permissible_label_color=source.band_graph_permissible_label_color,
+        _fan_acoustic_table_json=source._fan_acoustic_table_json,
+    )
+    db.add(copied)
+    db.flush()
+    for group in source.parameter_groups:
+        copied_group = ProductParameterGroup(product_id=copied.id, group_name=group.group_name, sort_order=group.sort_order)
+        db.add(copied_group)
+        db.flush()
+        for parameter in group.parameters:
+            db.add(ProductParameter(group_id=copied_group.id, parameter_name=parameter.parameter_name, sort_order=parameter.sort_order, value_string=parameter.value_string, value_number=parameter.value_number, unit=parameter.unit))
+    for line in source.rpm_lines:
+        copied_line = RpmLine(product_id=copied.id, rpm=line.rpm, band_color=line.band_color)
+        db.add(copied_line)
+        db.flush()
+        for point in line.points:
+            db.add(RpmPoint(product_id=copied.id, rpm_line_id=copied_line.id, airflow=point.airflow, pressure=point.pressure))
+    for point in source.efficiency_points:
+        db.add(EfficiencyPoint(product_id=copied.id, airflow=point.airflow, efficiency_centre=point.efficiency_centre, efficiency_lower_end=point.efficiency_lower_end, efficiency_higher_end=point.efficiency_higher_end, permissible_use=point.permissible_use))
+    for source_image in source.product_images:
+        suffix = Path(source_image.file_name).suffix or ".jpg"
+        copied_image = ProductImage(product_id=copied.id, file_name=f"copy_{uuid4().hex}{suffix}", sort_order=source_image.sort_order)
+        db.add(copied_image)
+        source_path = product_image_path(source.id, source_image.file_name)
+        target_path = product_image_target_path(copied.id, copied_image.file_name)
+        if source_path.is_file():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+            ensure_public_product_image_derivative(copied.id, copied_image.file_name)
+    copy_associated_documents(db, source, copied, "product")
+    db.flush()
+    refresh_graph_for_product(db, copied)
+    db.commit()
+    db.refresh(copied)
+    notify_public_catalogue_cache_refresh()
+    return copied
 
 
 @app.get("/api/fans/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)

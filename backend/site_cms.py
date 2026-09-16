@@ -4,7 +4,12 @@ from copy import deepcopy
 
 
 def _page(slug, label, content, seo, content_type="page"):
-    return {"slug": slug, "label": label, "content_type": content_type, "content": content, "seo": seo}
+    from backend.site_page_layouts import MARKETING_PAGE_SLUGS, marketing_page_layout
+
+    page = {"slug": slug, "label": label, "content_type": content_type, "content": content, "seo": seo}
+    if slug in MARKETING_PAGE_SLUGS:
+        page["layout"] = marketing_page_layout(slug, content)
+    return page
 
 
 def default_site_pages():

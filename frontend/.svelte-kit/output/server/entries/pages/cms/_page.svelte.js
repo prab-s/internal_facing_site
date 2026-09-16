@@ -44,6 +44,109 @@ function BackgroundControls($$renderer, $$props) {
     bind_props($$props, { value, label, compact });
   });
 }
+function SectionAppearanceControls($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let value = fallback($$props["value"], () => ({}), true);
+    $$renderer2.push(`<div class="appearance-controls svelte-1ufmzqy"><label class="svelte-1ufmzqy">Style`);
+    $$renderer2.select(
+      {
+        class: "form-select form-select-sm",
+        value: value.surface || "card"
+      },
+      ($$renderer3) => {
+        $$renderer3.option({ value: "card" }, ($$renderer4) => {
+          $$renderer4.push(`Card`);
+        });
+        $$renderer3.option({ value: "plain" }, ($$renderer4) => {
+          $$renderer4.push(`Plain`);
+        });
+      }
+    );
+    $$renderer2.push(`</label> <label class="svelte-1ufmzqy">Tone`);
+    $$renderer2.select(
+      {
+        class: "form-select form-select-sm",
+        value: value.tone || "default"
+      },
+      ($$renderer3) => {
+        $$renderer3.option({ value: "default" }, ($$renderer4) => {
+          $$renderer4.push(`Default`);
+        });
+        $$renderer3.option({ value: "soft" }, ($$renderer4) => {
+          $$renderer4.push(`Soft`);
+        });
+        $$renderer3.option({ value: "dark" }, ($$renderer4) => {
+          $$renderer4.push(`Dark`);
+        });
+        $$renderer3.option({ value: "brand" }, ($$renderer4) => {
+          $$renderer4.push(`Brand`);
+        });
+      }
+    );
+    $$renderer2.push(`</label> <label class="svelte-1ufmzqy">Spacing`);
+    $$renderer2.select(
+      {
+        class: "form-select form-select-sm",
+        value: value.spacing || "md"
+      },
+      ($$renderer3) => {
+        $$renderer3.option({ value: "none" }, ($$renderer4) => {
+          $$renderer4.push(`None`);
+        });
+        $$renderer3.option({ value: "sm" }, ($$renderer4) => {
+          $$renderer4.push(`Small`);
+        });
+        $$renderer3.option({ value: "md" }, ($$renderer4) => {
+          $$renderer4.push(`Medium`);
+        });
+        $$renderer3.option({ value: "lg" }, ($$renderer4) => {
+          $$renderer4.push(`Large`);
+        });
+      }
+    );
+    $$renderer2.push(`</label> <label class="svelte-1ufmzqy">Text align`);
+    $$renderer2.select(
+      {
+        class: "form-select form-select-sm",
+        value: value.textAlign || "start"
+      },
+      ($$renderer3) => {
+        $$renderer3.option({ value: "start" }, ($$renderer4) => {
+          $$renderer4.push(`Left`);
+        });
+        $$renderer3.option({ value: "center" }, ($$renderer4) => {
+          $$renderer4.push(`Centre`);
+        });
+        $$renderer3.option({ value: "end" }, ($$renderer4) => {
+          $$renderer4.push(`Right`);
+        });
+      }
+    );
+    $$renderer2.push(`</label> <label class="svelte-1ufmzqy">Button style`);
+    $$renderer2.select(
+      {
+        class: "form-select form-select-sm",
+        value: value.buttonVariant || "primary"
+      },
+      ($$renderer3) => {
+        $$renderer3.option({ value: "primary" }, ($$renderer4) => {
+          $$renderer4.push(`Primary`);
+        });
+        $$renderer3.option({ value: "outline-secondary" }, ($$renderer4) => {
+          $$renderer4.push(`Outline`);
+        });
+        $$renderer3.option({ value: "light" }, ($$renderer4) => {
+          $$renderer4.push(`Light`);
+        });
+        $$renderer3.option({ value: "outline-light" }, ($$renderer4) => {
+          $$renderer4.push(`Light outline`);
+        });
+      }
+    );
+    $$renderer2.push(`</label></div>`);
+    bind_props($$props, { value });
+  });
+}
 function ActionEditor($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let action;
@@ -497,7 +600,17 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></div><div class="toolbar-help svelte-17dfpeu"><strong class="svelte-17dfpeu">Auto layout</strong><span>Auto sections pack two-across where possible while preserving their order.</span></div></div> <div class="builder-layout svelte-17dfpeu"><aside class="template-panel card svelte-17dfpeu"><div class="card-body svelte-17dfpeu"><h2 class="h6 svelte-17dfpeu">Add a section</h2><p class="small text-body-secondary svelte-17dfpeu">${escape_html(protectedPage ? "The Enquiries modal structure is protected." : "Choose a fixed template, then customise its cards and content.")}</p><!--[-->`);
+    $$renderer2.push(`<!--]--></div><div class="toolbar-help svelte-17dfpeu"><strong class="svelte-17dfpeu">Auto layout</strong><span>Auto sections pack two-across where possible while preserving their order.</span></div></div> `);
+    if (sections.find((item) => item.id === selectedSectionId)) {
+      $$renderer2.push("<!--[0-->");
+      const appearanceSection = sections.find((item) => item.id === selectedSectionId);
+      $$renderer2.push(`<div class="card mb-3 p-3"><div class="small text-body-secondary mb-2">Selected section appearance</div> `);
+      SectionAppearanceControls($$renderer2, { value: appearanceSection });
+      $$renderer2.push(`<!----></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="builder-layout svelte-17dfpeu"><aside class="template-panel card svelte-17dfpeu"><div class="card-body svelte-17dfpeu"><h2 class="h6 svelte-17dfpeu">Add a section</h2><p class="small text-body-secondary svelte-17dfpeu">${escape_html(protectedPage ? "The Enquiries modal structure is protected." : "Choose a fixed template, then customise its cards and content.")}</p><!--[-->`);
     const each_array_3 = ensure_array_like(sectionTypes);
     for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
       let template = each_array_3[$$index_3];

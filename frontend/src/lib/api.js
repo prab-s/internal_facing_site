@@ -190,6 +190,11 @@ export async function deleteProductType(id) {
   return r.json();
 }
 
+export async function duplicateProductType(id) {
+  const r = await apiFetch(`/product-types/${id}/duplicate`, { method: 'POST' });
+  return r.json();
+}
+
 export async function updateProductTypePresets(id, body) {
   const r = await apiFetch(`/product-types/${id}/parameter-group-presets`, {
     method: 'PUT',
@@ -450,6 +455,11 @@ export async function deleteSeries(id) {
   return r.json();
 }
 
+export async function duplicateSeries(id) {
+  const r = await apiFetch(`/series/${id}/duplicate`, { method: 'POST' });
+  return r.json();
+}
+
 export async function getSeriesImages(seriesId) {
   const r = await apiFetch(`/series/${seriesId}/series-images`);
   return r.json();
@@ -569,6 +579,11 @@ export async function replaceProductGraphData(productId, body) {
 
 export async function deleteProduct(id) {
   const r = await apiFetch(`/products/${id}`, { method: 'DELETE' });
+  return r.json();
+}
+
+export async function duplicateProduct(id) {
+  const r = await apiFetch(`/products/${id}/duplicate`, { method: 'POST' });
   return r.json();
 }
 

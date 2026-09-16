@@ -126,6 +126,8 @@ def _seed_site_pages():
                 content_type=seed["content_type"],
                 draft_content=seed["content"],
                 published_content=seed["content"],
+                draft_layout=seed.get("layout"),
+                published_layout=seed.get("layout"),
                 draft_seo=seed["seo"],
                 published_seo=seed["seo"],
                 status="published",

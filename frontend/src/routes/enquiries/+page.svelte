@@ -60,6 +60,7 @@
           record.request_type,
           record.status,
           record.email_status,
+          record.acknowledgement_email_status,
           record.verification_status,
           record.page_url,
           record.short_notes,
@@ -281,6 +282,11 @@
                     <div class={`badge ${record.email_status === 'sent' ? 'text-bg-success' : record.email_status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>{record.email_status}</div>
                     {#if record.email_error}
                       <div class="small text-danger mt-1">{record.email_error}</div>
+                    {/if}
+                    <div class="small text-body-secondary mt-2">Customer acknowledgement</div>
+                    <div class={`badge ${record.acknowledgement_email_status === 'sent' ? 'text-bg-success' : record.acknowledgement_email_status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>{record.acknowledgement_email_status || 'not sent'}</div>
+                    {#if record.acknowledgement_email_error}
+                      <div class="small text-danger mt-1">{record.acknowledgement_email_error}</div>
                     {/if}
                   </td>
                   <td class="text-end">

@@ -884,6 +884,8 @@ class QuoteRequest(Base):
     status = Column(String(32), nullable=False, default="new")
     email_status = Column(String(32), nullable=False, default="pending")
     email_error = Column(Text, nullable=True)
+    acknowledgement_email_status = Column(String(32), nullable=False, default="pending")
+    acknowledgement_email_error = Column(Text, nullable=True)
     verification_provider = Column(String(32), nullable=False, default="none")
     verification_status = Column(String(32), nullable=False, default="not_configured")
     verification_error = Column(Text, nullable=True)

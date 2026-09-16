@@ -12,6 +12,7 @@
     getTemplates,
     createProduct,
     deleteProduct,
+    duplicateProduct,
     updateProduct,
     replaceProductGraphData,
     updateProductType,
@@ -4108,6 +4109,24 @@
     }
   }
 
+  async function duplicateCurrentProduct() {
+    if (!editingProductId) return;
+    error = "";
+    clearSuccessToast();
+    try {
+      const copied = await duplicateProduct(editingProductId);
+      await loadProducts();
+      selectedProductId = copied.id;
+      editingProductId = copied.id;
+      syncProductEditorUrl(copied.id);
+      await loadProductData();
+      if (currentProduct) editProduct(currentProduct);
+      addSuccess("Product duplicated. Rename the copy and save your changes.");
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
   async function addRpmLine() {
     const rpm = parseOptionalInteger(newRpmLineValue);
     if (rpm == null || !selectedProductId) {
@@ -4947,6 +4966,13 @@
           >
             View in Viewer
           </a>
+          <button
+            class="btn btn-outline-primary"
+            on:click={duplicateCurrentProduct}
+            disabled={savingMapPoints || savingProductDetails}
+          >
+            Duplicate Product
+          </button>
           <button
             class="btn btn-outline-danger"
             on:click={deleteCurrentProduct}

@@ -364,7 +364,7 @@ function SeriesWorkspace($$renderer, $$props) {
       $$renderer3.push(`<!--]--> `);
       if (mode === "edit" && seriesDraft.id) {
         $$renderer3.push("<!--[0-->");
-        $$renderer3.push(`<button class="btn btn-outline-danger"${attr("disabled", saving, true)}>Delete Series</button>`);
+        $$renderer3.push(`<button class="btn btn-outline-primary"${attr("disabled", saving, true)}>Duplicate Series</button> <button class="btn btn-outline-danger"${attr("disabled", saving, true)}>Delete Series</button>`);
       } else {
         $$renderer3.push("<!--[-1-->");
       }

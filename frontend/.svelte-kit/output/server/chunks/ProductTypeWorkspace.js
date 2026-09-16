@@ -204,7 +204,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
     $$renderer2.push(`<!--]--> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html("Save Product Type")}</button> `);
     if (productTypeDraft.id) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<button class="btn btn-outline-danger" type="button"${attr("disabled", saving, true)}>Delete Product Type</button>`);
+      $$renderer2.push(`<button class="btn btn-outline-primary" type="button"${attr("disabled", saving, true)}>Duplicate Product Type</button> <button class="btn btn-outline-danger" type="button"${attr("disabled", saving, true)}>Delete Product Type</button>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }

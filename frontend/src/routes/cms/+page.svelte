@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import RichTextEditor from '$lib/editor/RichTextEditor.svelte';
   import BackgroundControls from '$lib/editor/BackgroundControls.svelte';
+  import SectionAppearanceControls from '$lib/editor/SectionAppearanceControls.svelte';
   import ActionEditor from '$lib/editor/ActionEditor.svelte';
   import { getCmsPages, createCmsPage, deleteCmsPage, getCmsNavigation, updateCmsPage, publishCmsPage, updateCmsNavigation } from '$lib/api.js';
 
@@ -126,7 +127,7 @@
       for (const page of response) if (!pageNameBySlug[page.slug]) pageNameBySlug[page.slug] = page.label;
       pageNames = response.map((page) => pageNameBySlug[page.slug]);
       activePage = selectPageFromLocation(response);
-      pageDrafts = Object.fromEntries(response.map((page) => [pageNameBySlug[page.slug], page.draft_layout?.length ? normaliseSections(page.draft_layout) : pageDrafts[pageNameBySlug[page.slug]] || pageSections(pageNameBySlug[page.slug])]).filter(([name]) => name));
+      pageDrafts = Object.fromEntries(response.map((page) => [pageNameBySlug[page.slug], Array.isArray(page.draft_layout) ? normaliseSections(page.draft_layout) : pageDrafts[pageNameBySlug[page.slug]] || pageSections(pageNameBySlug[page.slug])]).filter(([name]) => name));
       sections = pageDrafts[activePage] || sections;
       syncPageUrl(activePage);
       navigation = await getCmsNavigation();
@@ -207,6 +208,14 @@
   {/if}
 
   <div class="builder-toolbar card"><div class="toolbar-page-picker"><label class="form-label mb-1" for="builder-page">Editing page</label><select id="builder-page" class="form-select" value={activePage} on:change={selectPage}>{#each pageNames as name}<option value={name}>{name}</option>{/each}</select><button class="btn btn-sm btn-outline-primary mt-2" type="button" on:click={() => (createOpen = true)}>+ New page</button>{#if !protectedPage}<button class="btn btn-sm btn-outline-danger mt-2 ms-2" type="button" on:click={deleteCurrentPage}>Delete page</button>{/if}</div><div class="toolbar-statuses"><strong>CMS page status</strong><div class="status-list">{#each cmsPages as page}<span class:status-live={page.status === 'published'} class="status-item"><span>{page.label}</span><b>{page.status === 'published' ? 'Published' : 'Draft'}</b></span>{/each}</div></div><div class="toolbar-navigation"><strong>CMS navigation order</strong>{#if navigation.length}<div class="nav-order-list">{#each navigation as item, index}<span class="nav-order-item"><span>{index + 1}. {item.label}{#if item.slug}<small class="text-body-secondary d-block">/{item.slug}</small>{:else}<small class="text-primary d-block">custom action</small>{/if}</span><span><button class="btn btn-sm btn-link" type="button" on:click={() => moveNavigation(index, -1)} disabled={index === 0} aria-label={`Move ${item.label} up`}>↑</button><button class="btn btn-sm btn-link" type="button" on:click={() => moveNavigation(index, 1)} disabled={index === navigation.length - 1} aria-label={`Move ${item.label} down`}>↓</button></span></span>{/each}</div><button class="btn btn-sm btn-outline-primary mt-2" type="button" on:click={addEnquiriesNavigationItem}>+ Add Enquiries item</button><button class="btn btn-sm btn-outline-primary mt-2 ms-2" type="button" on:click={saveNavigation}>Save navigation</button>{/if}</div><div class="toolbar-help"><strong>Auto layout</strong><span>Auto sections pack two-across where possible while preserving their order.</span></div></div>
+
+  {#if !previewMode && sections.find((item) => item.id === selectedSectionId)}
+    {@const appearanceSection = sections.find((item) => item.id === selectedSectionId)}
+    <div class="card mb-3 p-3">
+      <div class="small text-body-secondary mb-2">Selected section appearance</div>
+      <SectionAppearanceControls value={appearanceSection} on:change={(event) => updateSection(sections.findIndex((item) => item.id === selectedSectionId), event.detail.field, event.detail.value)} />
+    </div>
+  {/if}
 
   <div class="builder-layout">
     <aside class="template-panel card"><div class="card-body"><h2 class="h6">Add a section</h2><p class="small text-body-secondary">{protectedPage ? 'The Enquiries modal structure is protected.' : 'Choose a fixed template, then customise its cards and content.'}</p>{#each sectionTypes as template}<button class="template-button" type="button" on:click={() => addSection(template.value)} disabled={protectedPage}><span class="template-icon">{template.value === 'cards' ? '▦' : template.value === 'carousel' ? '◫' : template.value === 'cta' ? '↗' : template.value === 'image-text' ? '▤' : '≡'}</span><span><strong>{template.label}</strong><small>{template.value === 'cards' ? 'Configurable grid' : template.value === 'carousel' ? 'Image slides' : template.value === 'cta' ? 'Opens enquiries' : 'Rich text content'}</small></span><span>+</span></button>{/each}<hr /><p class="small text-body-secondary mb-0"><strong>{sections.length}</strong> sections · <strong>{undoStack.length}</strong> undo step{undoStack.length === 1 ? '' : 's'}</p></div></aside>

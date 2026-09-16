@@ -1,17 +1,6 @@
 {% extends "base.html" %}
-{% from "partials/cms_action.html" import render_action %}
-
+{% from "partials/cms_sections.html" import render_sections %}
 {% block content %}
-  <nav aria-label="breadcrumb" class="mb-3"><ol class="breadcrumb small mb-0"><li class="breadcrumb-item"><a href="/">Home</a></li><li class="breadcrumb-item active" aria-current="page">{{ page.label }}</li></ol></nav>
-  {% for section in page.get('layout', []) %}
-    <section class="cms-public-section {% if section.width == 'half' %}cms-public-section-half{% elif section.width == 'third' %}cms-public-section-third{% endif %} mb-4" {% if section.backgroundColor %}style="background:{% if section.gradientEnabled and section.gradientColor %}linear-gradient({{ section.gradientAngle|default(90, true) }}deg, color-mix(in srgb, {{ section.backgroundColor }} {{ section.backgroundOpacity|default(1, true) * 100 }}%, transparent), color-mix(in srgb, {{ section.gradientColor }} {{ section.backgroundOpacity|default(1, true) * 100 }}%, transparent)){% else %}color-mix(in srgb, {{ section.backgroundColor }} {{ section.backgroundOpacity|default(1, true) * 100 }}%, transparent){% endif %};{% endif %}">
-      {% if section.type == 'cards' %}
-        <h2 class="h4 mb-3">{{ section.title }}</h2><div class="row g-3">
-          {% for card in section.cards or [] %}<div class="col-md-{{ 12 // (section.columns or 1) }}"><article class="card h-100 p-3">{% if card.image %}<img class="img-fluid mb-3" src="{{ card.image.replace('/media/', '/static/media/', 1) }}" alt="">{% endif %}<h3 class="h6">{{ card.title }}</h3><div>{{ card.content|safe }}</div></article></div>{% endfor %}
-        </div>
-      {% elif section.type == 'carousel' %}
-        <h2 class="h4 mb-3">{{ section.title }}</h2>{% set carousel_id = 'cmsCarousel' ~ loop.index %}<div id="{{ carousel_id }}" class="carousel slide" {% if section.autoplay != false %}data-bs-ride="carousel"{% endif %}><div class="carousel-inner">{% for card in section.cards or [] %}<div class="carousel-item {% if loop.first %}active{% endif %}"><article class="card p-4">{% if card.image %}<img class="img-fluid mb-3" src="{{ card.image.replace('/media/', '/static/media/', 1) }}" alt="">{% endif %}<h3 class="h5">{{ card.title }}</h3><div>{{ card.content|safe }}</div></article></div>{% endfor %}</div>{% if (section.cards or [])|length > 1 %}<button class="carousel-control-prev" type="button" data-bs-target="#{{ carousel_id }}" data-bs-slide="prev"><span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Previous</span></button><button class="carousel-control-next" type="button" data-bs-target="#{{ carousel_id }}" data-bs-slide="next"><span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">Next</span></button>{% endif %}</div>
-      {% else %}<article class="card p-4">{{ section.content|safe }}{{ render_action(section.action, section.actionLabel, 'btn btn-primary mt-3') }}</article>{% endif %}
-    </section>
-  {% endfor %}
+<nav aria-label="breadcrumb" class="mb-4"><ol class="breadcrumb small mb-0"><li class="breadcrumb-item"><a href="/">Home</a></li><li class="breadcrumb-item active" aria-current="page">{{ page.label }}</li></ol></nav>
+{{ render_sections(page.get('layout', [])) }}
 {% endblock %}

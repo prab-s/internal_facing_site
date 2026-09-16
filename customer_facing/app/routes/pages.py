@@ -505,95 +505,25 @@ async def homepage(request: Request):
     return templates.TemplateResponse(request, "index.html", context)
 
 
+# Marketing pages use the same persisted section renderer as custom CMS pages.
 @router.get("/contact")
 async def contact_page(request: Request):
-    context = await common_context()
-    cms = await site_page_context("contact")
-    context.update({
-        "request": request,
-        "request_quote_url": "#quoteRequestModal",
-        "seo": seo_meta(
-            cms.get("seo", {}).get("title") or "Contact",
-            cms.get("seo", {}).get("description") or "Contact Vent-Tech for product selection, pricing, engineering support, and project enquiries.",
-            "/contact",
-        ),
-        "cms": cms.get("content", {}),
-        "quote_request_context": quote_request_context(
-            request,
-            page_type="contact",
-            page_title=cms.get("seo", {}).get("title") or "Contact",
-            page_summary=cms.get("seo", {}).get("description") or "Contact Vent-Tech for product selection, pricing, engineering support, and project enquiries.",
-        ),
-    })
-    return templates.TemplateResponse(request, "contact.html", context)
+    return await render_cms_page(request, "contact")
 
 
 @router.get("/engineering-services")
 async def engineering_services_page(request: Request):
-    context = await common_context()
-    cms = await site_page_context("engineering-services")
-    context.update({
-        "request": request,
-        "request_quote_url": "#quoteRequestModal",
-        "services": cms.get("content", {}).get("services") or ENGINEERING_SERVICES,
-        "cms": cms.get("content", {}),
-        "quote_request_context": quote_request_context(
-            request,
-            page_type="engineering-services",
-            page_title=cms.get("seo", {}).get("title") or "Engineering Services",
-            page_summary=cms.get("seo", {}).get("description") or "Explore Vent-Tech engineering services.",
-        ),
-        "seo": seo_meta(
-            cms.get("seo", {}).get("title") or "Engineering Services",
-            cms.get("seo", {}).get("description") or "Explore Vent-Tech engineering services including laser cutting, brake pressing, rolling, and flanging.",
-            "/engineering-services",
-        ),
-    })
-    return templates.TemplateResponse(request, "engineering_services.html", context)
+    return await render_cms_page(request, "engineering-services")
 
 
 @router.get("/past-projects")
 async def past_projects_page(request: Request):
-    context = await common_context()
-    cms = await site_page_context("past-projects")
-    context.update({
-        "request": request,
-        "seo": seo_meta(
-            cms.get("seo", {}).get("title") or "Past Projects",
-            cms.get("seo", {}).get("description") or "Explore Vent-Tech fabrication and engineering project highlights.",
-            "/past-projects",
-        ),
-        "cms": cms.get("content", {}),
-        "quote_request_context": quote_request_context(
-            request,
-            page_type="past-projects",
-            page_title=cms.get("seo", {}).get("title") or "Past Projects",
-            page_summary=cms.get("seo", {}).get("description") or "Explore Vent-Tech project highlights.",
-        ),
-    })
-    return templates.TemplateResponse(request, "past_projects.html", context)
+    return await render_cms_page(request, "past-projects")
 
 
 @router.get("/about-us")
 async def about_us_page(request: Request):
-    context = await common_context()
-    cms = await site_page_context("about-us")
-    context.update({
-        "request": request,
-        "seo": seo_meta(
-            cms.get("seo", {}).get("title") or "About Us",
-            cms.get("seo", {}).get("description") or "Learn more about Vent-Tech, our placeholder company story, values, capabilities, and team.",
-            "/about-us",
-        ),
-        "cms": cms.get("content", {}),
-        "quote_request_context": quote_request_context(
-            request,
-            page_type="about-us",
-            page_title=cms.get("seo", {}).get("title") or "About Us",
-            page_summary=cms.get("seo", {}).get("description") or "Learn more about Vent-Tech.",
-        ),
-    })
-    return templates.TemplateResponse(request, "about_us.html", context)
+    return await render_cms_page(request, "about-us")
 
 
 @router.get("/products")
@@ -804,10 +734,19 @@ async def product_page(request: Request, product_slug: str):
 async def cms_page(request: Request, page_slug: str):
     if page_slug in {"api", "static", "products", "series", "contact", "about-us", "engineering-services", "past-projects"}:
         raise HTTPException(status_code=404)
+    return await render_cms_page(request, page_slug)
+
+
+async def render_cms_page(request: Request, page_slug: str):
     cms = await site_page_context(page_slug)
-    if not cms.get("content"):
+    if not cms.get("content") or cms.get("content_type") == "modal":
         raise HTTPException(status_code=404)
     context = await common_context()
+    # Keep previously published pages available until their CMS replacement is published.
+    legacy_templates = {
+        "about-us": "about_us.html", "contact": "contact.html",
+        "engineering-services": "engineering_services.html", "past-projects": "past_projects.html",
+    }
     context.update({
         "request": request,
         "page": {"label": cms.get("label") or page_slug.replace("-", " ").title(), "layout": cms.get("layout") or []},
@@ -820,4 +759,7 @@ async def cms_page(request: Request, page_slug: str):
             page_summary=cms.get("seo", {}).get("description") or "",
         ),
     })
+    if cms.get("layout") is None and page_slug in legacy_templates:
+        context.update(cms=cms.get("content", {}), services=cms.get("content", {}).get("services") or ENGINEERING_SERVICES, request_quote_url="#quoteRequestModal")
+        return templates.TemplateResponse(request, legacy_templates[page_slug], context)
     return templates.TemplateResponse(request, "cms_page.html", context)

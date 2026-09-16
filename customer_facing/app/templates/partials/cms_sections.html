@@ -1,0 +1,50 @@
+{% from "partials/cms_action.html" import render_action %}
+{% macro paint(item) -%}
+{% if item.backgroundColor %}background:{% if item.gradientEnabled and item.gradientColor %}linear-gradient({{ item.gradientAngle|default(90) }}deg,color-mix(in srgb,{{ item.backgroundColor }} {{ item.backgroundOpacity|default(1) * 100 }}%,transparent),color-mix(in srgb,{{ item.gradientColor }} {{ item.backgroundOpacity|default(1) * 100 }}%,transparent)){% else %}color-mix(in srgb,{{ item.backgroundColor }} {{ item.backgroundOpacity|default(1) * 100 }}%,transparent){% endif %};{% endif %}
+{%- endmacro %}
+{% macro picture(url, alt, classes='') -%}
+{% if url %}<img class="{{ classes }}" src="{{ '/static/media/' ~ url[7:] if url.startswith('/media/') else url }}" alt="{{ alt or '' }}" loading="lazy">{% endif %}
+{%- endmacro %}
+{% macro actions(section) -%}
+{% if section.actionLabel or section.secondaryActionLabel %}<div class="cms-actions d-flex flex-wrap gap-3 mt-4">
+{{ render_action(section.action, section.actionLabel, 'btn btn-' ~ section.get('buttonVariant', 'primary') ~ ' btn-' ~ section.get('buttonSize', 'lg')) }}
+{{ render_action(section.secondaryAction, section.secondaryActionLabel, 'btn btn-' ~ section.get('secondaryButtonVariant', 'outline-secondary') ~ ' btn-' ~ section.get('buttonSize', 'lg')) }}
+</div>{% endif %}
+{%- endmacro %}
+{% macro render_sections(layout) -%}
+<div class="cms-public-layout">
+{% for section in layout %}
+{% set section_index = loop.index %}
+{% set grouped = section.type in ['cards', 'carousel', 'accordion'] %}
+<section class="cms-public-section cms-width-{{ section.width|default('full') }} cms-type-{{ section.type }} cms-surface-{{ section.get('surface', 'card') }} cms-tone-{{ section.get('tone', 'default') }} cms-space-{{ section.get('spacing', 'md') }} cms-radius-{{ section.get('radius', 'lg') }} cms-align-{{ section.get('textAlign', 'start') }} cms-heading-{{ section.get('headingSize', 'normal') }} {% if section.get('border', false) %}border{% endif %} {% if section.get('shadow', 'none') != 'none' %}shadow-{{ section.shadow }}{% endif %}" style="{{ paint(section) }}">
+  {% if grouped %}
+    {% if section.eyebrow %}<p class="cms-eyebrow">{{ section.eyebrow }}</p>{% endif %}
+    {% if section.title %}<h2 class="cms-section-title">{{ section.title }}</h2>{% endif %}
+    {% if section.content %}<div class="cms-section-intro">{{ section.content|safe }}</div>{% endif %}
+    {% if section.type == 'cards' %}
+      <div class="row g-4 row-cols-1 row-cols-md-{{ section.get('tabletColumns', 2) }} row-cols-lg-{{ section.get('columns', 3) }}">
+      {% for card in section.cards or [] %}<div class="col"><article class="cms-content-card cms-card-{{ section.get('cardStyle', 'raised') }} h-100" style="{{ paint(card) }}">
+        {{ picture(card.image, card.imageAlt, 'cms-card-image cms-fit-' ~ section.get('imageFit', 'cover') ~ ' cms-ratio-' ~ section.get('imageRatio', 'wide')) }}
+        <div class="cms-card-body">{% if card.badge %}<span class="badge rounded-pill cms-badge mb-3">{{ card.badge }}</span>{% endif %}<h3 class="h4">{{ card.title }}</h3><div>{{ card.content|safe }}</div></div>
+      </article></div>{% endfor %}</div>
+    {% elif section.type == 'accordion' %}
+      <div class="accordion" id="cmsAccordion{{ section_index }}">{% for card in section.cards or [] %}{% set item_id = 'cmsAccordion' ~ section_index ~ 'item' ~ loop.index %}{% set expanded = loop.first and section.get('openFirst', false) %}
+        <div class="accordion-item"><h3 class="accordion-header"><button class="accordion-button {% if not expanded %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#{{ item_id }}" aria-expanded="{{ 'true' if expanded else 'false' }}" aria-controls="{{ item_id }}">{{ card.title }}</button></h3><div id="{{ item_id }}" class="accordion-collapse collapse {% if expanded %}show{% endif %}" {% if not section.get('alwaysOpen', false) %}data-bs-parent="#cmsAccordion{{ section_index }}"{% endif %}><div class="accordion-body">{{ card.content|safe }}</div></div></div>
+      {% endfor %}</div>
+    {% else %}
+      {% set carousel_id = 'cmsCarousel' ~ section_index %}<div id="{{ carousel_id }}" class="carousel slide" {% if section.autoplay != false %}data-bs-ride="carousel"{% endif %}>
+        <div class="carousel-inner">{% for card in section.cards or [] %}<div class="carousel-item {% if loop.first %}active{% endif %}"><article class="cms-carousel-card">{{ picture(card.image, card.imageAlt, 'cms-carousel-image cms-fit-' ~ section.get('imageFit', 'contain')) }}<div class="cms-card-body">{% if card.badge %}<span class="badge cms-badge mb-3">{{ card.badge }}</span>{% endif %}<h3>{{ card.title }}</h3>{{ card.content|safe }}</div></article></div>{% endfor %}</div>
+        {% if (section.cards or [])|length > 1 %}<button class="carousel-control-prev" type="button" data-bs-target="#{{ carousel_id }}" data-bs-slide="prev"><span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Previous</span></button><button class="carousel-control-next" type="button" data-bs-target="#{{ carousel_id }}" data-bs-slide="next"><span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">Next</span></button>{% endif %}
+      </div>
+    {% endif %}
+    {{ actions(section) }}
+  {% else %}
+    <div class="cms-split {% if section.image %}cms-has-image{% endif %} cms-image-{{ section.get('imagePosition', 'right') }}">
+      <div class="cms-copy">{% if section.eyebrow %}<p class="cms-eyebrow">{{ section.eyebrow }}</p>{% endif %}<div class="cms-prose">{{ section.content|safe }}</div>{{ actions(section) }}</div>
+      {% if section.image %}<figure class="cms-figure mb-0">{{ picture(section.image, section.imageAlt, 'cms-section-image cms-fit-' ~ section.get('imageFit', 'cover') ~ ' cms-ratio-' ~ section.get('imageRatio', 'square')) }}{% if section.imageCaption %}<figcaption>{{ section.imageCaption }}</figcaption>{% endif %}</figure>{% endif %}
+    </div>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+{%- endmacro %}

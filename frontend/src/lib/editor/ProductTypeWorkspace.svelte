@@ -1,7 +1,7 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { createProductType, deleteProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
+  import { createProductType, deleteProductType, duplicateProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import AssociatedDocumentsPanel from '$lib/editor/AssociatedDocumentsPanel.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
@@ -303,6 +303,26 @@
     }
   }
 
+  async function duplicateCurrentProductType() {
+    if (!productTypeDraft.id) return;
+    error = '';
+    success = '';
+    saving = true;
+    try {
+      const copied = await duplicateProductType(productTypeDraft.id);
+      await loadProductTypes();
+      selectedProductTypeId = copied.id;
+      mode = 'edit';
+      syncProductTypeEditorUrl(copied.id);
+      hydrateSelectedProductType(copied.id);
+      success = 'Product type duplicated. Rename the copy and save your changes.';
+    } catch (e) {
+      error = e.message;
+    } finally {
+      saving = false;
+    }
+  }
+
   async function generateProductTypePdf() {
     if (!selectedProductType?.id) return;
     refreshingPdfJob = null;
@@ -520,6 +540,9 @@
         <div class="d-flex flex-wrap gap-2 mt-3">
           <button class="btn btn-primary" on:click={saveProductType} disabled={saving}>{saving ? 'Saving...' : 'Save Product Type'}</button>
           {#if productTypeDraft.id}
+            <button class="btn btn-outline-primary" type="button" on:click={duplicateCurrentProductType} disabled={saving}>
+              Duplicate Product Type
+            </button>
             <button class="btn btn-outline-danger" type="button" on:click={deleteCurrentProductType} disabled={saving}>
               Delete Product Type
             </button>
