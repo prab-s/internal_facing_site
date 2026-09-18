@@ -14,15 +14,14 @@ PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DEFAULT_DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 os.makedirs(DEFAULT_DATA_DIR, exist_ok=True)
 
-DEFAULT_DB_PATH = os.path.join(DEFAULT_DATA_DIR, "fans.db")
-PRIMARY_DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
-
-
+PRIMARY_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not PRIMARY_DATABASE_URL:
+    raise RuntimeError("DATABASE_URL must be configured with a PostgreSQL connection string.")
+if not PRIMARY_DATABASE_URL.startswith("postgresql"):
+    raise RuntimeError("Only PostgreSQL is supported for DATABASE_URL.")
 def _build_engine(database_url: str):
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite:") else {}
     return create_engine(
         database_url,
-        connect_args=connect_args,
         echo=False,
     )
 
@@ -34,7 +33,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # writes off the main request pool so logging cannot starve application work.
 activity_engine = create_engine(
     PRIMARY_DATABASE_URL,
-    connect_args={"check_same_thread": False} if PRIMARY_DATABASE_URL.startswith("sqlite:") else {},
     poolclass=NullPool,
     echo=False,
 )
@@ -106,7 +104,6 @@ def init_db():
     _migrate_silencer_product_type_pdfs(engine)
     _seed_product_types(engine)
     _ensure_product_type_sort_order(engine)
-    _migrate_legacy_map_points(engine)
     _seed_site_pages()
 
 
@@ -875,9 +872,6 @@ def _migrate_silencer_product_type_to_attenuator(target_engine):
 
 
 def _migrate_silencer_product_type_pdfs(target_engine):
-    if target_engine.dialect.name != "sqlite":
-        return
-
     pdf_dir = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
     legacy_pdf = pdf_dir / "product_type_printed_silencer.pdf"
     renamed_pdf = pdf_dir / "product_type_printed_attenuator.pdf"
@@ -961,74 +955,11 @@ def _remove_deprecated_fan_manufacturer_column(target_engine):
     product_table_name = _get_product_table_name(inspector)
     if not product_table_name:
         return
-
-    existing_columns = [column["name"] for column in inspector.get_columns(product_table_name)]
+    existing_columns = {column["name"] for column in inspector.get_columns(product_table_name)}
     if "manufacturer" not in existing_columns:
         return
-
-    if target_engine.dialect.name == "postgresql":
-        with target_engine.begin() as connection:
-            connection.execute(text(f"ALTER TABLE {product_table_name} DROP COLUMN IF EXISTS manufacturer"))
-        return
-
-    if target_engine.dialect.name != "sqlite":
-        return
-
-    temp_table_name = f"{product_table_name}__new"
-    product_index_name = "ix_products_id" if product_table_name == "products" else "ix_fans_id"
-
     with target_engine.begin() as connection:
-        connection.execute(text("PRAGMA foreign_keys=OFF"))
-        connection.execute(text(f"DROP TABLE IF EXISTS {temp_table_name}"))
-        connection.execute(
-            text(
-                f"""
-                CREATE TABLE {temp_table_name} (
-                    id INTEGER PRIMARY KEY,
-                    model VARCHAR(255) NOT NULL,
-                    notes TEXT,
-                    graph_image_path VARCHAR(512),
-                    show_rpm_band_shading BOOLEAN NOT NULL DEFAULT 1,
-                    band_graph_background_color VARCHAR(32),
-                    band_graph_label_text_color VARCHAR(32),
-                    band_graph_faded_opacity FLOAT,
-                    band_graph_permissible_label_color VARCHAR(32)
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                INSERT INTO {temp_table_name} (
-                    id,
-                    model,
-                    notes,
-                    graph_image_path,
-                    show_rpm_band_shading,
-                    band_graph_background_color,
-                    band_graph_label_text_color,
-                    band_graph_faded_opacity,
-                    band_graph_permissible_label_color
-                )
-                SELECT
-                    id,
-                    model,
-                    notes,
-                    graph_image_path,
-                    show_rpm_band_shading,
-                    NULL AS band_graph_background_color,
-                    NULL AS band_graph_label_text_color,
-                    NULL AS band_graph_faded_opacity,
-                    NULL AS band_graph_permissible_label_color
-                FROM {product_table_name}
-                """
-            )
-        )
-        connection.execute(text(f"DROP TABLE {product_table_name}"))
-        connection.execute(text(f"ALTER TABLE {temp_table_name} RENAME TO {product_table_name}"))
-        connection.execute(text(f"CREATE INDEX IF NOT EXISTS {product_index_name} ON {product_table_name} (id)"))
-        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text(f"ALTER TABLE {product_table_name} DROP COLUMN IF EXISTS manufacturer"))
 
 
 def _remove_deprecated_fan_notes_column(target_engine):
@@ -1036,71 +967,11 @@ def _remove_deprecated_fan_notes_column(target_engine):
     product_table_name = _get_product_table_name(inspector)
     if not product_table_name:
         return
-
-    existing_columns = [column["name"] for column in inspector.get_columns(product_table_name)]
+    existing_columns = {column["name"] for column in inspector.get_columns(product_table_name)}
     if "notes" not in existing_columns:
         return
-
-    if target_engine.dialect.name == "postgresql":
-        with target_engine.begin() as connection:
-            connection.execute(text(f"ALTER TABLE {product_table_name} DROP COLUMN IF EXISTS notes"))
-        return
-
-    if target_engine.dialect.name != "sqlite":
-        return
-
-    temp_table_name = f"{product_table_name}__new"
-    product_index_name = "ix_products_id" if product_table_name == "products" else "ix_fans_id"
-
     with target_engine.begin() as connection:
-        connection.execute(text("PRAGMA foreign_keys=OFF"))
-        connection.execute(text(f"DROP TABLE IF EXISTS {temp_table_name}"))
-        connection.execute(
-            text(
-                f"""
-                CREATE TABLE {temp_table_name} (
-                    id INTEGER PRIMARY KEY,
-                    model VARCHAR(255) NOT NULL,
-                    graph_image_path VARCHAR(512),
-                    show_rpm_band_shading BOOLEAN NOT NULL DEFAULT 1,
-                    band_graph_background_color VARCHAR(32),
-                    band_graph_label_text_color VARCHAR(32),
-                    band_graph_faded_opacity FLOAT,
-                    band_graph_permissible_label_color VARCHAR(32)
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                INSERT INTO {temp_table_name} (
-                    id,
-                    model,
-                    graph_image_path,
-                    show_rpm_band_shading,
-                    band_graph_background_color,
-                    band_graph_label_text_color,
-                    band_graph_faded_opacity,
-                    band_graph_permissible_label_color
-                )
-                SELECT
-                    id,
-                    model,
-                    graph_image_path,
-                    show_rpm_band_shading,
-                    band_graph_background_color,
-                    band_graph_label_text_color,
-                    band_graph_faded_opacity,
-                    band_graph_permissible_label_color
-                FROM {product_table_name}
-                """
-            )
-        )
-        connection.execute(text(f"DROP TABLE {product_table_name}"))
-        connection.execute(text(f"ALTER TABLE {temp_table_name} RENAME TO {product_table_name}"))
-        connection.execute(text(f"CREATE INDEX IF NOT EXISTS {product_index_name} ON {product_table_name} (id)"))
-        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text(f"ALTER TABLE {product_table_name} DROP COLUMN IF EXISTS notes"))
 
 
 def _remove_deprecated_product_optional_columns(target_engine):
@@ -1108,302 +979,21 @@ def _remove_deprecated_product_optional_columns(target_engine):
     product_table_name = _get_product_table_name(inspector)
     if not product_table_name:
         return
-
     existing_columns = {column["name"] for column in inspector.get_columns(product_table_name)}
     deprecated_columns = [name for name in ("diameter_mm", "max_rpm") if name in existing_columns]
     if not deprecated_columns:
         return
-
-    if target_engine.dialect.name == "postgresql":
-        with target_engine.begin() as connection:
-            for column_name in deprecated_columns:
-                connection.execute(text(f"ALTER TABLE {product_table_name} DROP COLUMN IF EXISTS {column_name}"))
-        return
-
-    if target_engine.dialect.name != "sqlite":
-        return
-
-    temp_table_name = f"{product_table_name}__new"
-    product_index_name = "ix_products_id" if product_table_name == "products" else "ix_fans_id"
-
     with target_engine.begin() as connection:
-        connection.execute(text("PRAGMA foreign_keys=OFF"))
-        connection.execute(text(f"DROP TABLE IF EXISTS {temp_table_name}"))
-        connection.execute(
-            text(
-                f"""
-                CREATE TABLE {temp_table_name} (
-                    id INTEGER PRIMARY KEY,
-                    product_type_id INTEGER,
-                    model VARCHAR(255) NOT NULL,
-                    description1_html TEXT,
-                    description2_html TEXT,
-                    description3_html TEXT,
-                    comments_html TEXT,
-                    graph_image_path VARCHAR(512),
-                    show_rpm_band_shading BOOLEAN NOT NULL DEFAULT 1,
-                    band_graph_background_color VARCHAR(32),
-                    band_graph_label_text_color VARCHAR(32),
-                    band_graph_faded_opacity FLOAT,
-                    band_graph_permissible_label_color VARCHAR(32),
-                    FOREIGN KEY(product_type_id) REFERENCES product_types (id)
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                INSERT INTO {temp_table_name} (
-                    id,
-                    product_type_id,
-                    model,
-                    description1_html,
-                    description2_html,
-                    description3_html,
-                    comments_html,
-                    graph_image_path,
-                    show_rpm_band_shading,
-                    band_graph_background_color,
-                    band_graph_label_text_color,
-                    band_graph_faded_opacity,
-                    band_graph_permissible_label_color
-                )
-                SELECT
-                    id,
-                    product_type_id,
-                    model,
-                    description1_html,
-                    description2_html,
-                    description3_html,
-                    comments_html,
-                    graph_image_path,
-                    show_rpm_band_shading,
-                    band_graph_background_color,
-                    band_graph_label_text_color,
-                    band_graph_faded_opacity,
-                    band_graph_permissible_label_color
-                FROM {product_table_name}
-                """
-            )
-        )
-        connection.execute(text(f"DROP TABLE {product_table_name}"))
-        connection.execute(text(f"ALTER TABLE {temp_table_name} RENAME TO {product_table_name}"))
-        connection.execute(text(f"CREATE INDEX IF NOT EXISTS {product_index_name} ON {product_table_name} (id)"))
-        connection.execute(text("PRAGMA foreign_keys=ON"))
+        for column_name in deprecated_columns:
+            connection.execute(text(f"ALTER TABLE {product_table_name} DROP COLUMN IF EXISTS {column_name}"))
 
 
 def _remove_deprecated_product_type_secondary_axis_label(target_engine):
     inspector = inspect(target_engine)
-    tables = set(inspector.get_table_names())
-    if "product_types" not in tables:
+    if "product_types" not in set(inspector.get_table_names()):
         return
-
     existing_columns = {column["name"] for column in inspector.get_columns("product_types")}
     if "graph_secondary_axis_label" not in existing_columns:
         return
-
-    if target_engine.dialect.name == "postgresql":
-        with target_engine.begin() as connection:
-            connection.execute(text("ALTER TABLE product_types DROP COLUMN IF EXISTS graph_secondary_axis_label"))
-        return
-
-    if target_engine.dialect.name != "sqlite":
-        return
-
     with target_engine.begin() as connection:
-        connection.execute(text("PRAGMA foreign_keys=OFF"))
-        connection.execute(text("DROP TABLE IF EXISTS product_types__new"))
-        connection.execute(
-            text(
-                """
-                CREATE TABLE product_types__new (
-                    id INTEGER PRIMARY KEY,
-                    key VARCHAR(64) NOT NULL UNIQUE,
-                    label VARCHAR(255) NOT NULL,
-                    sort_order INTEGER NOT NULL DEFAULT 0,
-                    supports_graph BOOLEAN NOT NULL DEFAULT 0,
-                    graph_kind VARCHAR(64),
-                    supports_graph_overlays BOOLEAN NOT NULL DEFAULT 0,
-                    supports_band_graph_style BOOLEAN NOT NULL DEFAULT 0,
-                    graph_line_value_label VARCHAR(128),
-                    graph_line_value_unit VARCHAR(64),
-                    graph_x_axis_label VARCHAR(128),
-                    graph_x_axis_unit VARCHAR(64),
-                    graph_y_axis_label VARCHAR(128),
-                    graph_y_axis_unit VARCHAR(64),
-                    product_template_id VARCHAR(128),
-                    series_template_id VARCHAR(128),
-                    printed_product_template_id VARCHAR(128),
-                    online_product_template_id VARCHAR(128)
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO product_types__new (
-                    id,
-                    key,
-                    label,
-                    sort_order,
-                    supports_graph,
-                    graph_kind,
-                    supports_graph_overlays,
-                    supports_band_graph_style,
-                    graph_line_value_label,
-                    graph_line_value_unit,
-                    graph_x_axis_label,
-                    graph_x_axis_unit,
-                    graph_y_axis_label,
-                    graph_y_axis_unit,
-                    product_template_id,
-                    series_template_id,
-                    printed_product_template_id,
-                    online_product_template_id
-                )
-                SELECT
-                    id,
-                    key,
-                    label,
-                    sort_order,
-                    supports_graph,
-                    graph_kind,
-                    supports_graph_overlays,
-                    supports_band_graph_style,
-                    graph_line_value_label,
-                    graph_line_value_unit,
-                    graph_x_axis_label,
-                    graph_x_axis_unit,
-                    graph_y_axis_label,
-                    graph_y_axis_unit,
-                    product_template_id,
-                    series_template_id,
-                    printed_product_template_id,
-                    online_product_template_id
-                FROM product_types
-                """
-            )
-        )
-        connection.execute(text("DROP TABLE product_types"))
-        connection.execute(text("ALTER TABLE product_types__new RENAME TO product_types"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_product_types_id ON product_types (id)"))
-        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_product_types_key ON product_types (key)"))
-        connection.execute(text("PRAGMA foreign_keys=ON"))
-
-
-def _migrate_legacy_map_points(target_engine):
-    if target_engine.dialect.name != "sqlite":
-        return
-
-    inspector = inspect(target_engine)
-    tables = set(inspector.get_table_names())
-    if "map_points" not in tables:
-        return
-    existing_columns = {column["name"] for column in inspector.get_columns("map_points")}
-    product_table_name = _get_product_table_name(inspector) or "products"
-    product_fk_column = "product_id" if product_table_name == "products" else "fan_id"
-
-    with target_engine.begin() as connection:
-        connection.execute(text("PRAGMA foreign_keys=OFF"))
-        connection.execute(text("DROP TABLE IF EXISTS rpm_points"))
-        connection.execute(text("DROP TABLE IF EXISTS rpm_lines"))
-        connection.execute(text("DROP TABLE IF EXISTS efficiency_points"))
-        connection.execute(
-            text(
-                """
-                CREATE TABLE rpm_lines (
-                    id INTEGER PRIMARY KEY,
-                    {product_fk_column} INTEGER NOT NULL,
-                    rpm FLOAT NOT NULL,
-                    FOREIGN KEY({product_fk_column}) REFERENCES {product_table_name} (id)
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                CREATE TABLE rpm_points (
-                    id INTEGER PRIMARY KEY,
-                    {product_fk_column} INTEGER NOT NULL,
-                    rpm_line_id INTEGER NOT NULL,
-                    flow FLOAT NOT NULL,
-                    pressure FLOAT NOT NULL,
-                    FOREIGN KEY({product_fk_column}) REFERENCES {product_table_name} (id),
-                    FOREIGN KEY(rpm_line_id) REFERENCES rpm_lines (id)
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                CREATE TABLE efficiency_points (
-                    id INTEGER PRIMARY KEY,
-                    {product_fk_column} INTEGER NOT NULL,
-                    flow FLOAT NOT NULL,
-                    efficiency_centre FLOAT,
-                    efficiency_lower_end FLOAT,
-                    efficiency_higher_end FLOAT,
-                    permissible_use FLOAT,
-                    FOREIGN KEY({product_fk_column}) REFERENCES {product_table_name} (id)
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                INSERT INTO rpm_lines ({product_fk_column}, rpm)
-                SELECT DISTINCT fan_id, rpm
-                FROM map_points
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                INSERT INTO efficiency_points (
-                    {product_fk_column},
-                    flow,
-                    efficiency_centre,
-                    efficiency_lower_end,
-                    efficiency_higher_end,
-                    permissible_use
-                )
-                SELECT DISTINCT
-                    fan_id,
-                    flow,
-                    {"efficiency_centre" if "efficiency_centre" in existing_columns else "efficiency"} AS efficiency_centre,
-                    {"efficiency_lower_end" if "efficiency_lower_end" in existing_columns else "lower_permissible"} AS efficiency_lower_end,
-                    {"efficiency_higher_end" if "efficiency_higher_end" in existing_columns else "upper_permissible"} AS efficiency_higher_end,
-                    {"permissible_use" if "permissible_use" in existing_columns else "NULL"} AS permissible_use
-                FROM map_points
-                WHERE
-                    {"efficiency_centre" if "efficiency_centre" in existing_columns else "efficiency"} IS NOT NULL
-                    OR {"efficiency_lower_end" if "efficiency_lower_end" in existing_columns else "lower_permissible"} IS NOT NULL
-                    OR {"efficiency_higher_end" if "efficiency_higher_end" in existing_columns else "upper_permissible"} IS NOT NULL
-                    OR {"permissible_use" if "permissible_use" in existing_columns else "NULL"} IS NOT NULL
-                """
-            )
-        )
-        connection.execute(
-            text(
-                f"""
-                INSERT INTO rpm_points ({product_fk_column}, rpm_line_id, flow, pressure)
-                SELECT
-                    mp.fan_id,
-                    rl.id,
-                    mp.flow,
-                    mp.pressure
-                FROM map_points mp
-                JOIN rpm_lines rl
-                  ON rl.{product_fk_column} = mp.fan_id
-                 AND rl.rpm = mp.rpm
-                """
-            )
-        )
-        connection.execute(text("DROP TABLE map_points"))
-        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text("ALTER TABLE product_types DROP COLUMN IF EXISTS graph_secondary_axis_label"))

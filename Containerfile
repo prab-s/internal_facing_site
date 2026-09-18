@@ -16,7 +16,6 @@ FROM mcr.microsoft.com/devcontainers/python:3.13-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV DATABASE_URL=sqlite:////app/data/fans.db
 ENV APP_TIMEZONE=Pacific/Auckland
 ENV TZ=Pacific/Auckland
 
@@ -42,7 +41,6 @@ COPY alembic.ini /app/alembic.ini
 COPY alembic/ /app/alembic/
 COPY templates/ /app/templates/
 COPY start_app.sh /app/start_app.sh
-RUN mkdir -p /app/data
 RUN mkdir -p /app/frontend/src/lib /app/frontend/scripts
 COPY frontend/package*.json /app/frontend/
 COPY frontend/scripts/render_product_graph.mjs /app/frontend/scripts/render_product_graph.mjs

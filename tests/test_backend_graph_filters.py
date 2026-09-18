@@ -125,6 +125,18 @@ class GraphFilterRangeTests(unittest.TestCase):
 
 
 class BulkImportNormalizationTests(unittest.TestCase):
+    def test_overlay_scaling_skips_empty_higher_rpm_line(self):
+        scaled = bulk_import_scale_overlay_points_to_highest_rpm_line(
+            [{"airflow": 5, "efficiency_centre": 10}],
+            [{"id": 1, "rpm": 1000}, {"id": 2, "rpm": 2000}],
+            [
+                {"rpm_line_id": 1, "airflow": 0, "pressure": 100},
+                {"rpm_line_id": 1, "airflow": 10, "pressure": 0},
+            ],
+        )
+
+        self.assertEqual(scaled[0]["efficiency_centre"], 50)
+
     def test_missing_first_row_values_are_not_invented(self):
         rows = [
             {

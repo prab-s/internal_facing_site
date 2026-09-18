@@ -189,17 +189,22 @@ rebuild_setup_frontend() {
   run_if_fingerprint_changed "setup_frontend_bundle" "$fingerprint" "setup-page frontend bundle" rebuild_setup_frontend_now
 }
 
-if [[ "${DATABASE_URL:-}" == postgresql* ]]; then
-  if ! "$PYTHON_BIN" -c "import psycopg" >/dev/null 2>&1; then
-    echo
-    echo "SIT startup aborted:"
-    echo "  A PostgreSQL database is configured, but the active Python environment does not have 'psycopg' installed."
-    echo
-    echo "Fix it with:"
-    echo "  $PYTHON_BIN -m pip install -r backend/requirements.txt"
-    echo
-    exit 1
-  fi
+if [[ "${DATABASE_URL:-}" != postgresql* ]]; then
+  echo
+  echo "SIT startup aborted: DATABASE_URL must be a PostgreSQL connection string."
+  echo
+  exit 1
+fi
+
+if ! "$PYTHON_BIN" -c "import psycopg" >/dev/null 2>&1; then
+  echo
+  echo "SIT startup aborted:"
+  echo "  The active Python environment does not have 'psycopg' installed."
+  echo
+  echo "Fix it with:"
+  echo "  $PYTHON_BIN -m pip install -r backend/requirements.txt"
+  echo
+  exit 1
 fi
 
 if ! "$PYTHON_BIN" -c "from alembic import command" >/dev/null 2>&1; then

@@ -61,15 +61,7 @@ def _iter_configured_database_urls() -> Iterable[str]:
 
 
 def _make_engine(database_url: str) -> Engine:
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite:") else {}
-    return create_engine(database_url, connect_args=connect_args)
-
-
-def _ensure_sqlite_parent_dir_exists(url: URL) -> None:
-    database = url.database
-    if not database or database == ":memory:":
-        return
-    Path(database).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+    return create_engine(database_url)
 
 
 def _postgres_maintenance_url(url: URL) -> URL:
@@ -108,11 +100,9 @@ def _quote_postgres_identifier(identifier: str) -> str:
 
 def ensure_database_exists(database_url: str) -> None:
     url = make_url(database_url)
-    if url.drivername.startswith("sqlite"):
-        _ensure_sqlite_parent_dir_exists(url)
-        return
-    if url.drivername.startswith("postgresql"):
-        _ensure_postgres_database_exists(url)
+    if not url.drivername.startswith("postgresql"):
+        raise ValueError("Only PostgreSQL database URLs are supported.")
+    _ensure_postgres_database_exists(url)
 
 
 def _build_alembic_config(database_url: str) -> Config:
@@ -165,7 +155,6 @@ def _apply_compatibility_schema(engine: Engine) -> None:
         _ensure_product_type_parameter_preset_columns,
         _ensure_rpm_line_columns,
         _ensure_user_columns,
-        _migrate_legacy_map_points,
         _remove_deprecated_fan_manufacturer_column,
         _remove_deprecated_fan_notes_column,
         _remove_deprecated_product_optional_columns,
@@ -186,7 +175,6 @@ def _apply_compatibility_schema(engine: Engine) -> None:
     _remove_deprecated_product_type_secondary_axis_label(engine)
     _ensure_user_columns(engine)
     _seed_product_types(engine)
-    _migrate_legacy_map_points(engine)
 
 
 def prepare_database(database_url: str) -> None:

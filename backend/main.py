@@ -1034,7 +1034,7 @@ FILE_MANAGER_ALLOWED_TOP_LEVEL = {
     "templates": {"product", "series", "product_type"},
 }
 FILE_MANAGER_PROTECTED_RELATIVE_PATHS = {
-    "data": {"fans.db", "backups", "product_images", "product_graphs", "product_pdfs", "product_type_pdfs", "series_graphs", "series_pdfs"},
+    "data": {"backups", "product_images", "product_graphs", "product_pdfs", "product_type_pdfs", "series_graphs", "series_pdfs"},
     "templates": {"registry.json", "product", "series", "product_type"},
 }
 
@@ -1737,12 +1737,27 @@ def bulk_import_scale_overlay_points_to_highest_rpm_line(
     if not points:
         return points
 
+    valid_points_by_line_id: dict[float, list[dict]] = {}
+    for point in rpm_points or []:
+        line_id = bulk_import_parse_number(point.get("rpm_line_id"))
+        airflow = bulk_import_parse_number(point.get("airflow"))
+        pressure = bulk_import_parse_number(point.get("pressure"))
+        if line_id is None or airflow is None or pressure is None:
+            continue
+        valid_points_by_line_id.setdefault(line_id, []).append(
+            {"airflow": airflow, "pressure": pressure}
+        )
+
+    # Ignore declared RPM lines that have no drawable curve. This can occur
+    # after data is copied or partially imported and must not prevent the
+    # highest populated curve from being used for overlay alignment.
     highest_line = sorted(
         [
             line
             for line in (rpm_lines or [])
             if bulk_import_parse_number(line.get("id")) is not None
             and bulk_import_parse_number(line.get("rpm")) is not None
+            and len(valid_points_by_line_id.get(bulk_import_parse_number(line.get("id")), [])) >= 2
         ],
         key=lambda line: bulk_import_parse_number(line.get("rpm")) or 0,
         reverse=True,
@@ -1751,23 +1766,10 @@ def bulk_import_scale_overlay_points_to_highest_rpm_line(
         return points
     highest_line = highest_line[0]
     highest_rpm_line_points = sorted(
-        [
-            {
-                "airflow": bulk_import_parse_number(point.get("airflow")),
-                "pressure": bulk_import_parse_number(point.get("pressure")),
-            }
-            for point in (rpm_points or [])
-            if bulk_import_parse_number(point.get("rpm_line_id"))
-            == bulk_import_parse_number(highest_line.get("id"))
-        ],
+        valid_points_by_line_id.get(bulk_import_parse_number(highest_line.get("id")), []),
         key=lambda point: point["airflow"] or 0,
     )
-    highest_rpm_line_points = [
-        point
-        for point in highest_rpm_line_points
-        if point["airflow"] is not None and point["pressure"] is not None
-    ]
-    if not highest_rpm_line_points:
+    if len(highest_rpm_line_points) < 2:
         return points
     rpm_profile = bulk_import_build_highest_rpm_profile(highest_rpm_line_points)
 

@@ -38,7 +38,6 @@
  * The above values will be the same _even if_ different values for `ENVIRONMENT` or `PUBLIC_BASE_URL` are set at runtime, as they are statically replaced in your code with their build time values.
  */
 declare module '$env/static/private' {
-	export const PYTHON_BASIC_REPL: string;
 	export const LESSOPEN: string;
 	export const DATABASE_URL: string;
 	export const LOG_LEVEL: string;
@@ -47,29 +46,22 @@ declare module '$env/static/private' {
 	export const LC_TIME: string;
 	export const npm_config_user_agent: string;
 	export const XDG_SESSION_TYPE: string;
-	export const GIT_ASKPASS: string;
 	export const npm_node_execpath: string;
 	export const SHLVL: string;
-	export const BROWSER: string;
 	export const npm_config_noproxy: string;
 	export const HOME: string;
 	export const FRAME_ANCESTORS: string;
 	export const OLDPWD: string;
-	export const TERM_PROGRAM_VERSION: string;
 	export const CHROMIUM_BIN: string;
 	export const SESSION_SECRET: string;
-	export const VSCODE_IPC_HOOK_CLI: string;
+	export const SSH_TTY: string;
 	export const npm_package_json: string;
 	export const IM_CONFIG_ENTRY: string;
-	export const VSCODE_GIT_ASKPASS_MAIN: string;
 	export const LC_MONETARY: string;
-	export const VSCODE_GIT_ASKPASS_NODE: string;
 	export const npm_config_userconfig: string;
 	export const npm_config_local_prefix: string;
-	export const VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 	export const BOOTSTRAP_ADMIN_PASSWORD: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
-	export const COLORTERM: string;
 	export const COLOR: string;
 	export const INTERNAL_FRAME_ANCESTORS: string;
 	export const DEBUGINFOD_URLS: string;
@@ -89,13 +81,10 @@ declare module '$env/static/private' {
 	export const LC_ADDRESS: string;
 	export const XDG_RUNTIME_DIR: string;
 	export const LANG: string;
-	export const PYTHONSTARTUP: string;
 	export const LC_TELEPHONE: string;
 	export const LS_COLORS: string;
-	export const VSCODE_GIT_IPC_HANDLE: string;
 	export const CMS_API_TOKEN: string;
 	export const FINDER_DEBUG: string;
-	export const TERM_PROGRAM: string;
 	export const npm_lifecycle_script: string;
 	export const SHELL: string;
 	export const LC_NAME: string;
@@ -107,13 +96,11 @@ declare module '$env/static/private' {
 	export const LC_MEASUREMENT: string;
 	export const BOOTSTRAP_ADMIN_USERNAME: string;
 	export const LC_IDENTIFICATION: string;
-	export const VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
 	export const npm_config_globalconfig: string;
 	export const npm_config_init_module: string;
 	export const PWD: string;
 	export const npm_config_globalignorefile: string;
 	export const npm_execpath: string;
-	export const COPILOT_DEBUG_NONCE: string;
 	export const SSH_CONNECTION: string;
 	export const XDG_DATA_DIRS: string;
 	export const npm_config_global_prefix: string;
@@ -212,7 +199,6 @@ declare module '$env/static/public' {
  */
 declare module '$env/dynamic/private' {
 	export const env: {
-		PYTHON_BASIC_REPL: string;
 		LESSOPEN: string;
 		DATABASE_URL: string;
 		LOG_LEVEL: string;
@@ -221,29 +207,22 @@ declare module '$env/dynamic/private' {
 		LC_TIME: string;
 		npm_config_user_agent: string;
 		XDG_SESSION_TYPE: string;
-		GIT_ASKPASS: string;
 		npm_node_execpath: string;
 		SHLVL: string;
-		BROWSER: string;
 		npm_config_noproxy: string;
 		HOME: string;
 		FRAME_ANCESTORS: string;
 		OLDPWD: string;
-		TERM_PROGRAM_VERSION: string;
 		CHROMIUM_BIN: string;
 		SESSION_SECRET: string;
-		VSCODE_IPC_HOOK_CLI: string;
+		SSH_TTY: string;
 		npm_package_json: string;
 		IM_CONFIG_ENTRY: string;
-		VSCODE_GIT_ASKPASS_MAIN: string;
 		LC_MONETARY: string;
-		VSCODE_GIT_ASKPASS_NODE: string;
 		npm_config_userconfig: string;
 		npm_config_local_prefix: string;
-		VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 		BOOTSTRAP_ADMIN_PASSWORD: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
-		COLORTERM: string;
 		COLOR: string;
 		INTERNAL_FRAME_ANCESTORS: string;
 		DEBUGINFOD_URLS: string;
@@ -263,13 +242,10 @@ declare module '$env/dynamic/private' {
 		LC_ADDRESS: string;
 		XDG_RUNTIME_DIR: string;
 		LANG: string;
-		PYTHONSTARTUP: string;
 		LC_TELEPHONE: string;
 		LS_COLORS: string;
-		VSCODE_GIT_IPC_HANDLE: string;
 		CMS_API_TOKEN: string;
 		FINDER_DEBUG: string;
-		TERM_PROGRAM: string;
 		npm_lifecycle_script: string;
 		SHELL: string;
 		LC_NAME: string;
@@ -281,13 +257,11 @@ declare module '$env/dynamic/private' {
 		LC_MEASUREMENT: string;
 		BOOTSTRAP_ADMIN_USERNAME: string;
 		LC_IDENTIFICATION: string;
-		VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
 		npm_config_globalconfig: string;
 		npm_config_init_module: string;
 		PWD: string;
 		npm_config_globalignorefile: string;
 		npm_execpath: string;
-		COPILOT_DEBUG_NONCE: string;
 		SSH_CONNECTION: string;
 		XDG_DATA_DIRS: string;
 		npm_config_global_prefix: string;

@@ -2727,28 +2727,42 @@
     rpmLinesToCheck,
     rpmPointsToCheck,
   ) {
+    const validPointsByLineId = new Map();
+    for (const point of rpmPointsToCheck ?? []) {
+      const lineId = Number(point?.rpm_line_id);
+      const airflow = Number(point?.airflow);
+      const pressure = Number(point?.pressure);
+      if (
+        !Number.isFinite(lineId) ||
+        !Number.isFinite(airflow) ||
+        !Number.isFinite(pressure)
+      ) {
+        continue;
+      }
+      if (!validPointsByLineId.has(lineId)) validPointsByLineId.set(lineId, []);
+      validPointsByLineId.get(lineId).push({ airflow, pressure });
+    }
+
+    // A line entry may exist without a drawable curve, for example after a
+    // product is duplicated. Never let that empty entry block alignment to
+    // the highest RPM curve that actually exists on the graph.
     const highestRpmLine = [...(rpmLinesToCheck ?? [])]
       .map((line) => ({
         id: Number(line?.id),
         rpm: Number(line?.rpm),
       }))
-      .filter(({ id, rpm }) => Number.isFinite(id) && Number.isFinite(rpm))
+      .filter(
+        ({ id, rpm }) =>
+          Number.isFinite(id) &&
+          Number.isFinite(rpm) &&
+          (validPointsByLineId.get(id)?.length ?? 0) >= 2,
+      )
       .sort((a, b) => b.rpm - a.rpm)[0];
 
     const highResolutionRpmLinePoints = highestRpmLine
-      ? (rpmPointsToCheck ?? [])
-          .filter(
-            (point) => Number(point?.rpm_line_id) === Number(highestRpmLine.id),
-          )
-          .map((point) => ({
-            airflow: Number(point?.airflow),
-            pressure: Number(point?.pressure),
-          }))
-          .filter(
-            ({ airflow, pressure }) =>
-              Number.isFinite(airflow) && Number.isFinite(pressure),
-          )
-          .sort((a, b) => a.airflow - b.airflow)
+      ? [...validPointsByLineId.get(highestRpmLine.id)].sort(
+          (a, b) => a.airflow - b.airflow,
+        )
       : [];
 
     const overlayKeys = [
@@ -2760,7 +2774,7 @@
 
     const nextPoints = (points ?? []).map((point) => ({ ...point }));
 
-    if (!highResolutionRpmLinePoints.length) {
+    if (highResolutionRpmLinePoints.length < 2) {
       return nextPoints;
     }
 

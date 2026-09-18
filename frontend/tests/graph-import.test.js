@@ -41,6 +41,7 @@ function editor() {
         return currentGraphState();
       },
       edit(index, pressure) {rpmPoints[index].pressure=pressure;},
+      scaleRaw: applyLineByLineOverlayScaling,
       state:currentGraphState
     };
   `)(simplifyCurve, createGraphReference, buildSmoothedCurveSamples);
@@ -183,11 +184,24 @@ test('editing a simplified preview makes that edited draft the new baseline', ()
   });
 });
 
- test('numeric strings from edited table cells render at the same coordinates', () => {
+test('numeric strings from edited table cells render at the same coordinates', () => {
   const e=editor(); const state=e.load(rows());
   const options={...state,chartTheme:LIGHT_CHART_THEME,includeDragHandles:true};
   const numeric=buildFullChartOption(options);
   const strings=buildFullChartOption({...options,rpmPoints:state.rpmPoints.map(p=>({...p,airflow:String(p.airflow),pressure:String(p.pressure)}))});
   const line=option=>option.series.find(s=>s.type==='line' && s.name.includes('1000'));
   assert.deepEqual(line(strings).data,line(numeric).data);
+});
+
+test('alignment skips an empty higher-RPM line', () => {
+  const e = editor();
+  const source = [{ airflow: 5, efficiency_centre: 10 }];
+  const lines = [{ id: 1, rpm: 1000 }, { id: 2, rpm: 2000 }];
+  const points = [
+    { rpm_line_id: 1, airflow: 0, pressure: 100 },
+    { rpm_line_id: 1, airflow: 10, pressure: 0 },
+  ];
+  const scaled = e.scaleRaw(source, lines, points);
+  assert.equal(scaled[0].efficiency_centre, 50);
+  assert.deepEqual(source, [{ airflow: 5, efficiency_centre: 10 }]);
 });

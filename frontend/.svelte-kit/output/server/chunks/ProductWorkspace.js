@@ -889,11 +889,19 @@ function ProductWorkspace($$renderer, $$props) {
       return [...mergedPoints.values()].sort((a, b) => Number(a.airflow) - Number(b.airflow));
     }
     function applyLineByLineOverlayScaling(points, rpmLinesToCheck, rpmPointsToCheck) {
-      const highestRpmLine = [...rpmLinesToCheck ?? []].map((line) => ({ id: Number(line?.id), rpm: Number(line?.rpm) })).filter(({ id, rpm }) => Number.isFinite(id) && Number.isFinite(rpm)).sort((a, b) => b.rpm - a.rpm)[0];
-      const highResolutionRpmLinePoints = highestRpmLine ? (rpmPointsToCheck ?? []).filter((point) => Number(point?.rpm_line_id) === Number(highestRpmLine.id)).map((point) => ({
-        airflow: Number(point?.airflow),
-        pressure: Number(point?.pressure)
-      })).filter(({ airflow, pressure }) => Number.isFinite(airflow) && Number.isFinite(pressure)).sort((a, b) => a.airflow - b.airflow) : [];
+      const validPointsByLineId = /* @__PURE__ */ new Map();
+      for (const point of rpmPointsToCheck ?? []) {
+        const lineId = Number(point?.rpm_line_id);
+        const airflow = Number(point?.airflow);
+        const pressure = Number(point?.pressure);
+        if (!Number.isFinite(lineId) || !Number.isFinite(airflow) || !Number.isFinite(pressure)) {
+          continue;
+        }
+        if (!validPointsByLineId.has(lineId)) validPointsByLineId.set(lineId, []);
+        validPointsByLineId.get(lineId).push({ airflow, pressure });
+      }
+      const highestRpmLine = [...rpmLinesToCheck ?? []].map((line) => ({ id: Number(line?.id), rpm: Number(line?.rpm) })).filter(({ id, rpm }) => Number.isFinite(id) && Number.isFinite(rpm) && (validPointsByLineId.get(id)?.length ?? 0) >= 2).sort((a, b) => b.rpm - a.rpm)[0];
+      const highResolutionRpmLinePoints = highestRpmLine ? [...validPointsByLineId.get(highestRpmLine.id)].sort((a, b) => a.airflow - b.airflow) : [];
       const overlayKeys = [
         "efficiency_centre",
         "efficiency_lower_end",
@@ -901,7 +909,7 @@ function ProductWorkspace($$renderer, $$props) {
         "permissible_use"
       ];
       const nextPoints = (points ?? []).map((point) => ({ ...point }));
-      if (!highResolutionRpmLinePoints.length) {
+      if (highResolutionRpmLinePoints.length < 2) {
         return nextPoints;
       }
       function findBestScaleFactor(terminalPoint) {
