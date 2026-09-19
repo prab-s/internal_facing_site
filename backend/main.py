@@ -32,7 +32,7 @@ from uuid import uuid4
 from xml.etree import ElementTree as ET
 
 import html5lib
-from fastapi import APIRouter, FastAPI, Depends, HTTPException, Query, Request, Response, UploadFile, File, Form
+from fastapi import APIRouter, FastAPI, BackgroundTasks, Depends, HTTPException, Query, Request, Response, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -157,6 +157,7 @@ from backend.schemas import (
     InternalDeviceActivityResponse,
     QuoteRequestNotificationSettings,
     QuoteRequestCreate,
+    QuoteRequestGraphImageUpload,
     QuoteRequestResponse,
     QuoteRequestEmailTestRequest,
     QuoteRequestEmailTestResponse,
@@ -182,6 +183,7 @@ PUBLIC_IMAGE_QUALITY = 82
 SERIES_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "series_images"
 CMS_MEDIA_DIR = Path(DEFAULT_DATA_DIR) / "cms_media"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
+QUOTE_REQUEST_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "quote_request_graphs"
 IMPORTS_DIR = Path(DEFAULT_DATA_DIR) / "bulk_imports"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
 PRODUCT_TYPE_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
@@ -196,6 +198,7 @@ DATA_BACKUP_DIRS = [
     PRODUCT_IMAGES_DIR,
     SERIES_IMAGES_DIR,
     PRODUCT_GRAPHS_DIR,
+    QUOTE_REQUEST_GRAPHS_DIR,
     PRODUCT_PDFS_DIR,
     PRODUCT_TYPE_PDFS_DIR,
     SERIES_GRAPHS_DIR,
@@ -237,6 +240,7 @@ ECHARTS_RENDER_SCRIPT = FRONTEND_DIR / "scripts" / "render_product_graph.mjs"
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 SERIES_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
+QUOTE_REQUEST_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
 IMPORTS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_TYPE_PDFS_DIR.mkdir(parents=True, exist_ok=True)
@@ -7312,7 +7316,7 @@ def _clear_login_failures(key: str) -> None:
 def enforce_csrf(request: Request) -> None:
     if request.method.upper() in {"GET", "HEAD", "OPTIONS"}:
         return
-    if request.url.path in {"/api/client-telemetry", "/api/quote-requests"}:
+    if request.url.path in {"/api/client-telemetry", "/api/quote-requests"} or re.fullmatch(r"/api/quote-requests/\d+/graph-image", request.url.path):
         return
     expected = request.session.get(CSRF_SESSION_KEY)
     supplied = request.headers.get(CSRF_HEADER_NAME, "")
@@ -7615,7 +7619,7 @@ def _quote_request_recipient_emails_from_settings(db: Session | None = None) -> 
 
 
 def _quote_request_throttle_key(payload: QuoteRequestCreate, request: Request) -> str:
-    client_ip = _quote_request_clean(payload.client_ip or _extract_client_ip(request), 64)
+    client_ip = _quote_request_clean(payload.client_ip or _extract_public_client_ip(request), 64)
     if client_ip:
         return client_ip
     return "unknown"
@@ -7657,6 +7661,45 @@ def _quote_request_subject(record: QuoteRequest) -> str:
     return f"Vent-Tech quote request - {page_title} - {type_label}"
 
 
+def _quote_request_tailored_requirements(record: QuoteRequest) -> list[tuple[str, str]]:
+    if record.request_type != "tailored":
+        return []
+    context_json = getattr(record, "context_json", {}) or {}
+    raw_requirements = context_json.get("tailored_requirements") if isinstance(context_json, dict) else {}
+    requirements = []
+    if isinstance(raw_requirements, dict):
+        for requirement in raw_requirements.values():
+            if not isinstance(requirement, dict):
+                continue
+            label = _quote_request_clean(requirement.get("label"), 80)
+            value = _quote_request_clean(requirement.get("value"), 120)
+            if label and value:
+                requirements.append((label, value))
+    # Support tailored enquiries recorded before requirements were moved into
+    # page context, without showing these fields for other request streams.
+    if not requirements:
+        requirements = [
+            ("Maximum airflow", record.airflow_max),
+            ("Maximum pressure", record.pressure_max),
+            ("Maximum power", record.power_limit),
+        ]
+    return [(label, value) for label, value in requirements if value]
+
+
+def _quote_request_helper_details(record: QuoteRequest) -> list[tuple[str, str]]:
+    if record.request_type != "unsure":
+        return []
+    context_json = getattr(record, "context_json", {}) or {}
+    details = context_json.get("help_me_choose") if isinstance(context_json, dict) else {}
+    if not isinstance(details, dict):
+        return []
+    labels = {
+        "thing": "Looking for", "room_size": "Room or space size",
+        "three_phase": "Three-phase power", "constraints": "Constraints or preferences",
+    }
+    return [(label, _quote_request_clean(details.get(key), 300)) for key, label in labels.items() if _quote_request_clean(details.get(key), 300)]
+
+
 def _quote_request_body(record: QuoteRequest) -> str:
     attributes = record.attributes if isinstance(record.attributes, list) else []
     attribute_labels = [QUOTE_REQUEST_ATTRIBUTE_LABELS.get(str(attribute), str(attribute)) for attribute in attributes if str(attribute).strip()]
@@ -7669,17 +7712,16 @@ def _quote_request_body(record: QuoteRequest) -> str:
         f"Company: {record.company or 'Not provided'}",
         f"Email: {record.email}",
         f"Phone: {record.phone or 'Not provided'}",
+        f"Selected stream: {QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(record.request_type or '', 'Quote request')}",
         f"Desired attributes: {', '.join(attribute_labels) if attribute_labels else 'Not specified'}",
-        f"Airflow range: {record.airflow_min or 'Not specified'} - {record.airflow_max or 'Not specified'}",
-        f"Pressure range: {record.pressure_min or 'Not specified'} - {record.pressure_max or 'Not specified'}",
-        f"Power limit: {record.power_limit or 'Not specified'}",
         f"Current page: {record.page_url or 'Not provided'}",
         f"Page card: {(record.page_card_title or 'Not provided')} - {(record.page_card_summary or 'Not provided')}",
         f"Page type: {record.page_type or 'Not provided'}",
         f"Verification: {record.verification_provider} / {record.verification_status}",
         f"Email status: {record.email_status}",
     ]
-    workflow_context = (record.context_json or {}).get("enquiry_workflow") if isinstance(record.context_json, dict) else {}
+    context_json = getattr(record, "context_json", {}) or {}
+    workflow_context = context_json.get("enquiry_workflow") if isinstance(context_json, dict) else {}
     performance_target = workflow_context.get("performance_target") if isinstance(workflow_context, dict) else {}
     if isinstance(performance_target, dict) and performance_target:
         lines.extend([
@@ -7688,6 +7730,12 @@ def _quote_request_body(record: QuoteRequest) -> str:
             f"Airflow target: {performance_target.get('airflow') or 'Not captured'}",
             f"Pressure target: {performance_target.get('pressure') or 'Not captured'}",
         ])
+    tailored_requirements = _quote_request_tailored_requirements(record)
+    if tailored_requirements:
+        lines.extend(["", "Tailored product requirements:", *[f"{label}: {value}" for label, value in tailored_requirements]])
+    helper_details = _quote_request_helper_details(record)
+    if helper_details:
+        lines.extend(["", "Help me choose details:", *[f"{label}: {value}" for label, value in helper_details]])
     if record.short_notes:
         lines.extend(["", f"Additional notes: {_quote_request_clean_multiline(record.short_notes, 300)}"])
     if record.details:
@@ -7711,14 +7759,17 @@ def _quote_request_acknowledgement_body(record: QuoteRequest) -> str:
         "Thanks for your enquiry. A member of the Vent-Tech team will be in touch.",
         "",
         "Here is a copy of what you sent:",
-        f"Request type: {QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(record.request_type or '', 'Enquiry')}",
+        f"Selected stream: {QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(record.request_type or '', 'Enquiry')}",
         f"Company: {record.company or 'Not provided'}",
         f"Phone: {record.phone or 'Not provided'}",
         f"Desired attributes: {', '.join(attribute_labels) if attribute_labels else 'Not specified'}",
-        f"Airflow range: {record.airflow_min or 'Not specified'} - {record.airflow_max or 'Not specified'}",
-        f"Pressure range: {record.pressure_min or 'Not specified'} - {record.pressure_max or 'Not specified'}",
-        f"Power limit: {record.power_limit or 'Not specified'}",
     ]
+    tailored_requirements = _quote_request_tailored_requirements(record)
+    if tailored_requirements:
+        lines.extend(["", "Tailored product requirements:", *[f"{label}: {value}" for label, value in tailored_requirements]])
+    helper_details = _quote_request_helper_details(record)
+    if helper_details:
+        lines.extend(["", "Help me choose details:", *[f"{label}: {value}" for label, value in helper_details]])
     if record.short_notes:
         lines.extend(["", f"Additional notes: {_quote_request_clean_multiline(record.short_notes, 300)}"])
     if record.details:
@@ -7727,25 +7778,82 @@ def _quote_request_acknowledgement_body(record: QuoteRequest) -> str:
     return "\n".join(lines)
 
 
-def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str], smtp_config: SMTPConfig) -> bool:
+def _quote_request_email_html(record: QuoteRequest, *, acknowledgement: bool = False, graph_content_id: str | None = None) -> str:
+    """Create a compact, email-client-safe HTML version of an enquiry receipt."""
+    attributes = record.attributes if isinstance(record.attributes, list) else []
+    attribute_labels = [QUOTE_REQUEST_ATTRIBUTE_LABELS.get(str(item), str(item)) for item in attributes if str(item).strip()]
+    context_json = getattr(record, "context_json", {}) or {}
+    workflow_context = context_json.get("enquiry_workflow") if isinstance(context_json, dict) else {}
+    performance_target = workflow_context.get("performance_target") if isinstance(workflow_context, dict) else {}
+    enquiry_rows = [
+        ("Enquiry type", QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(record.request_type or "", "Enquiry")),
+    ]
+    customer_rows = [
+        ("Name", record.name),
+        ("Company", record.company),
+        ("Email", record.email),
+        ("Phone", record.phone),
+    ]
+    requirements_rows = [
+        ("Desired attributes", ", ".join(attribute_labels) if attribute_labels else None),
+    ]
+    if isinstance(performance_target, dict):
+        requirements_rows.extend([("Airflow target", performance_target.get("airflow")), ("Pressure target", performance_target.get("pressure"))])
+    requirements_rows.extend(_quote_request_tailored_requirements(record))
+    requirements_rows.extend(_quote_request_helper_details(record))
+    if not acknowledgement:
+        requirements_rows.append(("Current page", record.page_url))
+
+    def section_html(title: str, rows: list[tuple[str, object]]) -> str:
+        compact_rows = "".join(
+        f'<tr><td style="padding:7px 0;color:#64748b;font-size:13px;width:38%;vertical-align:top">{html.escape(str(label))}</td><td style="padding:7px 0;color:#172b3a;font-size:14px;vertical-align:top">{html.escape(str(value))}</td></tr>'
+            for label, value in rows if _quote_request_clean(value)
+        )
+        return f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse"><tr><td height="20" style="height:20px;line-height:20px;font-size:1px">&nbsp;</td></tr><tr><td><h2 style="font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:#126e82;margin:0 0 7px">{html.escape(title)}</h2><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">{compact_rows}</table></td></tr></table>' if compact_rows else ""
+
+    sections_html = "".join([
+        section_html("Enquiry", enquiry_rows),
+        section_html("Customer", customer_rows),
+        section_html("Selection and requirements", requirements_rows),
+    ])
+    notes = _quote_request_clean_multiline(record.short_notes or record.details)
+    notes_content_html = html.escape(notes).replace("\n", "<br>")
+    notes_html = f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse"><tr><td height="24" style="height:24px;line-height:24px;font-size:1px">&nbsp;</td></tr><tr><td style="padding:18px 20px;background:#edf7f8;border-left:4px solid #126e82"><h2 style="font-size:15px;margin:0 0 8px;color:#126e82">Customer notes</h2><div style="color:#172b3a;line-height:1.55">{notes_content_html}</div></td></tr></table>' if notes else ""
+    graph_html = f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse"><tr><td height="22" style="height:22px;line-height:22px;font-size:1px">&nbsp;</td></tr><tr><td><h2 style="font-size:15px;margin:0 0 10px;color:#172b3a">Submitted performance graph</h2><img src="cid:{html.escape(graph_content_id)}" alt="Submitted performance graph with selected duty point" style="display:block;width:100%;height:auto;border:1px solid #d9e1e7;border-radius:6px"></td></tr></table>' if graph_content_id else ""
+    heading = "We received your enquiry" if acknowledgement else "New customer enquiry"
+    intro = f"Thanks, {html.escape(record.name)}. A member of the Vent-Tech team will be in touch." if acknowledgement else "A new enquiry has been submitted through the Vent-Tech website."
+    return f'''<!doctype html><html><body style="margin:0;background:#f3f6f8;font-family:Arial,sans-serif;color:#172b3a"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6f8;padding:24px 12px"><tr><td align="center"><table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#fff;border-radius:8px;overflow:hidden"><tr><td style="background:#126e82;padding:15px 24px;color:#fff;font-size:13px;letter-spacing:1px;font-weight:bold">VENT-TECH</td></tr><tr><td style="padding:25px"><h1 style="font-size:21px;margin:0 0 8px">{heading}</h1><p style="margin:0;line-height:1.5;color:#4b5c6b">{intro}</p>{sections_html}{graph_html}{notes_html}</td></tr></table></td></tr></table></body></html>'''
+
+
+def _quote_request_graph_inline_attachment(record: QuoteRequest) -> tuple[list[dict], str | None]:
     attachments = []
+    graph_content_id = None
     graph_image_data_url = getattr(record, "_graph_image_data_url", "")
     if graph_image_data_url:
         try:
             header, encoded = graph_image_data_url.split(",", 1)
             if header == "data:image/png;base64" and len(encoded) <= 8_000_000:
+                graph_content_id = "performance-graph"
                 attachments.append({
                     "filename": "performance-graph.png",
                     "content": base64.b64decode(encoded, validate=True),
                     "maintype": "image",
                     "subtype": "png",
+                    "cid": graph_content_id,
+                    "disposition": "inline",
                 })
         except (ValueError, TypeError, base64.binascii.Error):
             pass
+    return attachments, graph_content_id
+
+
+def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str], smtp_config: SMTPConfig) -> bool:
+    attachments, graph_content_id = _quote_request_graph_inline_attachment(record)
     return send_email(
         recipient_emails,
         _quote_request_subject(record),
         _quote_request_body(record),
+        html_body=_quote_request_email_html(record, graph_content_id=graph_content_id),
         reply_to=record.email,
         attachments=attachments,
         config=smtp_config,
@@ -7753,12 +7861,117 @@ def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str],
 
 
 def _send_quote_request_acknowledgement(record: QuoteRequest, smtp_config: SMTPConfig) -> bool:
+    attachments, graph_content_id = _quote_request_graph_inline_attachment(record)
     return send_email(
         record.email,
         _quote_request_acknowledgement_subject(record),
         _quote_request_acknowledgement_body(record),
+        html_body=_quote_request_email_html(record, acknowledgement=True, graph_content_id=graph_content_id),
+        attachments=attachments,
         config=smtp_config,
     )
+
+
+def _send_quote_request_email_with_connection_retry(send_operation) -> bool:
+    """Retry only failures before SMTP authentication/message submission.
+
+    A connection retry is safe because no email has been handed to the server.
+    """
+    for attempt in range(2):
+        try:
+            return send_operation()
+        except SMTPDiagnosticError as exc:
+            if attempt or exc.stage != "connection":
+                raise
+            logger.warning("SMTP connection failed before delivery; retrying once (%s)", exc.code)
+            time.sleep(1)
+    return False
+
+
+def _store_quote_request_graph_image(record: QuoteRequest, graph_image_data_url: str | None) -> None:
+    """Persist the browser-rendered duty-point graph for internal enquiry review."""
+    if not graph_image_data_url or not record.id:
+        return
+    try:
+        header, encoded = graph_image_data_url.split(",", 1)
+        if header != "data:image/png;base64" or len(encoded) > 8_000_000:
+            return
+        image_bytes = base64.b64decode(encoded, validate=True)
+        if not image_bytes or len(image_bytes) > 6_000_000:
+            return
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image.verify()
+        filename = f"quote-request-{record.id}.png"
+        final_path = QUOTE_REQUEST_GRAPHS_DIR / filename
+        temporary_path = QUOTE_REQUEST_GRAPHS_DIR / f".{filename}.tmp"
+        temporary_path.write_bytes(image_bytes)
+        temporary_path.replace(final_path)
+        record.graph_image_filename = filename
+    except (ValueError, TypeError, OSError, base64.binascii.Error):
+        logger.warning("Quote request %s included an invalid graph image", record.id)
+
+
+def _quote_request_graph_image_path(record: QuoteRequest) -> Path | None:
+    filename = Path(str(record.graph_image_filename or "")).name
+    if not filename or not filename.endswith(".png"):
+        return None
+    path = QUOTE_REQUEST_GRAPHS_DIR / filename
+    return path if path.is_file() else None
+
+
+def _deliver_quote_request_emails(record_id: int) -> None:
+    """Deliver mail after the enquiry is safely stored; never delay the customer response."""
+    db = SessionLocal()
+    try:
+        record = db.get(QuoteRequest, record_id)
+        if not record:
+            return
+        recipient_emails = _quote_request_recipient_emails_from_settings(db)
+        smtp_config, _ = _smtp_config_from_settings(db)
+        # Only quote-this-item enquiries have a graph screenshot. Give its
+        # browser upload a brief opportunity to finish after the response.
+        if record.request_type == "standard":
+            for _ in range(16):
+                db.refresh(record)
+                if _quote_request_graph_image_path(record):
+                    break
+                time.sleep(0.25)
+        graph_path = _quote_request_graph_image_path(record)
+        record._graph_image_data_url = f"data:image/png;base64,{base64.b64encode(graph_path.read_bytes()).decode('ascii')}" if graph_path else ""
+        if not smtp_config.is_configured:
+            record.email_status = "not_configured"
+            record.email_error = "SMTP is not configured."
+            record.acknowledgement_email_status = "not_configured"
+            record.acknowledgement_email_error = "SMTP is not configured."
+        else:
+            try:
+                if not _send_quote_request_email_with_connection_retry(lambda: _send_quote_request_email(record, recipient_emails, smtp_config)):
+                    raise RuntimeError("Internal notification was not sent.")
+                record.email_status = "sent"
+                record.email_error = None
+                try:
+                    if _send_quote_request_email_with_connection_retry(lambda: _send_quote_request_acknowledgement(record, smtp_config)):
+                        record.acknowledgement_email_status = "sent"
+                        record.acknowledgement_email_error = None
+                    else:
+                        record.acknowledgement_email_status = "not_configured"
+                        record.acknowledgement_email_error = "SMTP is not configured."
+                except Exception as exc:
+                    record.acknowledgement_email_status = "failed"
+                    record.acknowledgement_email_error = str(exc)
+                    logger.exception("Quote request acknowledgement delivery failed")
+            except Exception as exc:
+                record.email_status = "failed"
+                record.email_error = str(exc)
+                record.acknowledgement_email_status = "skipped"
+                record.acknowledgement_email_error = "Internal notification failed, so no acknowledgement was sent."
+                logger.exception("Quote request email delivery failed")
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Unable to update quote request email delivery status")
+    finally:
+        db.close()
 
 
 def _normalise_quote_request_payload(payload: QuoteRequestCreate) -> dict:
@@ -7779,7 +7992,7 @@ def _normalise_quote_request_payload(payload: QuoteRequestCreate) -> dict:
         "product": payload.product or {},
     }
     if isinstance(payload.page_context, dict):
-        context_json.update({key: value for key, value in payload.page_context.items() if value not in (None, "")})
+        context_json.update({key: value for key, value in payload.page_context.items() if key != "tailored_requirements" and value not in (None, "")})
         workflow = payload.page_context.get("enquiry_workflow")
         if isinstance(workflow, dict):
             configured_fields = workflow.get("context_fields") if isinstance(workflow.get("context_fields"), dict) else {}
@@ -7794,6 +8007,29 @@ def _normalise_quote_request_payload(payload: QuoteRequestCreate) -> dict:
                     for key in ("airflow", "pressure")
                     if performance_target.get(key) not in (None, "")
                 },
+            }
+        raw_requirements = payload.page_context.get("tailored_requirements")
+        if request_type == "tailored" and isinstance(raw_requirements, dict):
+            selected_attributes = set(attributes)
+            labels = {
+                "airflow_max": ("airflow", "Maximum airflow"), "pressure_max": ("pressure", "Maximum pressure"),
+                "power_limit": ("power", "Maximum power"), "efficiency_max": ("efficiency", "Efficiency requirement"),
+                "noise_max": ("noise", "Maximum noise"), "size_max": ("size", "Maximum dimensions"),
+                "temperature_max": ("temperature", "Maximum operating temperature"), "mounting_requirement": ("mounting", "Mounting requirement"),
+            }
+            context_json["tailored_requirements"] = {
+                key: {"label": label, "value": _quote_request_clean(value.get("value"), 120)}
+                for key, (attribute, label) in labels.items()
+                if attribute in selected_attributes and isinstance(value := raw_requirements.get(key), dict) and _quote_request_clean(value.get("value"), 120)
+            }
+        if request_type == "unsure":
+            context_json["help_me_choose"] = {
+                key: value for key, value in {
+                    "thing": _quote_request_clean(payload.helper_thing, 300),
+                    "room_size": _quote_request_clean(payload.helper_room_size, 300),
+                    "three_phase": _quote_request_clean(payload.helper_three_phase, 60),
+                    "constraints": _quote_request_clean(payload.helper_constraints, 300),
+                }.items() if value
             }
 
     return {
@@ -8671,6 +8907,8 @@ def update_site_page(slug: str, body: SitePageUpdateRequest, db: Session = Depen
     page = db.query(SitePage).filter(SitePage.slug == slug).first()
     if page is None:
         raise HTTPException(status_code=404, detail="CMS page not found.")
+    if page.slug in PROTECTED_SITE_PAGE_SLUGS:
+        raise HTTPException(status_code=403, detail="The Enquiries modal is managed in application code, not the CMS.")
     page.draft_content = _validate_site_page_content(page, body.content)
     page.draft_seo = body.seo or {}
     if body.layout is not None:
@@ -8686,6 +8924,8 @@ def publish_site_page(slug: str, db: Session = Depends(get_db)):
     page = db.query(SitePage).filter(SitePage.slug == slug).first()
     if page is None:
         raise HTTPException(status_code=404, detail="CMS page not found.")
+    if page.slug in PROTECTED_SITE_PAGE_SLUGS:
+        raise HTTPException(status_code=403, detail="The Enquiries modal is managed in application code, not the CMS.")
     page.draft_content = _validate_site_page_content(page, page.draft_content or {})
     page.draft_layout = _validate_site_page_layout(page.draft_layout or [])
     page.published_content = page.draft_content or {}
@@ -10178,6 +10418,8 @@ def _serialize_quote_request(record: QuoteRequest) -> QuoteRequestResponse:
         pressure_min=record.pressure_min,
         pressure_max=record.pressure_max,
         power_limit=record.power_limit,
+        graph_image_url=f"/api/quote-requests/{record.id}/graph-image" if _quote_request_graph_image_path(record) else None,
+        graph_upload_token=record.graph_upload_token,
         short_notes=record.short_notes,
         details=record.details,
         page_type=record.page_type,
@@ -10198,12 +10440,11 @@ def _serialize_quote_request(record: QuoteRequest) -> QuoteRequestResponse:
 
 
 @app.post("/api/quote-requests", response_model=QuoteRequestResponse, tags=["Public", "Enquiries"])
-async def create_quote_request(body: QuoteRequestCreate, request: Request, db: Session = Depends(get_db)):
+async def create_quote_request(body: QuoteRequestCreate, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if body.website:
         raise HTTPException(status_code=400, detail="Enquiry request rejected.")
 
     record_data = _normalise_quote_request_payload(body)
-    recipient_emails = _quote_request_recipient_emails_from_settings(db)
     throttle_key = _quote_request_throttle_key(body, request)
     _quote_request_check_throttle(throttle_key)
     record = QuoteRequest(
@@ -10215,53 +10456,17 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
         verification_provider="honeypot",
         verification_status="passed",
         verification_error=None,
+        graph_upload_token=secrets.token_urlsafe(32),
         **record_data,
     )
     # The browser-rendered graph is an email-only attachment and is deliberately
     # not persisted in the enquiry database record.
-    record._graph_image_data_url = body.graph_image_data_url
     db.add(record)
     db.flush()
 
-    smtp_config, _ = _smtp_config_from_settings(db)
-    if not smtp_config.is_configured:
-        record.email_status = "not_configured"
-        record.email_error = "SMTP is not configured."
-        record.acknowledgement_email_status = "not_configured"
-        record.acknowledgement_email_error = "Internal notification was not sent because SMTP is not configured."
-        logger.info("Quote request email skipped because SMTP is not configured")
-    else:
-        try:
-            sent = await asyncio.to_thread(_send_quote_request_email, record, recipient_emails, smtp_config)
-            if not sent:
-                record.email_status = "not_configured"
-                record.email_error = "SMTP is not configured."
-                record.acknowledgement_email_status = "not_configured"
-                record.acknowledgement_email_error = "Internal notification was not sent."
-            else:
-                record.email_status = "sent"
-                record.email_error = None
-                try:
-                    acknowledgement_sent = await asyncio.to_thread(_send_quote_request_acknowledgement, record, smtp_config)
-                    if acknowledgement_sent:
-                        record.acknowledgement_email_status = "sent"
-                        record.acknowledgement_email_error = None
-                    else:
-                        record.acknowledgement_email_status = "not_configured"
-                        record.acknowledgement_email_error = "SMTP is not configured."
-                except Exception as exc:
-                    record.acknowledgement_email_status = "failed"
-                    record.acknowledgement_email_error = str(exc)
-                    logger.exception("Quote request acknowledgement delivery failed")
-        except Exception as exc:
-            record.email_status = "failed"
-            record.email_error = str(exc)
-            record.acknowledgement_email_status = "skipped"
-            record.acknowledgement_email_error = "Internal notification failed, so no acknowledgement was sent."
-            logger.exception("Quote request email delivery failed")
-
     db.commit()
     db.refresh(record)
+    background_tasks.add_task(_deliver_quote_request_emails, record.id)
     logger.info(
         "Stored quote request %s for %s (%s)",
         record.id,
@@ -10269,6 +10474,17 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
         record.email,
     )
     return _serialize_quote_request(record)
+
+
+@app.post("/api/quote-requests/{quote_request_id}/graph-image", tags=["Public", "Enquiries"])
+def upload_quote_request_graph_image(quote_request_id: int, body: QuoteRequestGraphImageUpload, db: Session = Depends(get_db)):
+    """Accept the optional canvas screenshot after the customer has been acknowledged."""
+    record = db.get(QuoteRequest, quote_request_id)
+    if not record or not record.graph_upload_token or not secrets.compare_digest(record.graph_upload_token, body.upload_token):
+        raise HTTPException(status_code=404, detail="Enquiry not found.")
+    _store_quote_request_graph_image(record, body.graph_image_data_url)
+    db.commit()
+    return {"stored": bool(_quote_request_graph_image_path(record))}
 
 
 @app.get("/api/settings/quote-request-notifications", response_model=QuoteRequestNotificationSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
@@ -10499,9 +10715,26 @@ def delete_quote_request(
     if not record:
         raise HTTPException(status_code=404, detail="Enquiry not found")
 
+    graph_image_path = _quote_request_graph_image_path(record)
     db.delete(record)
     db.commit()
+    if graph_image_path:
+        try:
+            graph_image_path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove graph image for deleted quote request %s", quote_request_id)
     return {"deleted": True, "id": quote_request_id}
+
+
+@app.get("/api/quote-requests/{quote_request_id}/graph-image", dependencies=[Depends(get_current_user)], tags=["Enquiries"])
+def get_quote_request_graph_image(quote_request_id: int, db: Session = Depends(get_db)):
+    record = db.get(QuoteRequest, quote_request_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Enquiry not found")
+    path = _quote_request_graph_image_path(record)
+    if not path:
+        raise HTTPException(status_code=404, detail="No graph image is available for this enquiry")
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])

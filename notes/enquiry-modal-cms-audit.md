@@ -8,9 +8,9 @@ modal's form sections, field definitions, conditional paths, validation,
 submission feedback, and email payload are fixed in the public-site template
 and JavaScript.
 
-The replacement should be a protected, schema-driven **Enquiry workflow**
-editor. It should not be a generic page builder or permit CMS-authored
-JavaScript.
+The project decision is to keep the modal outside the CMS. It is an
+application-owned workflow; any future changes will be made directly in code
+when a foundational change is needed.
 
 ## What is already CMS-controlled
 
@@ -34,7 +34,7 @@ JavaScript.
 | Payload mapping and email formatting | JavaScript and backend |
 | Modal layout and visual treatment | Template/CSS |
 
-## Required CMS model
+## Superseded CMS model proposal
 
 The editor should manage one versioned workflow record with this shape:
 
@@ -88,7 +88,7 @@ not lose historical enquiry meaning.
    photos, and fabrication briefs.
 6. It has no faithful modal preview using the real conditional-path logic.
 
-## Recommended delivery order
+## Superseded CMS delivery proposal
 
 1. Add the protected workflow schema, server validation, versioning, and a
    real CMS preview. Preserve the current behaviour as the seeded workflow.

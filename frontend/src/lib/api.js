@@ -369,6 +369,20 @@ export async function sendQuoteRequestEmailTest(body) {
   return r.json();
 }
 
+export async function getQuoteRequestNotificationSettings() {
+  const r = await apiFetch('/settings/quote-request-notifications');
+  return r.json();
+}
+
+export async function updateQuoteRequestNotificationSettings(body) {
+  const r = await apiFetch('/settings/quote-request-notifications', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
 export async function getSmtpSettings() {
   const r = await apiFetch('/settings/smtp');
   return r.json();

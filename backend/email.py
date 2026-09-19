@@ -103,6 +103,7 @@ def send_email(
     subject: str,
     body: str,
     *,
+    html_body: str | None = None,
     reply_to: str | None = None,
     attachments: Sequence[dict] | None = None,
     config: SMTPConfig | None = None,
@@ -124,16 +125,29 @@ def send_email(
     if reply_to:
         message["Reply-To"] = reply_to
     message.set_content(body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
     for attachment in attachments or []:
         content = attachment.get("content", b"")
         if isinstance(content, str):
             content = content.encode("utf-8")
-        message.add_attachment(
-            content,
-            maintype=attachment.get("maintype", "application"),
-            subtype=attachment.get("subtype", "octet-stream"),
-            filename=attachment.get("filename", "attachment"),
-        )
+        if html_body and attachment.get("disposition") == "inline" and attachment.get("cid"):
+            # Add the PNG to the HTML alternative's multipart/related section.
+            # This is inline content, not a downloadable email attachment.
+            html_part = message.get_payload()[-1]
+            html_part.add_related(
+                content,
+                maintype=attachment.get("maintype", "application"),
+                subtype=attachment.get("subtype", "octet-stream"),
+                cid=f"<{attachment['cid'].strip('<>')}>",
+            )
+        else:
+            message.add_attachment(
+                content,
+                maintype=attachment.get("maintype", "application"),
+                subtype=attachment.get("subtype", "octet-stream"),
+                filename=attachment.get("filename", "attachment"),
+            )
 
     server = None
     try:
@@ -202,6 +216,8 @@ def _diagnostic_error(stage: str, exc: Exception) -> SMTPDiagnosticError:
         return SMTPDiagnosticError(stage, "smtp_dns_failed", "The SMTP host could not be resolved.", detail)
     if isinstance(exc, (TimeoutError, socket.timeout)):
         return SMTPDiagnosticError(stage, "smtp_timeout", "The SMTP server did not respond in time.", detail)
+    if isinstance(exc, smtplib.SMTPServerDisconnected) and "timed out" in detail.lower():
+        return SMTPDiagnosticError(stage, "smtp_timeout", "The SMTP server did not respond in time. Check that the selected SMTP security mode matches the server port.", detail)
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return SMTPDiagnosticError("authentication", "smtp_auth_failed", "SMTP authentication was rejected. Check the username, password, or app password.", detail)
     if isinstance(exc, ssl.SSLError):

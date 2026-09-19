@@ -81,12 +81,11 @@ async def common_context():
             product_types = await api.product_types()
         except Exception:
             product_types = []
-    enquiry_page = await site_page_context("enquiries-modal")
     try:
         site_navigation = await api.site_navigation()
     except Exception:
         site_navigation = []
-    return {"product_types": product_types, "enquiry_cms": enquiry_page.get("content", {}), "site_navigation": site_navigation}
+    return {"product_types": product_types, "enquiry_cms": {}, "site_navigation": site_navigation}
 
 
 def quote_request_context(

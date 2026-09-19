@@ -20,6 +20,9 @@ class Settings:
     app_build_marker = os.getenv("APP_BUILD_MARKER", "").strip() or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     finder_debug = os.getenv("FINDER_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
     request_timeout_seconds = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "10"))
+    # Enquiries can perform two authenticated SMTP submissions before the
+    # backend responds (team notification, then customer acknowledgement).
+    quote_request_timeout_seconds = float(os.getenv("QUOTE_REQUEST_TIMEOUT_SECONDS", "60"))
     catalogue_cache_path = os.getenv("CATALOGUE_CACHE_PATH", "/tmp/vent-tech-catalogue-cache.json")
     catalogue_refresh_interval_seconds = float(os.getenv("CATALOGUE_REFRESH_INTERVAL_SECONDS", "300"))
     catalogue_startup_max_wait_seconds = float(os.getenv("CATALOGUE_STARTUP_MAX_WAIT_SECONDS", "30"))

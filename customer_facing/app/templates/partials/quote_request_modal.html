@@ -181,37 +181,54 @@
               </div>
             </div>
             <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label" for="quoteRequestAirflowMin">Airflow minimum</label>
-                <input class="form-control" id="quoteRequestAirflowMin" name="airflow_min" inputmode="decimal" placeholder="e.g. 1200">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="quoteRequestAirflowMax">Airflow maximum</label>
+              <div class="col-md-6 d-none" data-tailored-requirement="airflow">
+                <label class="form-label" for="quoteRequestAirflowMax">Maximum airflow</label>
                 <input class="form-control" id="quoteRequestAirflowMax" name="airflow_max" inputmode="decimal" placeholder="e.g. 1800">
               </div>
-              <div class="col-md-6">
-                <label class="form-label" for="quoteRequestPressureMin">Pressure minimum</label>
-                <input class="form-control" id="quoteRequestPressureMin" name="pressure_min" inputmode="decimal" placeholder="e.g. 300">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="quoteRequestPressureMax">Pressure maximum</label>
+              <div class="col-md-6 d-none" data-tailored-requirement="pressure">
+                <label class="form-label" for="quoteRequestPressureMax">Maximum pressure</label>
                 <input class="form-control" id="quoteRequestPressureMax" name="pressure_max" inputmode="decimal" placeholder="e.g. 750">
               </div>
-              <div class="col-md-6">
-                <label class="form-label" for="quoteRequestPowerLimit">Power limit</label>
+              <div class="col-md-6 d-none" data-tailored-requirement="power">
+                <label class="form-label" for="quoteRequestPowerLimit">Maximum power</label>
                 <input class="form-control" id="quoteRequestPowerLimit" name="power_limit" inputmode="decimal" placeholder="e.g. 2.2 kW">
+              </div>
+              <div class="col-md-6 d-none" data-tailored-requirement="efficiency">
+                <label class="form-label" for="quoteRequestEfficiencyMax">Efficiency requirement</label>
+                <input class="form-control" id="quoteRequestEfficiencyMax" name="efficiency_max" inputmode="decimal" placeholder="e.g. 82%">
+              </div>
+              <div class="col-md-6 d-none" data-tailored-requirement="noise">
+                <label class="form-label" for="quoteRequestNoiseMax">Maximum noise</label>
+                <input class="form-control" id="quoteRequestNoiseMax" name="noise_max" inputmode="decimal" placeholder="e.g. 65 dB(A)">
+              </div>
+              <div class="col-md-6 d-none" data-tailored-requirement="size">
+                <label class="form-label" for="quoteRequestSizeMax">Maximum dimensions</label>
+                <input class="form-control" id="quoteRequestSizeMax" name="size_max" placeholder="e.g. 900 × 600 × 500 mm">
+              </div>
+              <div class="col-md-6 d-none" data-tailored-requirement="temperature">
+                <label class="form-label" for="quoteRequestTemperatureMax">Maximum operating temperature</label>
+                <input class="form-control" id="quoteRequestTemperatureMax" name="temperature_max" inputmode="decimal" placeholder="e.g. 60 °C">
+              </div>
+              <div class="col-md-6 d-none" data-tailored-requirement="mounting">
+                <label class="form-label" for="quoteRequestMountingRequirement">Mounting requirement</label>
+                <input class="form-control" id="quoteRequestMountingRequirement" name="mounting_requirement" placeholder="e.g. roof mounted">
               </div>
             </div>
           </div>
 
           <div class="mb-0">
             <label class="form-label" for="quoteRequestNotes">Additional notes</label>
-            <input class="form-control mb-3" id="quoteRequestNotes" name="short_notes" placeholder="Project size, application, constraints">
-            <label class="form-label" for="quoteRequestDetails">Tell us more</label>
-            <textarea class="form-control" id="quoteRequestDetails" name="details" rows="5" placeholder="Include application details, dimensions, target duty point, lead time, or anything that will help us recommend the right solution."></textarea>
+            <textarea class="form-control" id="quoteRequestNotes" name="short_notes" rows="6" placeholder="Include application details, dimensions, target duty point, lead time, project size, or any constraints that will help us recommend the right solution."></textarea>
           </div>
 
-          <input type="text" class="d-none" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <input type="text" class="d-none" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" hidden>
+          <section class="quote-request-confirmation d-none" data-quote-request-confirmation aria-live="polite">
+            <div class="alert alert-success mb-3">
+              <h3 class="h5 mb-1">Your enquiry has been received</h3>
+              <p class="mb-0">We have saved your details and will send an email copy to you for your records.</p>
+            </div>
+            <div class="quote-request-confirmation__summary" data-quote-request-confirmation-summary></div>
+          </section>
         </div>
 
         <div class="modal-footer d-flex flex-wrap justify-content-between gap-2">
@@ -219,6 +236,7 @@
           <div class="d-flex gap-2">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
             <button type="submit" class="btn btn-primary" data-quote-request-submit>{{ enquiry_cms.submit_label or 'Send enquiry' }}</button>
+            <button type="button" class="btn btn-primary d-none" data-quote-request-confirmation-ok>Close</button>
           </div>
         </div>
       </form>

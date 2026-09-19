@@ -1,4 +1,6 @@
-from backend.main import _normalise_quote_request_payload, _validate_action
+from starlette.requests import Request
+
+from backend.main import _normalise_quote_request_payload, _quote_request_throttle_key, _validate_action
 from backend.schemas import QuoteRequestCreate
 from customer_facing.app.routes.pages import quote_request_context
 
@@ -72,3 +74,10 @@ def test_cms_modal_action_can_configure_per_action_context_fields():
     })
 
     assert action["contextFields"] == {"airflow": True, "pressure": False}
+
+
+def test_quote_request_throttle_key_uses_the_public_client_address():
+    payload = QuoteRequestCreate(name="Sam Example", email="sam@example.test")
+    request = Request({"type": "http", "headers": [], "client": ("203.0.113.42", 443)})
+
+    assert _quote_request_throttle_key(payload, request) == "203.0.113.42"

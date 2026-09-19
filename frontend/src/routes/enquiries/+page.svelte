@@ -43,6 +43,12 @@
     };
   }
 
+  function helperDetailLabel(key) {
+    return {
+      thing: 'Looking for', room_size: 'Room or space size', three_phase: 'Three-phase power', constraints: 'Constraints or preferences'
+    }[key] || key.replaceAll('_', ' ');
+  }
+
   function filterRecords(records) {
     const needle = searchQuery.trim().toLowerCase();
     return (records || []).filter((record) => {
@@ -197,115 +203,52 @@
     <div class="alert alert-danger">{saveError}</div>
   {/if}
 
-  <div class="card shadow-sm">
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th scope="col">Received</th>
-              <th scope="col">Customer</th>
-              <th scope="col">Context</th>
-              <th scope="col">Path</th>
-              <th scope="col">Verification</th>
-              <th scope="col">Email</th>
-              <th scope="col" class="text-end">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if filteredRecords.length}
-              {#each filteredRecords as record}
-                <tr>
-                  <td class="text-nowrap">{formatDate(record.created_at)}</td>
-                  <td>
-                    <div class="fw-semibold">{record.name}</div>
-                    <div class="small text-body-secondary">{record.company || 'No company provided'}</div>
-                    <div class="small"><a href={`mailto:${record.email}`}>{record.email}</a></div>
-                    {#if record.phone}
-                      <div class="small text-body-secondary">{record.phone}</div>
-                    {/if}
-                  </td>
-                  <td>
-                    <div class="fw-semibold">{record.page_card_title || record.page_title || 'Unknown page'}</div>
-                    <div class="small text-body-secondary">{record.page_card_summary || record.page_summary || 'No summary provided'}</div>
-                    {#if record.context_json?.product?.model}
-                      <div class="small">Product: {record.context_json.product.model}</div>
-                    {/if}
-                    {#if record.context_json?.series?.name}
-                      <div class="small">Series: {record.context_json.series.name}</div>
-                    {/if}
-                    {#if record.context_json?.product_type?.label}
-                      <div class="small">Type: {record.context_json.product_type.label}</div>
-                    {/if}
-                    {#if record.context_json?.enquiry_workflow?.performance_target?.airflow != null}
-                      <div class="small">Airflow target: {record.context_json.enquiry_workflow.performance_target.airflow}</div>
-                    {/if}
-                    {#if record.context_json?.enquiry_workflow?.performance_target?.pressure != null}
-                      <div class="small">Pressure target: {record.context_json.enquiry_workflow.performance_target.pressure}</div>
-                    {/if}
-                  </td>
-                  <td>
-                    <div class="mb-2">
-                      <label class="form-label small text-body-secondary mb-1" for={`quote-status-${record.id}`}>Status</label>
-                      <select
-                        id={`quote-status-${record.id}`}
-                        class="form-select form-select-sm"
-                        value={record.status}
-                        disabled={savingId === record.id}
-                        on:change={(event) => changeStatus(record, event.currentTarget.value)}
-                      >
-                        <option value="new">New</option>
-                        <option value="quoted">Quoted</option>
-                        <option value="closed">Closed</option>
-                      </select>
-                    </div>
-                    <div class={`badge ${getRequestPathMeta(record.request_type).badge} mb-2`}>{getRequestPathMeta(record.request_type).label}</div>
-                    <div class="small text-body-secondary">{getRequestPathMeta(record.request_type).description}</div>
-                    {#if record.page_url}
-                      <div class="small text-body-secondary text-break">{record.page_url}</div>
-                    {/if}
-                    <div class="small text-body-secondary">Attributes: {(record.attributes || []).join(', ') || 'None'}</div>
-                    <details class="mt-2">
-                      <summary class="small">Details</summary>
-                      <div class="small text-body-secondary mt-2" style="white-space: pre-wrap;">{record.short_notes || 'No short notes'}</div>
-                      <div class="small mt-2" style="white-space: pre-wrap;">{record.details || 'No extended notes'}</div>
-                    </details>
-                  </td>
-                  <td>
-                    <div class={`badge ${record.verification_status === 'passed' ? 'text-bg-success' : record.verification_status === 'not_configured' ? 'text-bg-secondary' : 'text-bg-warning'}`}>{record.verification_status}</div>
-                    <div class="small text-body-secondary mt-1">{record.verification_provider}</div>
-                    {#if record.client_ip}
-                      <div class="small text-body-secondary">{record.client_ip}</div>
-                    {/if}
-                  </td>
-                  <td>
-                    <div class={`badge ${record.email_status === 'sent' ? 'text-bg-success' : record.email_status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>{record.email_status}</div>
-                    {#if record.email_error}
-                      <div class="small text-danger mt-1">{record.email_error}</div>
-                    {/if}
-                    <div class="small text-body-secondary mt-2">Customer acknowledgement</div>
-                    <div class={`badge ${record.acknowledgement_email_status === 'sent' ? 'text-bg-success' : record.acknowledgement_email_status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>{record.acknowledgement_email_status || 'not sent'}</div>
-                    {#if record.acknowledgement_email_error}
-                      <div class="small text-danger mt-1">{record.acknowledgement_email_error}</div>
-                    {/if}
-                  </td>
-                  <td class="text-end">
-                    <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeRecord(record)} disabled={deletingId === record.id}>
-                      {deletingId === record.id ? 'Deleting...' : 'Delete'}
-                    </button>
-                  </td>
-                </tr>
-              {/each}
-            {:else}
-              <tr>
-                <td colspan="7" class="text-center text-body-secondary py-5">
-                  No enquiry records match the current filters.
-                </td>
-              </tr>
-            {/if}
-          </tbody>
-        </table>
-      </div>
+  <div class="enquiries-results">
+    <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+      <div class="fw-semibold">{filteredRecords.length} {filteredRecords.length === 1 ? 'enquiry' : 'enquiries'}</div>
+      <div class="small text-body-secondary">Newest first</div>
     </div>
+    {#if filteredRecords.length}
+      {#each filteredRecords as record}
+        <article class="card shadow-sm enquiry-card mb-3">
+          <div class="card-body p-4">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-start mb-3">
+              <div>
+                <div class="small text-body-secondary">Received {formatDate(record.created_at)}</div>
+                <h2 class="h5 mb-1">{record.name}</h2>
+                <div class="text-body-secondary">{record.company || 'No company provided'}</div>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class={`badge ${getRequestPathMeta(record.request_type).badge}`}>{getRequestPathMeta(record.request_type).label}</span>
+                <select class="form-select form-select-sm enquiry-card__status" value={record.status} disabled={savingId === record.id} on:change={(event) => changeStatus(record, event.currentTarget.value)} aria-label="Enquiry status">
+                  <option value="new">New</option><option value="quoted">Quoted</option><option value="closed">Closed</option>
+                </select>
+              </div>
+            </div>
+            <div class="enquiry-card__grid">
+              <section><div class="enquiry-card__label">Contact</div><a href={`mailto:${record.email}`}>{record.email}</a>{#if record.phone}<div>{record.phone}</div>{/if}</section>
+              <section><div class="enquiry-card__label">Catalogue context</div><div class="fw-semibold">{record.page_card_title || record.page_title || 'Unknown page'}</div>{#if record.context_json?.product?.model}<div class="small text-body-secondary">Product: {record.context_json.product.model}</div>{/if}{#if record.context_json?.series?.name}<div class="small text-body-secondary">Series: {record.context_json.series.name}</div>{/if}</section>
+              <section><div class="enquiry-card__label">Delivery</div><div>Team email <span class={`badge ${record.email_status === 'sent' ? 'text-bg-success' : record.email_status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>{record.email_status}</span></div><div class="mt-1">Customer copy <span class={`badge ${record.acknowledgement_email_status === 'sent' ? 'text-bg-success' : record.acknowledgement_email_status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}`}>{record.acknowledgement_email_status || 'not sent'}</span></div></section>
+            </div>
+            <details class="mt-3"><summary>View enquiry details</summary><div class="enquiry-card__details mt-3"><div><strong>Selected stream:</strong> {getRequestPathMeta(record.request_type).label}</div><div><strong>Selected attributes:</strong> {(record.attributes || []).join(', ') || 'None'}</div>{#if record.context_json?.enquiry_workflow?.performance_target?.airflow != null}<div>Airflow target: {record.context_json.enquiry_workflow.performance_target.airflow}</div>{/if}{#if record.context_json?.enquiry_workflow?.performance_target?.pressure != null}<div>Pressure target: {record.context_json.enquiry_workflow.performance_target.pressure}</div>{/if}{#each Object.values(record.context_json?.tailored_requirements || {}) as requirement}<div>{requirement.label}: {requirement.value}</div>{/each}{#each Object.entries(record.context_json?.help_me_choose || {}) as [key, value]}<div>{helperDetailLabel(key)}: {value}</div>{/each}{#if record.graph_image_url}<figure class="enquiry-card__graph"><figcaption class="enquiry-card__label">Submitted performance graph</figcaption><img src={record.graph_image_url} alt="Submitted performance graph with selected duty point" /></figure>{/if}<div class="enquiry-card__notes"><strong>Additional notes</strong><div style="white-space:pre-wrap">{record.short_notes || record.details || 'No notes provided'}</div></div></div></details>
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top"><span class={`badge ${record.verification_status === 'passed' ? 'text-bg-success' : 'text-bg-secondary'}`}>Verification: {record.verification_status}</span><button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeRecord(record)} disabled={deletingId === record.id}>{deletingId === record.id ? 'Deleting...' : 'Delete'}</button></div>
+          </div>
+        </article>
+      {/each}
+    {:else}
+      <div class="card shadow-sm"><div class="card-body text-center text-body-secondary py-5">No enquiry records match the current filters.</div></div>
+    {/if}
   </div>
 </ManagePageShell>
+
+<style>
+  .enquiry-card__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; }
+  .enquiry-card__label { color: var(--bs-secondary-color); font-size: .72rem; font-weight: 700; letter-spacing: .08em; margin-bottom: .35rem; text-transform: uppercase; }
+  .enquiry-card__status { width: auto; min-width: 7rem; }
+  .enquiry-card__details { border-left: 3px solid var(--bs-border-color); padding-left: 1rem; }
+  .enquiry-card__notes { margin-top: 1.25rem; }
+  .enquiry-card__notes strong { display: block; margin-bottom: .45rem; }
+  .enquiry-card__graph { margin: 1.25rem 0 0; max-width: 720px; }
+  .enquiry-card__graph img { background: #fff; border: 1px solid var(--bs-border-color); border-radius: .5rem; display: block; height: auto; max-width: 100%; }
+  @media (max-width: 767px) { .enquiry-card__grid { grid-template-columns: 1fr; gap: 1rem; } }
+</style>

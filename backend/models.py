@@ -900,6 +900,8 @@ class QuoteRequest(Base):
     pressure_min = Column(String(40), nullable=True)
     pressure_max = Column(String(40), nullable=True)
     power_limit = Column(String(60), nullable=True)
+    graph_image_filename = Column(String(255), nullable=True)
+    graph_upload_token = Column(String(128), nullable=True)
     short_notes = Column(String(300), nullable=True)
     details = Column(Text, nullable=True)
     page_type = Column(String(80), nullable=True)

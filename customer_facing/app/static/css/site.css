@@ -1610,9 +1610,41 @@ body {
   max-height: calc(100vh - 12rem);
 }
 
+/* Honeypot: this must stay out of sight even if modal state classes change. */
+.quote-request-modal input[name="website"] {
+  display: none !important;
+}
+
 .quote-request-modal .modal-header,
 .quote-request-modal .modal-footer {
   border-color: rgba(142, 154, 172, 0.42);
+}
+
+.quote-request-confirmation__summary {
+  overflow: hidden;
+  border: 1px solid rgba(142, 154, 172, 0.35);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.quote-request-confirmation__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 35%) 1fr;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid rgba(142, 154, 172, 0.25);
+}
+
+.quote-request-confirmation__row:last-child {
+  border-bottom: 0;
+}
+
+.quote-request-confirmation__row strong {
+  color: var(--catalogue-ink-muted);
+}
+
+.quote-request-confirmation__row--notes span {
+  white-space: pre-wrap;
 }
 
 .quote-request-context {

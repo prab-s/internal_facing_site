@@ -239,8 +239,7 @@ function _page($$renderer, $$props) {
       "About Us",
       "Contact",
       "Engineering Services",
-      "Past Projects",
-      "Enquiries modal"
+      "Past Projects"
     ];
     const sectionTypes = [
       { value: "rich-text", label: "Rich text" },
@@ -532,8 +531,7 @@ function _page($$renderer, $$props) {
       "About Us": "about-us",
       Contact: "contact",
       "Engineering Services": "engineering-services",
-      "Past Projects": "past-projects",
-      "Enquiries modal": "enquiries-modal"
+      "Past Projects": "past-projects"
     }[name];
     protectedPage = activePage === "Enquiries modal";
     activePageSlug = slugForPage(activePage);

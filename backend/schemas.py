@@ -872,6 +872,10 @@ class QuoteRequestCreate(BaseModel):
     pressure_min: Optional[str] = None
     pressure_max: Optional[str] = None
     power_limit: Optional[str] = None
+    helper_thing: Optional[str] = None
+    helper_room_size: Optional[str] = None
+    helper_three_phase: Optional[str] = None
+    helper_constraints: Optional[str] = None
     short_notes: Optional[str] = None
     details: Optional[str] = None
     page_type: Optional[str] = None
@@ -915,6 +919,8 @@ class QuoteRequestResponse(BaseModel):
     pressure_min: Optional[str] = None
     pressure_max: Optional[str] = None
     power_limit: Optional[str] = None
+    graph_image_url: Optional[str] = None
+    graph_upload_token: Optional[str] = None
     short_notes: Optional[str] = None
     details: Optional[str] = None
     page_type: Optional[str] = None
@@ -933,6 +939,11 @@ class QuoteRequestResponse(BaseModel):
     context_json: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteRequestGraphImageUpload(BaseModel):
+    upload_token: str
+    graph_image_data_url: str
 
 
 class QuoteRequestStatusUpdate(BaseModel):

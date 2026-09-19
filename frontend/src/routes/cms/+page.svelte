@@ -8,7 +8,7 @@
   import ActionEditor from '$lib/editor/ActionEditor.svelte';
   import { getCmsPages, createCmsPage, deleteCmsPage, getCmsNavigation, updateCmsPage, publishCmsPage, updateCmsNavigation } from '$lib/api.js';
 
-  let pageNames = ['About Us', 'Contact', 'Engineering Services', 'Past Projects', 'Enquiries modal'];
+  let pageNames = ['About Us', 'Contact', 'Engineering Services', 'Past Projects'];
   const sectionTypes = [
     { value: 'rich-text', label: 'Rich text' },
     { value: 'cards', label: 'Cards / grid' },
@@ -48,8 +48,8 @@
     }
     return migrated;
   }
-  function pageSlugForName(name) { return cmsPages.find((page) => page.label === name)?.slug || ({ 'About Us': 'about-us', Contact: 'contact', 'Engineering Services': 'engineering-services', 'Past Projects': 'past-projects', 'Enquiries modal': 'enquiries-modal' }[name] || ''); }
-  function selectPageFromLocation(response) { const requestedSlug = browser ? new URLSearchParams(window.location.search).get('page') : ''; const requested = response.find((page) => page.slug === requestedSlug); const knownNames = { 'about-us': 'About Us', contact: 'Contact', 'engineering-services': 'Engineering Services', 'past-projects': 'Past Projects', 'enquiries-modal': 'Enquiries modal' }; return requested ? (knownNames[requested.slug] || requested.label) : pageNames[0]; }
+  function pageSlugForName(name) { return cmsPages.find((page) => page.label === name)?.slug || ({ 'About Us': 'about-us', Contact: 'contact', 'Engineering Services': 'engineering-services', 'Past Projects': 'past-projects' }[name] || ''); }
+  function selectPageFromLocation(response) { const requestedSlug = browser ? new URLSearchParams(window.location.search).get('page') : ''; const requested = response.find((page) => page.slug === requestedSlug); const knownNames = { 'about-us': 'About Us', contact: 'Contact', 'engineering-services': 'Engineering Services', 'past-projects': 'Past Projects' }; return requested ? (knownNames[requested.slug] || requested.label) : pageNames[0]; }
   function syncPageUrl(name) { if (!browser) return; const slug = pageSlugForName(name); if (slug) goto(`/cms?page=${encodeURIComponent(slug)}`, { replaceState: true, keepFocus: true, noScroll: true }); }
 
   function pageSections(page) {
@@ -120,14 +120,15 @@
   onMount(async () => {
     try {
       const response = await getCmsPages();
-      cmsPageData = Object.fromEntries(response.map((page) => [page.slug, page]));
-      pageContentDrafts = Object.fromEntries(response.map((page) => [page.slug, clone(page.draft_content || {})]));
-      cmsPages = response.map((page) => ({ slug: page.slug, label: page.label, status: page.status }));
-      const pageNameBySlug = { 'about-us': 'About Us', contact: 'Contact', 'engineering-services': 'Engineering Services', 'past-projects': 'Past Projects', 'enquiries-modal': 'Enquiries modal' };
-      for (const page of response) if (!pageNameBySlug[page.slug]) pageNameBySlug[page.slug] = page.label;
-      pageNames = response.map((page) => pageNameBySlug[page.slug]);
-      activePage = selectPageFromLocation(response);
-      pageDrafts = Object.fromEntries(response.map((page) => [pageNameBySlug[page.slug], Array.isArray(page.draft_layout) ? normaliseSections(page.draft_layout) : pageDrafts[pageNameBySlug[page.slug]] || pageSections(pageNameBySlug[page.slug])]).filter(([name]) => name));
+      const editablePages = response.filter((page) => page.slug !== 'enquiries-modal');
+      cmsPageData = Object.fromEntries(editablePages.map((page) => [page.slug, page]));
+      pageContentDrafts = Object.fromEntries(editablePages.map((page) => [page.slug, clone(page.draft_content || {})]));
+      cmsPages = editablePages.map((page) => ({ slug: page.slug, label: page.label, status: page.status }));
+      const pageNameBySlug = { 'about-us': 'About Us', contact: 'Contact', 'engineering-services': 'Engineering Services', 'past-projects': 'Past Projects' };
+      for (const page of editablePages) if (!pageNameBySlug[page.slug]) pageNameBySlug[page.slug] = page.label;
+      pageNames = editablePages.map((page) => pageNameBySlug[page.slug]);
+      activePage = selectPageFromLocation(editablePages);
+      pageDrafts = Object.fromEntries(editablePages.map((page) => [pageNameBySlug[page.slug], Array.isArray(page.draft_layout) ? normaliseSections(page.draft_layout) : pageDrafts[pageNameBySlug[page.slug]] || pageSections(pageNameBySlug[page.slug])]).filter(([name]) => name));
       sections = pageDrafts[activePage] || sections;
       syncPageUrl(activePage);
       navigation = await getCmsNavigation();
@@ -165,7 +166,7 @@
   function updateContextField(field, value) { updateContentField('context_fields', { ...(activeContent.context_fields || {}), [field]: value }); }
   async function saveNavigation() { try { const response = await updateCmsNavigation(navigation); navigation = response.items || navigation; recordEvent('Saved CMS navigation order and actions.'); notify('CMS navigation saved.'); } catch (error) { recordEvent(`Navigation save failed: ${error?.message || 'request failed'}`); notify(error?.message || 'Unable to save navigation order.', 'error'); } }
   function addEnquiriesNavigationItem() { if (navigation.some((item) => item.id === 'custom-enquiries')) return; navigation = [...navigation, { id: 'custom-enquiries', slug: '', label: 'Enquiries', status: 'custom', href: '', action: { type: 'modal', target: 'quoteRequestModal' } }]; recordEvent('Added the Enquiries modal to navigation.'); }
-  const slugForPage = (name) => cmsPages.find((page) => page.label === name)?.slug || ({ 'About Us': 'about-us', Contact: 'contact', 'Engineering Services': 'engineering-services', 'Past Projects': 'past-projects', 'Enquiries modal': 'enquiries-modal' }[name]);
+  const slugForPage = (name) => cmsPages.find((page) => page.label === name)?.slug || ({ 'About Us': 'about-us', Contact: 'contact', 'Engineering Services': 'engineering-services', 'Past Projects': 'past-projects' }[name]);
   async function savePageLayout(publish = false) { savingPage = true; try { const slug = slugForPage(activePage); const source = cmsPageData[slug] || {}; const updated = await updateCmsPage(slug, { content: activeContent, seo: source.draft_seo || {}, layout: sections }); cmsPageData = { ...cmsPageData, [slug]: updated }; pageContentDrafts = { ...pageContentDrafts, [slug]: clone(updated.draft_content || {}) }; cmsPages = cmsPages.map((page) => page.slug === slug ? { ...page, status: updated.status } : page); if (publish) { const published = await publishCmsPage(slug); cmsPageData = { ...cmsPageData, [slug]: published }; pageContentDrafts = { ...pageContentDrafts, [slug]: clone(published.draft_content || {}) }; cmsPages = cmsPages.map((page) => page.slug === slug ? { ...page, status: published.status } : page); notify(`${activePage} published.`); recordEvent(`Published ${activePage}.`); } else { notify(`${activePage} saved as draft.`); recordEvent(`Saved ${activePage} as a draft.`); } } catch (error) { notify(error?.message || 'Unable to save page layout.', 'error'); recordEvent(`Page save failed: ${error?.message || 'request failed'}`); } finally { savingPage = false; } }
   function moveNavigation(index, direction) { const next = [...navigation]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; navigation = next; }
   function slugify(value) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }

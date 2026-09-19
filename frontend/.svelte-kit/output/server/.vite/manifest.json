@@ -574,6 +574,9 @@
       "_index2.js",
       "_ManagePageShell.js",
       "_equality.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.5EU2SD8Z.css"
     ]
   },
   "src/routes/entry/+page.svelte": {

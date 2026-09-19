@@ -39,6 +39,14 @@ function _page($$renderer, $$props) {
         description: "Unmapped path"
       };
     }
+    function helperDetailLabel(key) {
+      return {
+        thing: "Looking for",
+        room_size: "Room or space size",
+        three_phase: "Three-phase power",
+        constraints: "Constraints or preferences"
+      }[key] || key.replaceAll("_", " ");
+    }
     function filterRecords(records2) {
       const needle = searchQuery.trim().toLowerCase();
       return (records2 || []).filter((record) => {
@@ -132,62 +140,20 @@ function _page($$renderer, $$props) {
         {
           $$renderer3.push("<!--[-1-->");
         }
-        $$renderer3.push(`<!--]--> <div class="card shadow-sm"><div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th scope="col">Received</th><th scope="col">Customer</th><th scope="col">Context</th><th scope="col">Path</th><th scope="col">Verification</th><th scope="col">Email</th><th scope="col" class="text-end">Actions</th></tr></thead><tbody>`);
+        $$renderer3.push(`<!--]--> <div class="enquiries-results"><div class="d-flex justify-content-between align-items-center mb-3 px-1"><div class="fw-semibold">${escape_html(filteredRecords.length)} ${escape_html(filteredRecords.length === 1 ? "enquiry" : "enquiries")}</div> <div class="small text-body-secondary">Newest first</div></div> `);
         if (filteredRecords.length) {
           $$renderer3.push("<!--[0-->");
           $$renderer3.push(`<!--[-->`);
           const each_array = ensure_array_like(filteredRecords);
-          for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
-            let record = each_array[$$index];
-            $$renderer3.push(`<tr><td class="text-nowrap">${escape_html(formatDate(record.created_at))}</td><td><div class="fw-semibold">${escape_html(record.name)}</div> <div class="small text-body-secondary">${escape_html(record.company || "No company provided")}</div> <div class="small"><a${attr("href", `mailto:${record.email}`)}>${escape_html(record.email)}</a></div> `);
-            if (record.phone) {
-              $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small text-body-secondary">${escape_html(record.phone)}</div>`);
-            } else {
-              $$renderer3.push("<!--[-1-->");
-            }
-            $$renderer3.push(`<!--]--></td><td><div class="fw-semibold">${escape_html(record.page_card_title || record.page_title || "Unknown page")}</div> <div class="small text-body-secondary">${escape_html(record.page_card_summary || record.page_summary || "No summary provided")}</div> `);
-            if (record.context_json?.product?.model) {
-              $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small">Product: ${escape_html(record.context_json.product.model)}</div>`);
-            } else {
-              $$renderer3.push("<!--[-1-->");
-            }
-            $$renderer3.push(`<!--]--> `);
-            if (record.context_json?.series?.name) {
-              $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small">Series: ${escape_html(record.context_json.series.name)}</div>`);
-            } else {
-              $$renderer3.push("<!--[-1-->");
-            }
-            $$renderer3.push(`<!--]--> `);
-            if (record.context_json?.product_type?.label) {
-              $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small">Type: ${escape_html(record.context_json.product_type.label)}</div>`);
-            } else {
-              $$renderer3.push("<!--[-1-->");
-            }
-            $$renderer3.push(`<!--]--> `);
-            if (record.context_json?.enquiry_workflow?.performance_target?.airflow != null) {
-              $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small">Airflow target: ${escape_html(record.context_json.enquiry_workflow.performance_target.airflow)}</div>`);
-            } else {
-              $$renderer3.push("<!--[-1-->");
-            }
-            $$renderer3.push(`<!--]--> `);
-            if (record.context_json?.enquiry_workflow?.performance_target?.pressure != null) {
-              $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small">Pressure target: ${escape_html(record.context_json.enquiry_workflow.performance_target.pressure)}</div>`);
-            } else {
-              $$renderer3.push("<!--[-1-->");
-            }
-            $$renderer3.push(`<!--]--></td><td><div class="mb-2"><label class="form-label small text-body-secondary mb-1"${attr("for", `quote-status-${record.id}`)}>Status</label> `);
+          for (let $$index_2 = 0, $$length = each_array.length; $$index_2 < $$length; $$index_2++) {
+            let record = each_array[$$index_2];
+            $$renderer3.push(`<article class="card shadow-sm enquiry-card mb-3"><div class="card-body p-4"><div class="d-flex flex-wrap gap-2 justify-content-between align-items-start mb-3"><div><div class="small text-body-secondary">Received ${escape_html(formatDate(record.created_at))}</div> <h2 class="h5 mb-1">${escape_html(record.name)}</h2> <div class="text-body-secondary">${escape_html(record.company || "No company provided")}</div></div> <div class="d-flex align-items-center gap-2"><span${attr_class(`badge ${getRequestPathMeta(record.request_type).badge}`, "svelte-1i9pvdi")}>${escape_html(getRequestPathMeta(record.request_type).label)}</span> `);
             $$renderer3.select(
               {
-                id: `quote-status-${record.id}`,
-                class: "form-select form-select-sm",
+                class: "form-select form-select-sm enquiry-card__status",
                 value: record.status,
-                disabled: savingId === record.id
+                disabled: savingId === record.id,
+                "aria-label": "Enquiry status"
               },
               ($$renderer4) => {
                 $$renderer4.option({ value: "new" }, ($$renderer5) => {
@@ -199,44 +165,77 @@ function _page($$renderer, $$props) {
                 $$renderer4.option({ value: "closed" }, ($$renderer5) => {
                   $$renderer5.push(`Closed`);
                 });
-              }
+              },
+              "svelte-1i9pvdi"
             );
-            $$renderer3.push(`</div> <div${attr_class(`badge ${getRequestPathMeta(record.request_type).badge} mb-2`)}>${escape_html(getRequestPathMeta(record.request_type).label)}</div> <div class="small text-body-secondary">${escape_html(getRequestPathMeta(record.request_type).description)}</div> `);
-            if (record.page_url) {
+            $$renderer3.push(`</div></div> <div class="enquiry-card__grid svelte-1i9pvdi"><section><div class="enquiry-card__label svelte-1i9pvdi">Contact</div><a${attr("href", `mailto:${record.email}`)}>${escape_html(record.email)}</a>`);
+            if (record.phone) {
               $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small text-body-secondary text-break">${escape_html(record.page_url)}</div>`);
+              $$renderer3.push(`<div>${escape_html(record.phone)}</div>`);
             } else {
               $$renderer3.push("<!--[-1-->");
             }
-            $$renderer3.push(`<!--]--> <div class="small text-body-secondary">Attributes: ${escape_html((record.attributes || []).join(", ") || "None")}</div> <details class="mt-2"><summary class="small">Details</summary> <div class="small text-body-secondary mt-2" style="white-space: pre-wrap;">${escape_html(record.short_notes || "No short notes")}</div> <div class="small mt-2" style="white-space: pre-wrap;">${escape_html(record.details || "No extended notes")}</div></details></td><td><div${attr_class(`badge ${record.verification_status === "passed" ? "text-bg-success" : record.verification_status === "not_configured" ? "text-bg-secondary" : "text-bg-warning"}`)}>${escape_html(record.verification_status)}</div> <div class="small text-body-secondary mt-1">${escape_html(record.verification_provider)}</div> `);
-            if (record.client_ip) {
+            $$renderer3.push(`<!--]--></section> <section><div class="enquiry-card__label svelte-1i9pvdi">Catalogue context</div><div class="fw-semibold">${escape_html(record.page_card_title || record.page_title || "Unknown page")}</div>`);
+            if (record.context_json?.product?.model) {
               $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small text-body-secondary">${escape_html(record.client_ip)}</div>`);
+              $$renderer3.push(`<div class="small text-body-secondary">Product: ${escape_html(record.context_json.product.model)}</div>`);
             } else {
               $$renderer3.push("<!--[-1-->");
             }
-            $$renderer3.push(`<!--]--></td><td><div${attr_class(`badge ${record.email_status === "sent" ? "text-bg-success" : record.email_status === "failed" ? "text-bg-danger" : "text-bg-secondary"}`)}>${escape_html(record.email_status)}</div> `);
-            if (record.email_error) {
+            $$renderer3.push(`<!--]-->`);
+            if (record.context_json?.series?.name) {
               $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small text-danger mt-1">${escape_html(record.email_error)}</div>`);
+              $$renderer3.push(`<div class="small text-body-secondary">Series: ${escape_html(record.context_json.series.name)}</div>`);
             } else {
               $$renderer3.push("<!--[-1-->");
             }
-            $$renderer3.push(`<!--]--> <div class="small text-body-secondary mt-2">Customer acknowledgement</div> <div${attr_class(`badge ${record.acknowledgement_email_status === "sent" ? "text-bg-success" : record.acknowledgement_email_status === "failed" ? "text-bg-danger" : "text-bg-secondary"}`)}>${escape_html(record.acknowledgement_email_status || "not sent")}</div> `);
-            if (record.acknowledgement_email_error) {
+            $$renderer3.push(`<!--]--></section> <section><div class="enquiry-card__label svelte-1i9pvdi">Delivery</div><div>Team email <span${attr_class(
+              `badge ${record.email_status === "sent" ? "text-bg-success" : record.email_status === "failed" ? "text-bg-danger" : "text-bg-secondary"}`,
+              "svelte-1i9pvdi"
+            )}>${escape_html(record.email_status)}</span></div><div class="mt-1">Customer copy <span${attr_class(
+              `badge ${record.acknowledgement_email_status === "sent" ? "text-bg-success" : record.acknowledgement_email_status === "failed" ? "text-bg-danger" : "text-bg-secondary"}`,
+              "svelte-1i9pvdi"
+            )}>${escape_html(record.acknowledgement_email_status || "not sent")}</span></div></section></div> <details class="mt-3"><summary>View enquiry details</summary><div class="enquiry-card__details mt-3 svelte-1i9pvdi"><div><strong>Selected stream:</strong> ${escape_html(getRequestPathMeta(record.request_type).label)}</div><div><strong>Selected attributes:</strong> ${escape_html((record.attributes || []).join(", ") || "None")}</div>`);
+            if (record.context_json?.enquiry_workflow?.performance_target?.airflow != null) {
               $$renderer3.push("<!--[0-->");
-              $$renderer3.push(`<div class="small text-danger mt-1">${escape_html(record.acknowledgement_email_error)}</div>`);
+              $$renderer3.push(`<div>Airflow target: ${escape_html(record.context_json.enquiry_workflow.performance_target.airflow)}</div>`);
             } else {
               $$renderer3.push("<!--[-1-->");
             }
-            $$renderer3.push(`<!--]--></td><td class="text-end"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", deletingId === record.id, true)}>${escape_html(deletingId === record.id ? "Deleting..." : "Delete")}</button></td></tr>`);
+            $$renderer3.push(`<!--]-->`);
+            if (record.context_json?.enquiry_workflow?.performance_target?.pressure != null) {
+              $$renderer3.push("<!--[0-->");
+              $$renderer3.push(`<div>Pressure target: ${escape_html(record.context_json.enquiry_workflow.performance_target.pressure)}</div>`);
+            } else {
+              $$renderer3.push("<!--[-1-->");
+            }
+            $$renderer3.push(`<!--]--><!--[-->`);
+            const each_array_1 = ensure_array_like(Object.values(record.context_json?.tailored_requirements || {}));
+            for (let $$index = 0, $$length2 = each_array_1.length; $$index < $$length2; $$index++) {
+              let requirement = each_array_1[$$index];
+              $$renderer3.push(`<div>${escape_html(requirement.label)}: ${escape_html(requirement.value)}</div>`);
+            }
+            $$renderer3.push(`<!--]--><!--[-->`);
+            const each_array_2 = ensure_array_like(Object.entries(record.context_json?.help_me_choose || {}));
+            for (let $$index_1 = 0, $$length2 = each_array_2.length; $$index_1 < $$length2; $$index_1++) {
+              let [key, value] = each_array_2[$$index_1];
+              $$renderer3.push(`<div>${escape_html(helperDetailLabel(key))}: ${escape_html(value)}</div>`);
+            }
+            $$renderer3.push(`<!--]-->`);
+            if (record.graph_image_url) {
+              $$renderer3.push("<!--[0-->");
+              $$renderer3.push(`<figure class="enquiry-card__graph svelte-1i9pvdi"><figcaption class="enquiry-card__label svelte-1i9pvdi">Submitted performance graph</figcaption><img${attr("src", record.graph_image_url)} alt="Submitted performance graph with selected duty point" class="svelte-1i9pvdi"/></figure>`);
+            } else {
+              $$renderer3.push("<!--[-1-->");
+            }
+            $$renderer3.push(`<!--]--><div class="enquiry-card__notes svelte-1i9pvdi"><strong class="svelte-1i9pvdi">Additional notes</strong><div style="white-space:pre-wrap">${escape_html(record.short_notes || record.details || "No notes provided")}</div></div></div></details> <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top"><span${attr_class(`badge ${record.verification_status === "passed" ? "text-bg-success" : "text-bg-secondary"}`, "svelte-1i9pvdi")}>Verification: ${escape_html(record.verification_status)}</span><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", deletingId === record.id, true)}>${escape_html(deletingId === record.id ? "Deleting..." : "Delete")}</button></div></div></article>`);
           }
           $$renderer3.push(`<!--]-->`);
         } else {
           $$renderer3.push("<!--[-1-->");
-          $$renderer3.push(`<tr><td colspan="7" class="text-center text-body-secondary py-5">No enquiry records match the current filters.</td></tr>`);
+          $$renderer3.push(`<div class="card shadow-sm"><div class="card-body text-center text-body-secondary py-5">No enquiry records match the current filters.</div></div>`);
         }
-        $$renderer3.push(`<!--]--></tbody></table></div></div></div>`);
+        $$renderer3.push(`<!--]--></div>`);
       },
       $$slots: { default: true }
     });

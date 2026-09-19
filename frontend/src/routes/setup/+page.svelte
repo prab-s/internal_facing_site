@@ -35,7 +35,9 @@
     startRestoreDataBackupBundleJob,
     startRestoreDatabaseBackupBundleJob,
     updateProductType,
+    getQuoteRequestNotificationSettings,
     getSmtpSettings,
+    updateQuoteRequestNotificationSettings,
     updateSmtpSettings,
     clearSmtpSettings,
     testSmtpSettings,
@@ -71,6 +73,10 @@
   let clearingSmtpSettings = false;
   let smtpSettingsError = '';
   let smtpPasswordVisible = false;
+  let quoteRequestRecipientEmails = '';
+  let loadingQuoteRequestRecipients = false;
+  let savingQuoteRequestRecipients = false;
+  let quoteRequestRecipientsError = '';
   let maintenanceLoading = false;
   let maintenanceErrorToast = '';
   let maintenanceErrorToastTimeout = null;
@@ -216,6 +222,7 @@
       loadProductTypes();
       loadTemplates();
       loadSmtpSettings();
+      loadQuoteRequestNotificationSettings();
       restoreMaintenanceJob();
     }
   });
@@ -424,6 +431,38 @@
       smtpSettingsError = error?.message || 'Unable to load SMTP settings.';
     } finally {
       loadingSmtpSettings = false;
+    }
+  }
+
+  async function loadQuoteRequestNotificationSettings() {
+    loadingQuoteRequestRecipients = true;
+    quoteRequestRecipientsError = '';
+    try {
+      const settings = await getQuoteRequestNotificationSettings();
+      quoteRequestRecipientEmails = (settings.quote_request_recipient_emails || []).join(', ');
+    } catch (error) {
+      quoteRequestRecipientsError = error?.message || 'Unable to load enquiry recipient settings.';
+    } finally {
+      loadingQuoteRequestRecipients = false;
+    }
+  }
+
+  async function saveQuoteRequestNotificationSettings() {
+    savingQuoteRequestRecipients = true;
+    quoteRequestRecipientsError = '';
+    clearSuccessToast();
+    try {
+      const quote_request_recipient_emails = quoteRequestRecipientEmails
+        .split(',')
+        .map((email) => email.trim())
+        .filter(Boolean);
+      const settings = await updateQuoteRequestNotificationSettings({ quote_request_recipient_emails });
+      quoteRequestRecipientEmails = (settings.quote_request_recipient_emails || []).join(', ');
+      addSuccess('Enquiry recipients saved.');
+    } catch (error) {
+      quoteRequestRecipientsError = error?.message || 'Unable to save enquiry recipient settings.';
+    } finally {
+      savingQuoteRequestRecipients = false;
     }
   }
 
@@ -1349,7 +1388,7 @@
 
   <div class="col-12 col-xl-9 setup-section-content">
     <div class="row g-4 align-items-start">
-  <div class="col-12 col-xl-4 d-flex flex-column gap-4">
+  <div class={`col-12 ${activeSection === 'communications' ? 'col-xl-8' : 'col-xl-4'} d-flex flex-column gap-4`}>
     {#if activeSection === 'account'}
     <div class="card shadow-sm">
       <div class="card-body bg-body-secondary bg-opacity-10">
@@ -1402,6 +1441,25 @@
               {#if smtpSettings.password_configured} Password is saved securely.{/if}
             </p>
           {/if}
+
+          <form class="border-bottom pb-4 mb-4" on:submit|preventDefault={saveQuoteRequestNotificationSettings}>
+            <label class="form-label" for="quote-request-recipients">Enquiry notification recipients</label>
+            <input
+              id="quote-request-recipients"
+              class="form-control"
+              type="text"
+              bind:value={quoteRequestRecipientEmails}
+              placeholder="inquiries@example.com, colleague@example.com"
+              disabled={loadingQuoteRequestRecipients || savingQuoteRequestRecipients}
+            >
+            <div class="form-text">Comma-separated addresses. Each submitted enquiry is sent to every address listed; customer replies go to the sender’s address.</div>
+            {#if quoteRequestRecipientsError}
+              <div class="alert alert-danger py-2 mt-3 mb-0">{quoteRequestRecipientsError}</div>
+            {/if}
+            <button class="btn btn-outline-primary mt-3" type="submit" disabled={loadingQuoteRequestRecipients || savingQuoteRequestRecipients}>
+              {savingQuoteRequestRecipients ? 'Saving...' : 'Save Recipients'}
+            </button>
+          </form>
 
           <form class="row g-3 mt-1" on:submit|preventDefault={saveSmtpSettings}>
             <div class="col-12 col-lg-8">

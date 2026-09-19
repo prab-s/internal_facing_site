@@ -77,7 +77,7 @@ async def proxy_quote_request(request: Request):
         return JSONResponse(status_code=400, content={"detail": "Enquiry request must contain valid JSON."})
 
     try:
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=settings.quote_request_timeout_seconds) as client:
             response = await client.post(
                 f"{settings.backend_api_base_url}/api/quote-requests",
                 json=payload,
@@ -99,6 +99,29 @@ async def proxy_quote_request(request: Request):
             content={"detail": "The enquiry service returned an invalid response. Please try again."},
         )
 
+    return JSONResponse(status_code=response.status_code, content=response_payload)
+
+
+@app.post("/api/quote-requests/{quote_request_id}/graph-image", include_in_schema=False)
+async def proxy_quote_request_graph_image(quote_request_id: int, request: Request):
+    try:
+        payload = await request.json()
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=400, content={"detail": "Graph image request must contain valid JSON."})
+    try:
+        async with httpx.AsyncClient(timeout=settings.quote_request_timeout_seconds) as client:
+            response = await client.post(
+                f"{settings.backend_api_base_url}/api/quote-requests/{quote_request_id}/graph-image",
+                json=payload,
+                headers={"Accept": "application/json"},
+            )
+    except httpx.HTTPError:
+        logger.exception("Unable to forward enquiry graph image to the backend")
+        return JSONResponse(status_code=502, content={"detail": "We could not save the graph image."})
+    try:
+        response_payload = response.json()
+    except ValueError:
+        response_payload = {"detail": "The enquiry service returned an invalid response."}
     return JSONResponse(status_code=response.status_code, content=response_payload)
 
 app.include_router(pages.router)

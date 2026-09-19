@@ -100,6 +100,7 @@ def init_db():
     _remove_deprecated_product_type_secondary_axis_label(engine)
     _ensure_user_columns(engine)
     _ensure_app_settings_smtp_columns(engine)
+    _ensure_quote_request_columns(engine)
     _migrate_silencer_product_type_to_attenuator(engine)
     _migrate_silencer_product_type_pdfs(engine)
     _seed_product_types(engine)
@@ -934,6 +935,19 @@ def _ensure_app_settings_smtp_columns(target_engine):
     if "smtp_security" not in existing_columns:
         with target_engine.begin() as connection:
             connection.execute(text("ALTER TABLE app_settings ADD COLUMN smtp_security VARCHAR(16)"))
+
+
+def _ensure_quote_request_columns(target_engine):
+    inspector = inspect(target_engine)
+    if "quote_requests" not in set(inspector.get_table_names()):
+        return
+    existing_columns = {column["name"] for column in inspector.get_columns("quote_requests")}
+    if "graph_image_filename" not in existing_columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE quote_requests ADD COLUMN graph_image_filename VARCHAR(255)"))
+    if "graph_upload_token" not in existing_columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE quote_requests ADD COLUMN graph_upload_token VARCHAR(128)"))
 
 
 def _ensure_rpm_line_columns(target_engine):
