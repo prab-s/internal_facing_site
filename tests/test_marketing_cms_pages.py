@@ -60,3 +60,41 @@ def test_conversion_escapes_text_and_keeps_placeholder_disclosures():
     assert "placeholder" in layout[0]["content"]
     assert any(s["type"] == "cards" for s in layout)
     assert "layout" not in default_site_page_map()["enquiries-modal"]
+
+
+def test_terms_page_is_an_editable_footer_only_cms_page():
+    terms = default_site_page_map()["terms-and-conditions"]
+    assert terms["label"] == "Terms & Conditions"
+    assert terms["layout"][0]["type"] == "rich-text"
+
+
+def test_layout_only_cms_page_renders_without_a_separate_content_object(monkeypatch):
+    terms = deepcopy(default_site_page_map()["terms-and-conditions"])
+
+    async def site_page(slug):
+        assert slug == "terms-and-conditions"
+        return terms
+
+    async def common():
+        return {"product_types": [], "enquiry_cms": {}, "site_navigation": []}
+
+    monkeypatch.setattr(pages, "site_page_context", site_page)
+    monkeypatch.setattr(pages, "common_context", common)
+    request = Request({"type": "http", "method": "GET", "path": "/terms-and-conditions", "headers": [], "scheme": "http", "server": ("test", 80), "query_string": b""})
+    response = asyncio.run(pages.render_cms_page(request, "terms-and-conditions"))
+    assert response.template.name == "cms_page.html"
+    assert b"Terms &amp; Conditions" in response.body
+
+
+def test_empty_enabled_section_image_does_not_reserve_an_image_column():
+    template = pages.templates.env.get_template("partials/cms_sections.html")
+    markup = template.module.render_sections([{
+        "id": "copy-only",
+        "type": "image-text",
+        "width": "full",
+        "content": "<p>Copy should use the full card width.</p>",
+        "showImage": True,
+        "image": "",
+    }])
+    assert "cms-has-image" not in markup
+    assert "cms-copy" in markup

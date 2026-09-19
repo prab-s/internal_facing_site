@@ -16,8 +16,8 @@
 <div class="row g-4">
   <div class="col-lg-8">
     <section class="page-hero mb-4">
-      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ series.product_type_label }}</p>
-      <h1 class="display-6 mb-3">{{ series.name }}</h1>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ product_type_plural_label }}</p>
+      <h1 class="display-6 mb-3">Series: {{ series.name }}</h1>
       <p class="lead text-muted mb-3">Series-level brochures and product listings for this product type.</p>
       <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-primary" href="{{ products_url() }}">Back to Products</a>

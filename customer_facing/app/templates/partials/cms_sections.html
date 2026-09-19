@@ -24,7 +24,7 @@
     {% if section.type == 'cards' %}
       <div class="row g-4 row-cols-1 row-cols-md-{{ section.get('tabletColumns', 2) }} row-cols-lg-{{ section.get('columns', 3) }}">
       {% for card in section.cards or [] %}<div class="col"><article class="cms-content-card cms-card-{{ section.get('cardStyle', 'raised') }} h-100" style="{{ paint(card) }}">
-        {{ picture(card.image, card.imageAlt, 'cms-card-image cms-fit-' ~ section.get('imageFit', 'cover') ~ ' cms-ratio-' ~ section.get('imageRatio', 'wide')) }}
+        {% if section.get('showCardImages', card.image is not none and card.image != '') %}{{ picture(card.image, card.imageAlt, 'cms-card-image cms-fit-' ~ section.get('imageFit', 'cover') ~ ' cms-ratio-' ~ section.get('imageRatio', 'wide')) }}{% endif %}
         <div class="cms-card-body">{% if card.badge %}<span class="badge rounded-pill cms-badge mb-3">{{ card.badge }}</span>{% endif %}<h3 class="h4">{{ card.title }}</h3><div>{{ card.content|safe }}</div></div>
       </article></div>{% endfor %}</div>
     {% elif section.type == 'accordion' %}
@@ -33,15 +33,16 @@
       {% endfor %}</div>
     {% else %}
       {% set carousel_id = 'cmsCarousel' ~ section_index %}<div id="{{ carousel_id }}" class="carousel slide" {% if section.autoplay != false %}data-bs-ride="carousel"{% endif %}>
-        <div class="carousel-inner">{% for card in section.cards or [] %}<div class="carousel-item {% if loop.first %}active{% endif %}"><article class="cms-carousel-card">{{ picture(card.image, card.imageAlt, 'cms-carousel-image cms-fit-' ~ section.get('imageFit', 'contain')) }}<div class="cms-card-body">{% if card.badge %}<span class="badge cms-badge mb-3">{{ card.badge }}</span>{% endif %}<h3>{{ card.title }}</h3>{{ card.content|safe }}</div></article></div>{% endfor %}</div>
+        <div class="carousel-inner">{% for card in section.cards or [] %}<div class="carousel-item {% if loop.first %}active{% endif %}"><article class="cms-carousel-card">{% if section.get('showCardImages', card.image is not none and card.image != '') %}{{ picture(card.image, card.imageAlt, 'cms-carousel-image cms-fit-' ~ section.get('imageFit', 'contain')) }}{% endif %}<div class="cms-card-body">{% if card.badge %}<span class="badge cms-badge mb-3">{{ card.badge }}</span>{% endif %}<h3>{{ card.title }}</h3>{{ card.content|safe }}</div></article></div>{% endfor %}</div>
         {% if (section.cards or [])|length > 1 %}<button class="carousel-control-prev" type="button" data-bs-target="#{{ carousel_id }}" data-bs-slide="prev"><span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Previous</span></button><button class="carousel-control-next" type="button" data-bs-target="#{{ carousel_id }}" data-bs-slide="next"><span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">Next</span></button>{% endif %}
       </div>
     {% endif %}
     {{ actions(section) }}
   {% else %}
-    <div class="cms-split {% if section.image %}cms-has-image{% endif %} cms-image-{{ section.get('imagePosition', 'right') }}">
+    {% set has_section_image = section.image and section.get('showImage', true) %}
+    <div class="cms-split {% if has_section_image %}cms-has-image{% endif %} cms-image-{{ section.get('imagePosition', 'right') }}">
       <div class="cms-copy">{% if section.eyebrow %}<p class="cms-eyebrow">{{ section.eyebrow }}</p>{% endif %}<div class="cms-prose">{{ section.content|safe }}</div>{{ actions(section) }}</div>
-      {% if section.image %}<figure class="cms-figure mb-0">{{ picture(section.image, section.imageAlt, 'cms-section-image cms-fit-' ~ section.get('imageFit', 'cover') ~ ' cms-ratio-' ~ section.get('imageRatio', 'square')) }}{% if section.imageCaption %}<figcaption>{{ section.imageCaption }}</figcaption>{% endif %}</figure>{% endif %}
+      {% if has_section_image %}<figure class="cms-figure mb-0">{{ picture(section.image, section.imageAlt, 'cms-section-image cms-fit-' ~ section.get('imageFit', 'cover') ~ ' cms-ratio-' ~ section.get('imageRatio', 'square')) }}{% if section.imageCaption %}<figcaption>{{ section.imageCaption }}</figcaption>{% endif %}</figure>{% endif %}
     </div>
   {% endif %}
 </section>

@@ -159,11 +159,10 @@
           <div class="footer-heading mb-2">Quick links</div>
           <ul class="footer-links list-unstyled mb-0">
             <li><a href="/">Home</a></li>
-            <li><a href="{{ products_url() }}">Products</a></li>
-            <li><a href="/engineering-services">Engineering Services</a></li>
-            <li><a href="/past-projects">Past Projects</a></li>
-            <li><a href="/about-us">About Us</a></li>
-            <li><a href="/contact">Contact</a></li>
+            {% for footer_page in site_navigation or [] if footer_page.show_in_footer %}
+              {% set footer_action = footer_page.action or {'type': 'page', 'target': footer_page.href or '/' ~ footer_page.slug} %}
+              {% if footer_action.type == 'page' %}<li><a href="{{ footer_action.target }}">{{ footer_page.label }}</a></li>{% endif %}
+            {% endfor %}
           </ul>
         </div>
         <div class="col-md-4 col-lg-3">
@@ -177,17 +176,13 @@
           </ul>
         </div>
         <div class="col-md-4 col-lg-3">
-          <div class="footer-heading mb-2">Quote support</div>
-          <p class="footer-text mb-3">
-            Keep the right PDF attached to the relevant product type, series, or model page, then use the team below for selection help.
-          </p>
           <a
-            class="btn btn-outline-light btn-sm"
+            class="btn btn-outline-light btn-lg px-4 py-3"
             href="{{ site_contact.request_quote_url }}"
             data-quote-request-trigger
             data-bs-toggle="modal"
             data-bs-target="#quoteRequestModal"
-          >Enquire</a>
+          >Make an enquiry</a>
         </div>
       </div>
       <div class="footer-bottom mt-4 pt-3 d-flex flex-wrap justify-content-between gap-2 small">

@@ -1,4 +1,4 @@
-import { a8 as ssr_context } from "./index2.js";
+import { a9 as ssr_context } from "./index2.js";
 import "clsx";
 function onDestroy(fn) {
   /** @type {SSRContext} */

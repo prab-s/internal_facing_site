@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
 
   export let value = '';
   export let id = '';
@@ -9,6 +9,9 @@
   let color = '#732323';
   let lastHtml = '';
   let savedRange;
+  let formattingOpen = false;
+  let showHtml = false;
+  const dispatch = createEventDispatcher();
 
   const fontOptions = [
     { value: 'Arial', label: 'Arial' },
@@ -32,6 +35,7 @@
     if (!editor) return;
     value = editor.innerHTML;
     lastHtml = value;
+    dispatch('value', value);
   }
 
   function saveSelection() {
@@ -96,9 +100,20 @@
     event.currentTarget.value = '';
   }
 
+  function removeHardBreaks() {
+    const nextValue = (value || '').replace(/<br\s*\/?>(\r?\n)?/gi, ' ');
+    if (nextValue === value) return;
+    value = nextValue;
+    lastHtml = nextValue;
+    if (editor) editor.innerHTML = nextValue;
+    dispatch('value', nextValue);
+  }
+
   onMount(syncEditor);
 
   $: syncEditor();
+  $: paragraphCount = (value.match(/<(p|div|h[1-6]|li|blockquote)\b/gi) || []).length;
+  $: hardBreakCount = (value.match(/<br\s*\/?\s*>/gi) || []).length;
 </script>
 
 <div class="rich-text-editor">
@@ -109,36 +124,32 @@
       <button class="btn btn-outline-secondary" type="button" title="Underline" aria-label="Underline" on:mousedown|preventDefault={() => command('underline')}><u>U</u></button>
       <button class="btn btn-outline-secondary" type="button" title="Strikethrough" aria-label="Strikethrough" on:mousedown|preventDefault={() => command('strikeThrough')}>S̶</button>
     </div>
-    <select class="form-select form-select-sm rich-text-editor__font" aria-label="Font" title="Font" on:mousedown={saveSelection} on:change={chooseFont}>
-      <option value="">Font</option>
-      {#each fontOptions as font}
-        <option value={font.value} style={`font-family: ${font.value}`}>{font.label}</option>
-      {/each}
-    </select>
     <div class="btn-group btn-group-sm" role="group" aria-label="Paragraph formatting">
+      <button class="btn btn-outline-secondary" type="button" title="Bulleted list" aria-label="Bulleted list" on:mousedown|preventDefault={() => command('insertUnorderedList')}>•</button>
+    </div>
+    <button class="btn btn-sm btn-outline-secondary" type="button" title="Add link" aria-label="Add link" on:mousedown|preventDefault={createLink}>Link</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" aria-expanded={formattingOpen} on:click={() => (formattingOpen = !formattingOpen)}>{formattingOpen ? 'Hide formatting' : 'Format text'}</button>
+    <slot name="toolbar-end"></slot>
+  </div>
+  {#if formattingOpen}
+    <div class="rich-text-editor__format-panel" aria-label="More text formatting">
+      <select class="form-select form-select-sm rich-text-editor__font" aria-label="Font" on:mousedown={saveSelection} on:change={chooseFont}>
+        <option value="">Font</option>{#each fontOptions as font}<option value={font.value} style={`font-family: ${font.value}`}>{font.label}</option>{/each}
+      </select>
       <select class="form-select form-select-sm rich-text-editor__format" aria-label="Text style" on:change={(event) => { if (event.currentTarget.value) command('formatBlock', event.currentTarget.value); event.currentTarget.value = ''; }}>
         <option value="">Style</option><option value="p">Paragraph</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="h4">Heading 4</option>
       </select>
-      <button class="btn btn-outline-secondary" type="button" title="Decrease indent" aria-label="Decrease indent" on:mousedown|preventDefault={() => command('outdent')}>⇤</button>
-      <button class="btn btn-outline-secondary" type="button" title="Increase indent" aria-label="Increase indent" on:mousedown|preventDefault={() => command('indent')}>⇥</button>
-      <button class="btn btn-outline-secondary" type="button" title="Bulleted list" aria-label="Bulleted list" on:mousedown|preventDefault={() => command('insertUnorderedList')}>•</button>
-      <button class="btn btn-outline-secondary" type="button" title="Numbered list" aria-label="Numbered list" on:mousedown|preventDefault={() => command('insertOrderedList')}>1.</button>
+      <select class="form-select form-select-sm rich-text-editor__compact" aria-label="Font size" on:change={(event) => { if (event.currentTarget.value) applyInlineStyle('fontSize', event.currentTarget.value); event.currentTarget.value = ''; }}><option value="">Size</option><option value="0.75rem">Small</option><option value="1rem">Normal</option><option value="1.25rem">Large</option><option value="1.75rem">Display</option></select>
+      <select class="form-select form-select-sm rich-text-editor__compact" aria-label="Line spacing" on:change={(event) => { if (event.currentTarget.value) applyInlineStyle('lineHeight', event.currentTarget.value); event.currentTarget.value = ''; }}><option value="">Spacing</option><option value="1">Tight</option><option value="1.5">Normal</option><option value="2">Loose</option></select>
+      <div class="btn-group btn-group-sm" role="group" aria-label="More paragraph formatting"><button class="btn btn-outline-secondary" type="button" title="Decrease indent" on:mousedown|preventDefault={() => command('outdent')}>⇤</button><button class="btn btn-outline-secondary" type="button" title="Increase indent" on:mousedown|preventDefault={() => command('indent')}>⇥</button><button class="btn btn-outline-secondary" type="button" title="Numbered list" on:mousedown|preventDefault={() => command('insertOrderedList')}>1.</button></div>
+      <button class="btn btn-sm btn-outline-secondary" type="button" on:mousedown|preventDefault={insertImage}>Image</button>
+      <label class="btn btn-sm btn-outline-secondary mb-0" title="Text colour"><span aria-hidden="true">A</span><input class="rich-text-editor__color" type="color" bind:value={color} on:mousedown={saveSelection} on:change={chooseColor} /></label>
+      <button class="btn btn-sm btn-outline-secondary" type="button" on:mousedown|preventDefault={() => command('removeFormat')}>Clear formatting</button>
+      {#if hardBreakCount}<button class="btn btn-sm btn-outline-secondary" type="button" on:click={removeHardBreaks}>Remove hard breaks</button>{/if}
+      <div class="rich-text-editor__structure">{paragraphCount || 1} paragraph{paragraphCount === 1 ? '' : 's'} · {hardBreakCount} hard line break{hardBreakCount === 1 ? '' : 's'}<span>Soft wrapping changes with card width and is not saved.</span><button class="btn btn-link btn-sm p-0" type="button" on:click={() => (showHtml = !showHtml)}>{showHtml ? 'Hide HTML' : 'Show HTML'}</button></div>
+      {#if showHtml}<textarea class="form-control form-control-sm rich-text-editor__html" rows="4" readonly value={value}></textarea>{/if}
     </div>
-    <select class="form-select form-select-sm rich-text-editor__compact" aria-label="Font size" title="Font size" on:change={(event) => { if (event.currentTarget.value) applyInlineStyle('fontSize', event.currentTarget.value); event.currentTarget.value = ''; }}>
-      <option value="">Size</option><option value="0.75rem">Small</option><option value="1rem">Normal</option><option value="1.25rem">Large</option><option value="1.75rem">Display</option>
-    </select>
-    <select class="form-select form-select-sm rich-text-editor__compact" aria-label="Line spacing" title="Line spacing" on:change={(event) => { if (event.currentTarget.value) applyInlineStyle('lineHeight', event.currentTarget.value); event.currentTarget.value = ''; }}>
-      <option value="">Spacing</option><option value="1">Tight</option><option value="1.5">Normal</option><option value="2">Loose</option>
-    </select>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Add link" aria-label="Add link" on:mousedown|preventDefault={createLink}>Link</button>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Insert image" aria-label="Insert image" on:mousedown|preventDefault={insertImage}>Image</button>
-    <label class="btn btn-sm btn-outline-secondary mb-0" title="Text colour" aria-label="Text colour">
-      <span aria-hidden="true">A</span>
-      <input class="rich-text-editor__color" type="color" bind:value={color} on:mousedown={saveSelection} on:change={chooseColor} />
-    </label>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Remove formatting" aria-label="Remove formatting" on:mousedown|preventDefault={() => command('removeFormat')}>Clear</button>
-    <slot name="toolbar-end"></slot>
-  </div>
+  {/if}
   <div
     class="form-control rich-text-editor__surface"
     class:rich-text-editor__surface--short={rows <= 3}
@@ -167,6 +178,31 @@
     gap: 0.35rem;
     margin-bottom: 0.5rem;
   }
+
+  .rich-text-editor__format-panel {
+    align-items: center;
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: -0.1rem 0 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .rich-text-editor__structure {
+    color: var(--bs-secondary-color);
+    display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+    gap: 0.35rem;
+    margin-top: 0.15rem;
+  }
+
+  .rich-text-editor__structure span { flex-basis: 100%; }
+  .rich-text-editor__html { flex-basis: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
   .rich-text-editor__toolbar :global(.btn-group) {
     display: flex;

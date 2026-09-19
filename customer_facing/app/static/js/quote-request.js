@@ -8,6 +8,8 @@ const quoteRequestSubmit = quoteRequestModal?.querySelector("[data-quote-request
 const quoteRequestAttributesNode = quoteRequestModal?.querySelector("[data-quote-request-attributes-section]") || null;
 const quoteRequestHelperNode = quoteRequestModal?.querySelector("[data-quote-request-helper]") || null;
 const quoteRequestTailoredNode = quoteRequestModal?.querySelector("[data-quote-request-tailored-fields]") || null;
+const quoteRequestStandardOption = quoteRequestModal?.querySelector("[data-quote-request-standard-option]") || null;
+const quoteRequestOptions = quoteRequestModal?.querySelector("[data-quote-request-options]") || null;
 const quoteRequestConfirmation = quoteRequestModal?.querySelector("[data-quote-request-confirmation]") || null;
 const quoteRequestConfirmationSummary = quoteRequestModal?.querySelector("[data-quote-request-confirmation-summary]") || null;
 const quoteRequestConfirmationOk = quoteRequestModal?.querySelector("[data-quote-request-confirmation-ok]") || null;
@@ -84,6 +86,24 @@ function getCheckedValues(name) {
 function getCheckedRadioValue(name) {
   if (!quoteRequestForm) return "";
   return text(quoteRequestForm.querySelector(`[name="${name}"]:checked`)?.value);
+}
+
+function hasQuoteableItemContext() {
+  return Boolean(quoteRequestContext.product?.model || quoteRequestContext.series?.name);
+}
+
+function syncStandardRequestAvailability() {
+  if (!quoteRequestForm) return;
+  const available = hasQuoteableItemContext();
+  const standardRadio = quoteRequestForm.querySelector('[name="request_type"][value="standard"]');
+  if (standardRadio instanceof HTMLInputElement) standardRadio.disabled = !available;
+  if (quoteRequestStandardOption instanceof HTMLElement) quoteRequestStandardOption.classList.toggle("d-none", !available);
+  if (quoteRequestOptions instanceof HTMLElement) quoteRequestOptions.classList.toggle("quote-request-options--without-standard", !available);
+  for (const option of quoteRequestForm.querySelectorAll("[data-quote-request-option]")) {
+    option.classList.toggle("col-md-6", !available);
+    option.classList.toggle("col-md-4", available);
+  }
+  if (!available && getCheckedRadioValue("request_type") === "standard") setRequestType("tailored");
 }
 
 function getFieldValue(name) {
@@ -341,7 +361,7 @@ function syncSuggestionState() {
 function setRequestType(value) {
   if (!quoteRequestForm) return;
   const normalizedValue = ["standard", "tailored", "unsure"].includes(value) ? value : "";
-  if (!normalizedValue) return;
+  if (!normalizedValue || (normalizedValue === "standard" && !hasQuoteableItemContext())) return;
   const radio = quoteRequestForm.querySelector(`[name="request_type"][value="${cssEscape(normalizedValue)}"]`);
   if (radio instanceof HTMLInputElement) {
     radio.checked = true;
@@ -350,6 +370,7 @@ function setRequestType(value) {
 
 function syncRequestPathDetails() {
   if (!quoteRequestForm) return;
+  syncStandardRequestAvailability();
   const requestType = getCheckedRadioValue("request_type");
   const isTailored = requestType === "tailored";
   const isHelper = requestType === "unsure";

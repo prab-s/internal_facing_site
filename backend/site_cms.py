@@ -3,11 +3,13 @@
 from copy import deepcopy
 
 
-def _page(slug, label, content, seo, content_type="page"):
+def _page(slug, label, content, seo, content_type="page", layout=None):
     from backend.site_page_layouts import MARKETING_PAGE_SLUGS, marketing_page_layout
 
     page = {"slug": slug, "label": label, "content_type": content_type, "content": content, "seo": seo}
-    if slug in MARKETING_PAGE_SLUGS:
+    if layout is not None:
+        page["layout"] = layout
+    elif slug in MARKETING_PAGE_SLUGS:
         page["layout"] = marketing_page_layout(slug, content)
     return page
 
@@ -88,6 +90,9 @@ def default_site_pages():
                 {"label": "Laser cutting", "text": "Precision sheet work and repeatable cut profiles", "image": "/static/media/laser-cutter.svg"}, {"label": "Brake pressing", "text": "Clean folds, returns, and formed sections", "image": "/static/media/brake-press.svg"}, {"label": "Rolling", "text": "Curved sections and controlled radii", "image": "/static/media/roller.svg"}, {"label": "Flanging", "text": "Stiffened edges and tidy assembly details", "image": "/static/media/flanger.svg"}
             ], "snapshot_heading": "Short, visual summaries", "snapshot_text": "This section can later hold a grid of project cards with photos, the problem to solve, and the finished result.", "industries_heading": "Examples by sector", "industries_text": "Use this space for industry-specific examples, like ventilation, fabrication support, commercial builds, or custom engineering jobs.", "details_heading": "A few useful details", "details_text": "Photos, project goals, fabrication steps, and any notable outcomes would all fit nicely here when the content is available."
         }, {"title": "Past Projects", "description": "Explore Vent-Tech fabrication and engineering project highlights."}),
+        _page("terms-and-conditions", "Terms & Conditions", {}, {"title": "Terms & Conditions", "description": "Vent-Tech terms and conditions."}, layout=[
+            {"id": "terms-introduction", "type": "rich-text", "width": "full", "surface": "card", "spacing": "md", "radius": "lg", "content": "<h1>Terms &amp; Conditions</h1><p>Add the approved terms and conditions for Vent-Tech here.</p>"},
+        ]),
         _page("enquiries-modal", "Enquiries modal", {"kicker": "Enquiries", "heading": "Tell us what you need", "context_loading": "Loading context...", "name_label": "Name", "company_label": "Company", "email_label": "Email", "phone_label": "Phone number", "request_heading": "How should we quote this?", "request_help": "Choose the route that best matches what you need. We’ll use the page context to keep the enquiry specific.", "request_options": [{"value": "standard", "title": "Quote this item", "text": "Use the current product or series as the starting point."}, {"value": "tailored", "title": "Tailored product", "text": "I need something that does not exist in the current catalogue."}, {"value": "unsure", "title": "Help me choose", "text": "Answer a few quick questions and we’ll point you in the right direction."}], "context_fields": {"airflow": True, "pressure": True}, "submit_label": "Send enquiry", "footer_text": "Your enquiry will be sent directly to the Vent-Tech team."}, {"title": "Enquiries", "description": "Tell Vent-Tech what you need and send the enquiry to the team."}, "modal"),
     ]
 

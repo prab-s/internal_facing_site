@@ -7409,6 +7409,22 @@ def require_admin_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def _marketing_layout_fallback(slug: str, content: dict, layout: object) -> object:
+    """Give legacy marketing records the same section layout as new CMS records.
+
+    Older records predate stored layouts and previously caused the public site
+    to render a separate legacy template while the CMS edited a generated one.
+    Keep an explicitly empty layout empty; only a missing layout needs this
+    compatibility fallback.
+    """
+    if layout is not None:
+        return layout
+    from backend.site_page_layouts import MARKETING_PAGE_SLUGS, marketing_page_layout
+    if slug in MARKETING_PAGE_SLUGS:
+        return marketing_page_layout(slug, content or {})
+    return None
+
+
 def _site_page_response(page: SitePage) -> dict:
     return {
         "id": page.id,
@@ -7417,8 +7433,8 @@ def _site_page_response(page: SitePage) -> dict:
         "content_type": page.content_type,
         "draft_content": page.draft_content or {},
         "published_content": page.published_content or {},
-        "draft_layout": page.draft_layout,
-        "published_layout": page.published_layout,
+        "draft_layout": _marketing_layout_fallback(page.slug, page.draft_content or {}, page.draft_layout),
+        "published_layout": _marketing_layout_fallback(page.slug, page.published_content or {}, page.published_layout),
         "draft_seo": page.draft_seo or {},
         "published_seo": page.published_seo or {},
         "status": page.status,
@@ -8827,6 +8843,14 @@ def create_site_page(body: SitePageCreateRequest, db: Session = Depends(get_db))
     return _site_page_response(page)
 
 
+def _default_cms_visibility(slug: str) -> tuple[bool, bool]:
+    """Keep existing navigation/footer behaviour when older settings have no visibility flags."""
+    return (
+        slug != "terms-and-conditions",
+        slug in {"about-us", "contact", "engineering-services", "past-projects", "terms-and-conditions"},
+    )
+
+
 def _cms_navigation_items(db: Session) -> list[dict]:
     settings = get_or_create_app_settings(db)
     try:
@@ -8846,13 +8870,15 @@ def _cms_navigation_items(db: Session) -> list[dict]:
         if page:
             configured_slugs.add(slug)
             action = _validate_action(entry.get("action") or {"type": "page", "target": f"/{slug}"})
-            items.append({"id": slug, "slug": slug, "label": str(entry.get("label") or page.label), "status": page.status, "href": f"/{slug}", "action": action})
+            default_nav, default_footer = _default_cms_visibility(slug)
+            items.append({"id": slug, "slug": slug, "label": str(entry.get("label") or page.label), "status": page.status, "href": f"/{slug}", "action": action, "show_in_nav": bool(entry.get("show_in_nav", default_nav)), "show_in_footer": bool(entry.get("show_in_footer", default_footer))})
         elif not slug and entry.get("label") and entry.get("action"):
             action = _validate_action(entry.get("action"))
-            items.append({"id": str(entry.get("id") or f"custom-{index + 1}"), "slug": "", "label": str(entry["label"]), "status": "custom", "href": action.get("target") if action and action.get("type") == "page" else "", "action": action})
+            items.append({"id": str(entry.get("id") or f"custom-{index + 1}"), "slug": "", "label": str(entry["label"]), "status": "custom", "href": action.get("target") if action and action.get("type") == "page" else "", "action": action, "show_in_nav": bool(entry.get("show_in_nav", True)), "show_in_footer": bool(entry.get("show_in_footer", False))})
     for slug, page in pages.items():
         if slug not in configured_slugs:
-            items.append({"id": slug, "slug": slug, "label": page.label, "status": page.status, "href": f"/{slug}", "action": {"type": "page", "target": f"/{slug}"}})
+            show_in_nav, show_in_footer = _default_cms_visibility(slug)
+            items.append({"id": slug, "slug": slug, "label": page.label, "status": page.status, "href": f"/{slug}", "action": {"type": "page", "target": f"/{slug}"}, "show_in_nav": show_in_nav, "show_in_footer": show_in_footer})
     return items
 
 
@@ -8879,12 +8905,13 @@ def update_cms_navigation(body: CmsNavigationUpdateRequest, db: Session = Depend
                 if slug not in available or slug in seen_slugs:
                     continue
                 seen_slugs.add(slug)
-                items.append({"slug": slug, "label": str(item.get("label") or ""), "action": item.get("action")})
+                items.append({"slug": slug, "label": str(item.get("label") or ""), "action": item.get("action"), "show_in_nav": bool(item.get("show_in_nav", _default_cms_visibility(slug)[0])), "show_in_footer": bool(item.get("show_in_footer", _default_cms_visibility(slug)[1]))})
             elif item.get("label") and item.get("action"):
-                items.append({"id": str(item.get("id") or f"custom-{len(items) + 1}"), "label": str(item["label"]), "action": _validate_action(item["action"])})
+                items.append({"id": str(item.get("id") or f"custom-{len(items) + 1}"), "label": str(item["label"]), "action": _validate_action(item["action"]), "show_in_nav": bool(item.get("show_in_nav", True)), "show_in_footer": bool(item.get("show_in_footer", False))})
         for slug in available:
             if slug not in seen_slugs:
-                items.append({"slug": slug})
+                show_in_nav, show_in_footer = _default_cms_visibility(slug)
+                items.append({"slug": slug, "show_in_nav": show_in_nav, "show_in_footer": show_in_footer})
         settings = get_or_create_app_settings(db)
         settings.cms_navigation_order = json.dumps(items)
         db.commit()
@@ -8899,7 +8926,7 @@ def update_cms_navigation(body: CmsNavigationUpdateRequest, db: Session = Depend
 
 @app.get("/api/public/site-navigation", tags=["Public"])
 def get_public_site_navigation(db: Session = Depends(get_db)):
-    return [item for item in _cms_navigation_items(db) if item.get("status") == "custom" or (item.get("status") == "published" and item.get("slug"))]
+    return [item for item in _cms_navigation_items(db) if (item.get("status") == "custom" or (item.get("status") == "published" and item.get("slug"))) and (item.get("show_in_nav") or item.get("show_in_footer"))]
 
 
 @app.put("/api/cms/pages/{slug}", response_model=SitePageResponse, dependencies=[Depends(require_admin_user)], tags=["CMS"])
@@ -8955,9 +8982,12 @@ def get_public_site_page(slug: str, db: Session = Depends(get_db)):
     page = db.query(SitePage).filter(SitePage.slug == slug).first()
     if page is None:
         raise HTTPException(status_code=404, detail="Site page not found.")
-    if not page.published_content:
+    # A page can be entirely layout-driven (for example Terms & Conditions),
+    # so an empty JSON content object does not mean it is unpublished.
+    if page.status != "published":
         raise HTTPException(status_code=404, detail="Site page not found.")
-    return {"slug": page.slug, "label": page.label, "content_type": page.content_type, "content": page.published_content or {}, "seo": page.published_seo or {}, "layout": _validate_site_page_layout(page.published_layout) if page.published_layout is not None else None}
+    layout = _marketing_layout_fallback(page.slug, page.published_content or {}, page.published_layout)
+    return {"slug": page.slug, "label": page.label, "content_type": page.content_type, "content": page.published_content or {}, "seo": page.published_seo or {}, "layout": _validate_site_page_layout(layout) if layout is not None else None}
 
 
 @app.get("/api/cms/assets", response_model=list[SiteAssetResponse], dependencies=[Depends(require_admin_user)], tags=["CMS"])

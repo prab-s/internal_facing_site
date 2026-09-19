@@ -19,8 +19,8 @@
 <div class="row g-4">
   <div class="col-lg-8">
     <section class="page-hero mb-4">
-      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ product.product_type_label }}</p>
-      <h1 class="display-6 mb-3">{{ product.model }}</h1>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ product_type_plural_label }}</p>
+      <h1 class="display-6 mb-3">Model: {{ product.model }}</h1>
       <p class="lead text-muted mb-3">
         {% if product.series_name %}
         {% if series %}<a class="fw-semibold text-decoration-none" href="{{ series_url(series) }}">{{ series.name }}</a>{% else %}<strong>{{ product.series_name }}</strong>{% endif %} ·

@@ -84,7 +84,7 @@
       "_equality.js"
     ],
     "css": [
-      "_app/immutable/assets/RichTextEditor.WXTMFd2b.css"
+      "_app/immutable/assets/RichTextEditor.C7Mkjkqi.css"
     ]
   },
   "_SeriesWorkspace.js": {
@@ -358,7 +358,7 @@
       "_equality.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.DbXsUljs.css"
+      "_app/immutable/assets/_page.B_LMaIIu.css"
     ]
   },
   "src/routes/editor/+page.svelte": {

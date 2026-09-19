@@ -60,6 +60,16 @@ ENGINEERING_SERVICES = [
 ]
 
 
+def plural_product_type_label(label: str | None) -> str:
+    """Use the catalogue family name as a collection label on object pages."""
+    value = str(label or "").strip()
+    if not value or value.lower().endswith("s"):
+        return value
+    if value.lower().endswith("y") and len(value) > 1 and value[-2].lower() not in "aeiou":
+        return f"{value[:-1]}ies"
+    return f"{value}s"
+
+
 def _cached_series_by_id(series_id: int) -> dict | None:
     for series in catalogue_cache.series_list():
         if str(series.get("id")) == str(series_id):
@@ -643,6 +653,7 @@ async def series_page(request: Request, series_slug: str):
         ),
         "series": series,
         "product_type": product_type,
+        "product_type_plural_label": plural_product_type_label((product_type or {}).get("label") or series.get("product_type_label")),
         "series_products": series_products,
         "series_sections": build_description_sections(series),
         "series_performance_table_html": series.get("performance_table_html") or "",
@@ -700,6 +711,7 @@ async def product_page(request: Request, product_slug: str):
         ),
         "product": product,
         "series": product_series,
+        "product_type_plural_label": plural_product_type_label((product_type or {}).get("label") or product.get("product_type_label")),
         "product_sections": build_description_sections(product),
         "product_graph": build_product_graph_payload(product, product_type),
         "product_type_downloads": build_downloads(
@@ -738,7 +750,9 @@ async def cms_page(request: Request, page_slug: str):
 
 async def render_cms_page(request: Request, page_slug: str):
     cms = await site_page_context(page_slug)
-    if not cms.get("content") or cms.get("content_type") == "modal":
+    # CMS pages may be entirely section-layout driven, with no separate
+    # content object. A published layout is sufficient to render the page.
+    if (not cms.get("content") and not cms.get("layout")) or cms.get("content_type") == "modal":
         raise HTTPException(status_code=404)
     context = await common_context()
     # Keep previously published pages available until their CMS replacement is published.

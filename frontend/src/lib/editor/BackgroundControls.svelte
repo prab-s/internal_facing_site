@@ -29,6 +29,10 @@
         {#if value.gradientEnabled}<div class="background-controls__gradient"><div class="background-controls__field"><label for={`${label.replaceAll(' ', '-').toLowerCase()}-gradient-colour`}>Second colour</label><div class="background-controls__colour-input"><input id={`${label.replaceAll(' ', '-').toLowerCase()}-gradient-colour`} class="form-control form-control-color" type="color" value={value.gradientColor || fallbackGradientColor} aria-label={`${label} second colour`} on:input={(event) => update('gradientColor', event.currentTarget.value)} /><input class="form-control form-control-sm" type="text" value={value.gradientColor || ''} placeholder="#732323" aria-label={`${label} second colour value`} on:input={(event) => update('gradientColor', event.currentTarget.value)} /></div></div><div class="background-controls__field"><label for={`${label.replaceAll(' ', '-').toLowerCase()}-gradient-angle`}>Angle</label><input id={`${label.replaceAll(' ', '-').toLowerCase()}-gradient-angle`} class="form-control form-control-sm" type="number" min="0" max="360" value={value.gradientAngle || 90} on:input={(event) => update('gradientAngle', Number(event.currentTarget.value))} /></div></div>{/if}
       </div>
     {/if}
+    <div class="background-metadata">
+      <input class="form-control form-control-sm" value={value.badge || ''} placeholder="Optional badge" aria-label={`${label} badge`} on:input={(event) => update('badge', event.currentTarget.value)} />
+      <input class="form-control form-control-sm" value={value.imageAlt || ''} placeholder="Image alt text" aria-label={`${label} image alt text`} on:input={(event) => update('imageAlt', event.currentTarget.value)} />
+    </div>
   </div>
 {:else}
 <div class="background-controls">
@@ -82,6 +86,7 @@
   .background-toolbar-action { display:inline-flex; position:relative; }
   .background-toolbar-button { align-items:center; display:inline-flex; gap:.35rem; white-space:nowrap; }
   .background-toolbar-swatch { border:1px solid currentColor; border-radius:50%; display:inline-block; height:.75rem; width:.75rem; }
+  .background-metadata { display:grid; gap:.35rem; margin-top:.4rem; }
   .background-popover { background:var(--app-surface); border:1px solid var(--app-border); border-radius:.55rem; box-shadow:0 .6rem 1.5rem rgba(0,0,0,.25); color:var(--app-text); display:grid; gap:.7rem; left:0; min-width:20rem; padding:.8rem; position:absolute; top:calc(100% + .4rem); z-index:20; }
   .background-popover .background-controls__heading { margin-bottom:.1rem; }
   .background-controls__heading { align-items:center; display:flex; justify-content:space-between; gap:.75rem; }

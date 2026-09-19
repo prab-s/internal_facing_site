@@ -2,7 +2,7 @@ from starlette.requests import Request
 
 from backend.main import _normalise_quote_request_payload, _quote_request_throttle_key, _validate_action
 from backend.schemas import QuoteRequestCreate
-from customer_facing.app.routes.pages import quote_request_context
+from customer_facing.app.routes.pages import plural_product_type_label, quote_request_context
 
 
 def test_quote_request_normalises_cms_workflow_context():
@@ -81,3 +81,9 @@ def test_quote_request_throttle_key_uses_the_public_client_address():
     request = Request({"type": "http", "headers": [], "client": ("203.0.113.42", 443)})
 
     assert _quote_request_throttle_key(payload, request) == "203.0.113.42"
+
+
+def test_product_type_labels_are_pluralised_for_object_page_hierarchy():
+    assert plural_product_type_label("Fan") == "Fans"
+    assert plural_product_type_label("Speed Controller") == "Speed Controllers"
+    assert plural_product_type_label("Accessories") == "Accessories"

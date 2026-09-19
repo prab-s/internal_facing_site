@@ -1,4 +1,4 @@
-import { f as attr_style, i as bind_props, a9 as stringify } from "./index2.js";
+import { f as attr_style, i as bind_props, aa as stringify } from "./index2.js";
 import { f as fallback } from "./equality.js";
 const LIGHT_CHART_THEME = {
   background: "#ffffff",

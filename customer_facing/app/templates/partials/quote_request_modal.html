@@ -45,14 +45,14 @@
                 <p class="quote-request-section__help mb-0">{{ enquiry_cms.request_help or 'Choose the route that best matches what you need. We’ll use the page context to keep the enquiry specific.' }}</p>
               </div>
             </div>
-            <div class="row g-3">
-              <div class="col-md-4">
+            <div class="row g-3" data-quote-request-options>
+              <div class="col-md-4" data-quote-request-standard-option>
                 {% set option = (enquiry_cms.request_options or [])[0] %}<label class="quote-request-option-card h-100">
                   <input class="quote-request-option-card__input" type="radio" name="request_type" value="standard" checked>
                   <span class="quote-request-option-card__body"><span class="quote-request-option-card__title">{{ option.title if option else 'Quote this item' }}</span><span class="quote-request-option-card__text">{{ option.text if option else 'Use the current product or series as the starting point.' }}</span></span>
                 </label>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-4" data-quote-request-option="tailored">
                 {% set option = (enquiry_cms.request_options or [])[1] %}<label class="quote-request-option-card h-100">
                   <input class="quote-request-option-card__input" type="radio" name="request_type" value="tailored">
                   <span class="quote-request-option-card__body">
@@ -61,7 +61,7 @@
                   </span>
                 </label>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-4" data-quote-request-option="unsure">
                 {% set option = (enquiry_cms.request_options or [])[2] %}<label class="quote-request-option-card h-100">
                   <input class="quote-request-option-card__input" type="radio" name="request_type" value="unsure">
                   <span class="quote-request-option-card__body">
